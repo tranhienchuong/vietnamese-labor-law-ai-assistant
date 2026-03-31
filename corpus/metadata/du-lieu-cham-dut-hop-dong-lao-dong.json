@@ -1,0 +1,20 @@
+{
+  "document_id": "du-lieu-cham-dut-hop-dong-lao-dong",
+  "document_title": "Bộ luật số 45/2019/QH 14",
+  "source_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/cleaned/du_lieu_cham_dut_hop_dong_lao_dong.txt",
+  "source_kind": "curated_text",
+  "status": "ready",
+  "page_count": 1,
+  "text_page_count": 1,
+  "text_ratio": 1.0,
+  "total_characters": 37018,
+  "cleaned_text_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/cleaned/du_lieu_cham_dut_hop_dong_lao_dong.txt",
+  "chunks_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/chunks/du-lieu-cham-dut-hop-dong-lao-dong.jsonl",
+  "section_count": 37,
+  "chunk_count": 51,
+  "warnings": [],
+  "pages_with_text": [
+    1
+  ],
+  "generated_at": "2026-03-31T07:12:36.473061+00:00"
+}

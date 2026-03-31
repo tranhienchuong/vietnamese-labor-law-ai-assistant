@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vietnamese-labor-law-ai-assistant"
+version = "0.1.0"
+description = "Corpus preparation and local RAG experiments for Vietnamese labor law."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "ollama>=0.5.4",
+  "pypdf>=6.9.2",
+  "PyMuPDF>=1.27.2",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,23 @@
+{
+  "document_id": "nghi-dinh-145-2020-nd-cp",
+  "document_title": "Nghị định 145／2020／NĐ-CP",
+  "source_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/raw/Nghị định 145／2020／NĐ-CP.pdf",
+  "source_kind": "raw_pdf",
+  "status": "ready",
+  "page_count": 4,
+  "text_page_count": 4,
+  "text_ratio": 1.0,
+  "total_characters": 9984,
+  "cleaned_text_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/cleaned/nghi-dinh-145-2020-nd-cp.txt",
+  "chunks_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/chunks/nghi-dinh-145-2020-nd-cp.jsonl",
+  "section_count": 3,
+  "chunk_count": 12,
+  "warnings": [],
+  "pages_with_text": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "generated_at": "2026-03-31T07:12:36.450896+00:00"
+}
