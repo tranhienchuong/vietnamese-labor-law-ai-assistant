@@ -18,6 +18,9 @@ GROUP_RE = re.compile(r"^[IVXLCDM]+\.\s+.+$")
 PAGE_ONLY_RE = re.compile(r"^\d+$")
 SEPARATOR_RE = re.compile(r"^[=\-]{3,}$")
 SOURCE_HINT_RE = re.compile(r"^Nguồn:\s*(?P<title>.+)$", re.IGNORECASE)
+CLAUSE_SPLIT_RE = re.compile(r"(?m)^(?=\d+\.\s)")
+POINT_SPLIT_RE = re.compile(r"(?m)^(?=[a-zđ]\)\s)")
+SENTENCE_SPLIT_RE = re.compile(r"(?<=[.;])\s+")
 
 KNOWN_JOIN_FIXES = {
     "Nghịđịnh": "Nghị định",
@@ -144,6 +147,120 @@ def infer_document_title(text: str, fallback_title: str) -> str:
         if source_match:
             return source_match.group("title").strip()
     return fallback_title
+
+
+def split_by_regex_boundaries(text: str, pattern: re.Pattern[str]) -> list[str]:
+    stripped = text.strip()
+    if not stripped:
+        return []
+
+    matches = list(pattern.finditer(stripped))
+    if not matches:
+        return [stripped]
+
+    starts = [match.start() for match in matches]
+    if starts[0] != 0:
+        starts = [0, *starts]
+
+    parts: list[str] = []
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else len(stripped)
+        piece = stripped[start:end].strip()
+        if piece:
+            parts.append(piece)
+
+    return parts if len(parts) > 1 else [stripped]
+
+
+def split_by_sentences(text: str) -> list[str]:
+    stripped = text.strip()
+    if not stripped:
+        return []
+
+    parts = [part.strip() for part in SENTENCE_SPLIT_RE.split(stripped) if part.strip()]
+    return parts if len(parts) > 1 else [stripped]
+
+
+def split_by_nearest_whitespace(text: str, max_chars: int) -> list[str]:
+    stripped = text.strip()
+    if not stripped:
+        return []
+    if len(stripped) <= max_chars:
+        return [stripped]
+
+    parts: list[str] = []
+    remaining = stripped
+
+    while len(remaining) > max_chars:
+        cut = -1
+        search_limit = min(max_chars, len(remaining) - 1)
+
+        for index in range(search_limit, -1, -1):
+            if remaining[index].isspace():
+                cut = index
+                break
+
+        if cut == -1:
+            for index in range(search_limit + 1, len(remaining)):
+                if remaining[index].isspace():
+                    cut = index
+                    break
+
+        if cut == -1:
+            parts.append(remaining)
+            return parts
+
+        piece = remaining[:cut].strip()
+        if piece:
+            parts.append(piece)
+        remaining = remaining[cut:].strip()
+
+    if remaining:
+        parts.append(remaining)
+
+    return parts
+
+
+def pack_text_units(units: list[str], max_chars: int, separator: str = "\n") -> list[str]:
+    packed: list[str] = []
+    current = ""
+
+    for unit in units:
+        candidate = f"{current}{separator}{unit}".strip() if current else unit
+        if current and len(candidate) > max_chars:
+            packed.append(current.strip())
+            current = unit
+            continue
+        current = candidate
+
+    if current:
+        packed.append(current.strip())
+
+    return packed
+
+
+def split_text_for_chunking(text: str, max_chars: int) -> list[str]:
+    stripped = text.strip()
+    if not stripped:
+        return []
+    if len(stripped) <= max_chars:
+        return [stripped]
+
+    for splitter in (
+        lambda value: split_by_regex_boundaries(value, CLAUSE_SPLIT_RE),
+        lambda value: split_by_regex_boundaries(value, POINT_SPLIT_RE),
+        split_by_sentences,
+    ):
+        units = splitter(stripped)
+        if len(units) <= 1:
+            continue
+
+        flattened: list[str] = []
+        for unit in units:
+            flattened.extend(split_text_for_chunking(unit, max_chars))
+        return pack_text_units(flattened, max_chars)
+
+    return split_by_nearest_whitespace(stripped, max_chars)
 
 
 def split_sections(page_records: list[PageRecord], document_id: str, document_title: str) -> list[SectionRecord]:
@@ -283,6 +400,7 @@ def chunk_sections(sections: list[SectionRecord], max_chars: int = 1200) -> list
 
         chunk_texts: list[str] = []
         current_body_parts: list[str] = []
+        body_limit = max(max_chars - len(heading) - 2, 100)
 
         def compose_chunk(parts: list[str]) -> str:
             if parts == [heading]:
@@ -290,22 +408,18 @@ def chunk_sections(sections: list[SectionRecord], max_chars: int = 1200) -> list
             return "\n\n".join([heading, *parts]).strip()
 
         for paragraph in body_paragraphs:
-            candidate_parts = [*current_body_parts, paragraph]
-            candidate_text = compose_chunk(candidate_parts)
+            paragraph_units = split_text_for_chunking(paragraph, body_limit)
 
-            if current_body_parts and len(candidate_text) > max_chars:
-                chunk_texts.append(compose_chunk(current_body_parts))
-                current_body_parts = []
+            for unit in paragraph_units:
+                candidate_parts = [*current_body_parts, unit]
+                candidate_text = compose_chunk(candidate_parts)
 
-            if len(compose_chunk([paragraph])) > max_chars:
-                available = max(max_chars - len(heading) - 2, 50)
-                for start in range(0, len(paragraph), available):
-                    window = paragraph[start : start + available].strip()
-                    if window:
-                        chunk_texts.append(compose_chunk([window]))
-                continue
+                if current_body_parts and len(candidate_text) > max_chars:
+                    chunk_texts.append(compose_chunk(current_body_parts))
+                    current_body_parts = [unit]
+                    continue
 
-            current_body_parts.append(paragraph)
+                current_body_parts.append(unit)
 
         if current_body_parts:
             chunk_texts.append(compose_chunk(current_body_parts))
@@ -499,8 +613,12 @@ __all__ = [
     "chunk_sections",
     "infer_document_title",
     "normalize_extracted_text",
+    "pack_text_units",
     "process_document",
     "process_curated_text",
+    "split_by_nearest_whitespace",
+    "split_by_sentences",
     "slugify_text",
     "split_sections",
+    "split_text_for_chunking",
 ]

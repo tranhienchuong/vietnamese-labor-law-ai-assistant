@@ -115,6 +115,54 @@ class CorpusPipelineTests(unittest.TestCase):
         self.assertGreaterEqual(len(chunks), 2)
         self.assertTrue(all(chunk["char_count"] <= 300 for chunk in chunks))
 
+    def test_chunk_sections_prefers_legal_boundaries_before_whitespace_fallback(self) -> None:
+        page_records = [
+            PageRecord(
+                page_number=1,
+                text=(
+                    "Điều 36. Quyền đơn phương chấm dứt hợp đồng lao động của người sử dụng lao động\n"
+                    "1. Người sử dụng lao động có quyền đơn phương chấm dứt hợp đồng lao động trong trường hợp sau đây:\n"
+                    "a) Người lao động thường xuyên không hoàn thành công việc theo hợp đồng lao động;\n"
+                    "b) Người lao động bị ốm đau, tai nạn đã điều trị trong thời gian dài mà khả năng lao động chưa hồi phục;\n"
+                    "c) Do thiên tai, hỏa hoạn, dịch bệnh nguy hiểm, địch họa hoặc di dời, thu hẹp sản xuất, kinh doanh theo yêu cầu của cơ quan nhà nước có thẩm quyền mà người sử dụng lao động đã tìm mọi biện pháp khắc phục nhưng vẫn buộc phải giảm chỗ làm việc;\n"
+                    "d) Người lao động không có mặt tại nơi làm việc sau thời hạn quy định."
+                ),
+            )
+        ]
+
+        section = split_sections(
+            page_records=page_records,
+            document_id="bo-luat-45-2019-qh14",
+            document_title="Bộ luật số 45/2019/QH14",
+        )[0]
+
+        chunks = chunk_sections([section], max_chars=420)
+
+        self.assertGreaterEqual(len(chunks), 2)
+        self.assertTrue(any("địch họa hoặc di dời" in chunk["text"] for chunk in chunks))
+        self.assertTrue(all("\n\nịch họa" not in chunk["text"] for chunk in chunks))
+
+    def test_chunk_sections_whitespace_fallback_does_not_split_words(self) -> None:
+        body = " ".join(["alpha", "beta", "gamma"] * 80)
+        section = split_sections(
+            page_records=[
+                PageRecord(
+                    page_number=1,
+                    text=f"Điều 99. Kiểm tra fallback\n{body}",
+                )
+            ],
+            document_id="test-doc",
+            document_title="Test Document",
+        )[0]
+
+        chunks = chunk_sections([section], max_chars=180)
+
+        self.assertGreaterEqual(len(chunks), 2)
+        for chunk in chunks:
+            body_text = chunk["text"].split("\n\n", 1)[1]
+            tokens = body_text.replace("\n", " ").split()
+            self.assertTrue(all(token in {"alpha", "beta", "gamma"} for token in tokens))
+
 
 if __name__ == "__main__":
     unittest.main()
