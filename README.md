@@ -40,7 +40,7 @@ tests/
 
 ```powershell
 .venv\Scripts\python.exe -m pip install -e .
-.venv\Scripts\python.exe scripts\build_corpus.py --curated-text corpus\cleaned\du_lieu_cham_dut_hop_dong_lao_dong.txt
+.venv\Scripts\python.exe scripts\build_corpus.py --curated-text corpus\cleaned\du_lieu_cham_dut_hop_dong_lao_dong.txt corpus\cleaned\nghi-dinh-145-2020-nd-cp.txt
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 .venv\Scripts\python.exe test_ollama.py
 ```
@@ -51,6 +51,7 @@ Lenh build corpus se:
 
 - doc tat ca file PDF trong `corpus/raw`;
 - co the nap them cac file text da lam sach qua `--curated-text`;
+- neu `curated_text` trung `document_id` voi PDF goc thi ban da lam sach se duoc uu tien, khong bi ghi de boi du lieu tho;
 - phat hien van ban nao co the extract text, van ban nao can OCR;
 - ghi text da lam sach vao `corpus/cleaned`;
 - tach thanh chunks JSONL trong `corpus/chunks`;
@@ -58,8 +59,9 @@ Lenh build corpus se:
 
 ## Luu y du lieu hien tai
 
-- `Nghi dinh 145/2020/ND-CP` la PDF text-based va da extract duoc.
-- `VanBanGoc_BO LUAT 45 QH14.pdf` hien duoc phat hien la PDF scan/image, chua OCR duoc trong may hien tai, nen pipeline se gan co `needs_ocr`.
+- `du_lieu_cham_dut_hop_dong_lao_dong.txt` dang la curated source cho Bo luat Lao dong 2019.
+- `nghi-dinh-145-2020-nd-cp.txt` dang la curated source cho Nghi dinh 145/2020/ND-CP.
+- Khi build voi hai file cleaned tren, manifest hien tai se ra `2 ready`, `0 needs_ocr`.
 
 ## Tai lieu quan trong
 

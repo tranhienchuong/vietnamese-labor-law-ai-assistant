@@ -11,10 +11,8 @@
   "cleaned_text_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/cleaned/du_lieu_cham_dut_hop_dong_lao_dong.txt",
   "chunks_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/chunks/du-lieu-cham-dut-hop-dong-lao-dong.jsonl",
   "section_count": 37,
-  "chunk_count": 51,
+  "chunk_count": 204,
   "warnings": [],
-  "pages_with_text": [
-    1
-  ],
-  "generated_at": "2026-03-31T07:28:28.980479+00:00"
+  "pages_with_text": [],
+  "generated_at": "2026-04-01T05:15:07.012605+00:00"
 }
