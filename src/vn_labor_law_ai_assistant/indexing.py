@@ -20,6 +20,76 @@ LEGAL_ARTICLE_RE = re.compile(r"\bdieu\s+(?P<value>\d+[a-z]?)")
 LEGAL_CLAUSE_RE = re.compile(r"\bkhoan\s+(?P<value>\d+)")
 LEGAL_POINT_RE = re.compile(r"\bdiem\s+(?P<value>[a-z](?:\.\d+)?)")
 TOKEN_RE = re.compile(r"[\w.]+", re.UNICODE)
+SPARSE_STOPWORDS = {
+    "a",
+    "anh",
+    "ba",
+    "bị",
+    "boi",
+    "bởi",
+    "các",
+    "cả",
+    "cần",
+    "cho",
+    "có",
+    "của",
+    "cùng",
+    "cũng",
+    "chỉ",
+    "đã",
+    "đang",
+    "để",
+    "đến",
+    "đều",
+    "được",
+    "đó",
+    "đây",
+    "em",
+    "hay",
+    "khi",
+    "không",
+    "là",
+    "lại",
+    "lên",
+    "mà",
+    "mỗi",
+    "một",
+    "ngay",
+    "này",
+    "nên",
+    "nếu",
+    "những",
+    "như",
+    "nhiều",
+    "ơi",
+    "phải",
+    "qua",
+    "ra",
+    "rằng",
+    "rất",
+    "rồi",
+    "sau",
+    "sẽ",
+    "so",
+    "sự",
+    "the",
+    "theo",
+    "thì",
+    "trên",
+    "trong",
+    "tôi",
+    "tại",
+    "từ",
+    "và",
+    "vẫn",
+    "về",
+    "vì",
+    "với",
+}
+SPARSE_STOPWORD_NORMALIZED = {
+    normalize_for_matching(word).replace(" ", "")
+    for word in SPARSE_STOPWORDS
+}
 
 
 def require_sentence_transformers():
@@ -104,7 +174,18 @@ class PyViWordSegmenter:
 
     def segment(self, text: str) -> list[str]:
         segmented_text = self._tokenizer.tokenize(text)
-        return [token.lower() for token in TOKEN_RE.findall(segmented_text)]
+        tokens: list[str] = []
+        for token in TOKEN_RE.findall(segmented_text):
+            lowered_token = token.lower()
+            if is_sparse_stopword(lowered_token):
+                continue
+            tokens.append(lowered_token)
+        return tokens
+
+
+def is_sparse_stopword(token: str) -> bool:
+    normalized_token = normalize_for_matching(token.replace("_", " ")).replace(" ", "")
+    return normalized_token in SPARSE_STOPWORD_NORMALIZED
 
 
 def build_dense_text(chunk: dict[str, object]) -> str:
@@ -614,6 +695,7 @@ __all__ = [
     "build_sparse_text",
     "build_sparse_tokens",
     "extract_legal_hint_tokens",
+    "is_sparse_stopword",
     "load_sparse_encoder",
     "load_chunk_payloads",
     "make_qdrant_point_id",

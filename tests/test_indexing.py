@@ -6,9 +6,11 @@ import tempfile
 import unittest
 
 from src.vn_labor_law_ai_assistant.indexing import (
+    PyViWordSegmenter,
     SparseBM25Encoder,
     build_index_records,
     extract_legal_hint_tokens,
+    is_sparse_stopword,
     make_qdrant_point_id,
     write_records_sqlite,
 )
@@ -81,6 +83,23 @@ class IndexingTests(unittest.TestCase):
         self.assertTrue(shared_indices)
         self.assertTrue(all(value > 0 for value in doc_vector.values))
         self.assertTrue(all(value > 0 for value in query_vector.values))
+
+    def test_is_sparse_stopword_filters_common_function_words(self) -> None:
+        self.assertTrue(is_sparse_stopword("theo"))
+        self.assertTrue(is_sparse_stopword("của"))
+        self.assertFalse(is_sparse_stopword("trợ_cấp"))
+        self.assertFalse(is_sparse_stopword("dieu_46"))
+
+    def test_pyvi_segmenter_removes_stopwords(self) -> None:
+        segmenter = PyViWordSegmenter()
+
+        tokens = segmenter.segment("Theo quy định của pháp luật, trợ cấp thôi việc được tính như thế nào?")
+
+        self.assertIn("trợ_cấp", tokens)
+        self.assertIn("thôi_việc", tokens)
+        self.assertNotIn("theo", tokens)
+        self.assertNotIn("của", tokens)
+        self.assertNotIn("được", tokens)
 
     def test_make_qdrant_point_id_is_deterministic(self) -> None:
         first = make_qdrant_point_id("nghi-dinh-dieu-7-chunk-03")
