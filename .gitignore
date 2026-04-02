@@ -3,4 +3,18 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
+.artifacts/
+artifacts/
 .ROADMAP.md
+
+# Local weekly LaTeX reports
+docs/bao_cao_tuan_*.tex
+docs/bao_cao_tuan_*.pdf
+
+# LaTeX build artifacts
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
