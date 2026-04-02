@@ -189,19 +189,31 @@ class QueryIntent:
     topic_filters: tuple[str, ...]
     issue_filters: tuple[str, ...]
     document_filters: tuple[str, ...]
-    article_number: str | None = None
-    clause_ref: str | None = None
-    point_ref: str | None = None
+    article_numbers: tuple[str, ...] = ()
+    clause_refs: tuple[str, ...] = ()
+    point_refs: tuple[str, ...] = ()
 
     @property
-    def legal_reference_filters(self) -> tuple[tuple[str, str], ...]:
-        filters: list[tuple[str, str]] = []
-        if self.article_number:
-            filters.append(("article_number", self.article_number))
-        if self.clause_ref:
-            filters.append(("clause_ref", self.clause_ref))
-        if self.point_ref:
-            filters.append(("point_ref", self.point_ref))
+    def article_number(self) -> str | None:
+        return self.article_numbers[0] if self.article_numbers else None
+
+    @property
+    def clause_ref(self) -> str | None:
+        return self.clause_refs[0] if self.clause_refs else None
+
+    @property
+    def point_ref(self) -> str | None:
+        return self.point_refs[0] if self.point_refs else None
+
+    @property
+    def legal_reference_filters(self) -> tuple[tuple[str, tuple[str, ...]], ...]:
+        filters: list[tuple[str, tuple[str, ...]]] = []
+        if self.article_numbers:
+            filters.append(("article_number", self.article_numbers))
+        if self.clause_refs:
+            filters.append(("clause_ref", self.clause_refs))
+        if self.point_refs:
+            filters.append(("point_ref", self.point_refs))
         return tuple(filters)
 
 
@@ -255,11 +267,10 @@ def dedupe_preserve_order(values: Sequence[str]) -> tuple[str, ...]:
     return tuple(ordered)
 
 
-def parse_reference_value(pattern: re.Pattern[str], normalized_query: str) -> str | None:
-    match = pattern.search(normalized_query)
-    if not match:
-        return None
-    return match.group("value").lower()
+def parse_reference_values(pattern: re.Pattern[str], normalized_query: str) -> tuple[str, ...]:
+    return dedupe_preserve_order(
+        tuple(match.group("value").lower() for match in pattern.finditer(normalized_query))
+    )
 
 
 def collect_keyword_matches(normalized_query: str, mapping: dict[str, Sequence[str]]) -> tuple[str, ...]:
@@ -280,9 +291,9 @@ def route_query(query: str) -> QueryIntent:
         topic_filters=collect_keyword_matches(normalized_query, TOPIC_KEYWORDS),
         issue_filters=collect_keyword_matches(normalized_query, ISSUE_KEYWORDS),
         document_filters=collect_keyword_matches(normalized_query, DOCUMENT_KEYWORDS),
-        article_number=parse_reference_value(ARTICLE_REF_RE, normalized_query),
-        clause_ref=parse_reference_value(CLAUSE_REF_RE, normalized_query),
-        point_ref=parse_reference_value(POINT_REF_RE, normalized_query),
+        article_numbers=parse_reference_values(ARTICLE_REF_RE, normalized_query),
+        clause_refs=parse_reference_values(CLAUSE_REF_RE, normalized_query),
+        point_refs=parse_reference_values(POINT_REF_RE, normalized_query),
     )
 
 
@@ -304,12 +315,12 @@ def format_intent_summary(intent: QueryIntent) -> str:
         parts.append(f"topic={', '.join(intent.topic_filters)}")
     if intent.issue_filters:
         parts.append(f"issue={', '.join(intent.issue_filters)}")
-    if intent.article_number:
-        parts.append(f"dieu={intent.article_number}")
-    if intent.clause_ref:
-        parts.append(f"khoan={intent.clause_ref}")
-    if intent.point_ref:
-        parts.append(f"diem={intent.point_ref}")
+    if intent.article_numbers:
+        parts.append(f"dieu={', '.join(intent.article_numbers)}")
+    if intent.clause_refs:
+        parts.append(f"khoan={', '.join(intent.clause_refs)}")
+    if intent.point_refs:
+        parts.append(f"diem={', '.join(intent.point_refs)}")
     return "; ".join(parts) if parts else "khong co filter heuristic"
 
 
@@ -382,12 +393,9 @@ class HybridRetriever:
     def _encode_sparse_query(self, intent: QueryIntent) -> tuple[list[str], object]:
         tokens = self._segmenter.segment(intent.raw_query)
         tokens.extend(extract_legal_hint_tokens(intent.raw_query))
-        if intent.article_number:
-            tokens.append(f"dieu_{intent.article_number}")
-        if intent.clause_ref:
-            tokens.append(f"khoan_{intent.clause_ref}")
-        if intent.point_ref:
-            tokens.append(f"diem_{intent.point_ref}")
+        tokens.extend(f"dieu_{value}" for value in intent.article_numbers)
+        tokens.extend(f"khoan_{value}" for value in intent.clause_refs)
+        tokens.extend(f"diem_{value}" for value in intent.point_refs)
         sparse_query = self._sparse_encoder.encode_query(tokens)
         sparse_vector = self._qdrant_models.SparseVector(
             indices=sparse_query.indices,
@@ -405,14 +413,6 @@ class HybridRetriever:
                 models.FieldCondition(
                     key="document_id",
                     match=models.MatchAny(any=list(intent.document_filters)),
-                )
-            )
-
-        for field_name, value in intent.legal_reference_filters:
-            must_conditions.append(
-                models.FieldCondition(
-                    key=field_name,
-                    match=models.MatchAny(any=[value]),
                 )
             )
 
@@ -445,6 +445,31 @@ class HybridRetriever:
             return models.Filter(
                 must=must_conditions or None,
                 min_should=models.MinShould(conditions=ranked_conditions, min_count=1),
+            )
+
+        return models.Filter(must=must_conditions)
+
+    def _build_reference_boost_filter(self, intent: QueryIntent):
+        if not intent.legal_reference_filters:
+            return None
+
+        models = self._qdrant_models
+        must_conditions: list[object] = []
+
+        if intent.document_filters:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="document_id",
+                    match=models.MatchAny(any=list(intent.document_filters)),
+                )
+            )
+
+        for field_name, values in intent.legal_reference_filters:
+            must_conditions.append(
+                models.FieldCondition(
+                    key=field_name,
+                    match=models.MatchAny(any=list(values)),
+                )
             )
 
         return models.Filter(must=must_conditions)
@@ -545,26 +570,39 @@ class HybridRetriever:
     ) -> RetrievalResult:
         intent = route_query(query)
         query_filter = self._build_query_filter(intent)
+        reference_boost_filter = self._build_reference_boost_filter(intent)
         dense_query = self._encode_dense_query(query)
         _, sparse_query = self._encode_sparse_query(intent)
         models = self._qdrant_models
 
-        response = self._qdrant.query_points(
-            collection_name=self._collection_name,
-            prefetch=[
-                models.Prefetch(
-                    query=dense_query,
-                    using=self._dense_vector_name,
-                    filter=query_filter,
-                    limit=prefetch_limit,
-                ),
+        prefetches = [
+            models.Prefetch(
+                query=dense_query,
+                using=self._dense_vector_name,
+                filter=query_filter,
+                limit=prefetch_limit,
+            ),
+            models.Prefetch(
+                query=sparse_query,
+                using=self._sparse_vector_name,
+                filter=query_filter,
+                limit=prefetch_limit,
+            ),
+        ]
+
+        if reference_boost_filter is not None:
+            prefetches.append(
                 models.Prefetch(
                     query=sparse_query,
                     using=self._sparse_vector_name,
-                    filter=query_filter,
-                    limit=prefetch_limit,
-                ),
-            ],
+                    filter=reference_boost_filter,
+                    limit=max(8, prefetch_limit // 2),
+                )
+            )
+
+        response = self._qdrant.query_points(
+            collection_name=self._collection_name,
+            prefetch=prefetches,
             query=models.FusionQuery(fusion=models.Fusion.RRF),
             limit=top_k,
             with_payload=True,
@@ -600,5 +638,6 @@ __all__ = [
     "format_context_for_prompt",
     "format_intent_summary",
     "load_manifest",
+    "parse_reference_values",
     "route_query",
 ]
