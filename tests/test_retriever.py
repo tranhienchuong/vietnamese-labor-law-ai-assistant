@@ -6,14 +6,17 @@ from qdrant_client import models
 
 from vn_labor_law_ai_assistant.retriever import (
     ARTICLE_REF_RE,
+    DEFAULT_MAX_CONTEXT_CHARS,
     HybridRetriever,
     RetrievedRecord,
     RetrievalContext,
     SearchHit,
+    build_context_block,
     dedupe_preserve_order,
     format_context_for_prompt,
     parse_reference_values,
     route_query,
+    select_contexts_for_prompt,
 )
 
 
@@ -84,6 +87,66 @@ class RetrievalAssemblyTests(unittest.TestCase):
         self.assertIn("[NGU CANH 1]", prompt)
         self.assertIn("Co so phap ly: Bo luat so 45/2019/QH 14, Dieu 46", prompt)
         self.assertIn("Nguoi su dung lao dong co trach nhiem", prompt)
+
+    def test_select_contexts_for_prompt_respects_char_budget(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="chunk-1",
+                citation_text="Dieu 46",
+                text="A" * 120,
+                payload={},
+                score=1.0,
+                matched_chunk_ids=("chunk-1",),
+                matched_citations=("Dieu 46",),
+            ),
+            RetrievalContext(
+                chunk_id="chunk-2",
+                citation_text="Dieu 47",
+                text="B" * 120,
+                payload={},
+                score=0.9,
+                matched_chunk_ids=("chunk-2",),
+                matched_citations=("Dieu 47",),
+            ),
+        )
+
+        selected = select_contexts_for_prompt(contexts, max_contexts=6, max_chars=220)
+
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0].chunk_id, "chunk-1")
+
+    def test_format_context_for_prompt_truncates_first_oversized_block(self) -> None:
+        context = RetrievalContext(
+            chunk_id="chunk-1",
+            citation_text="Dieu 46",
+            text="A" * (DEFAULT_MAX_CONTEXT_CHARS + 500),
+            payload={},
+            score=1.0,
+            matched_chunk_ids=("chunk-1",),
+            matched_citations=("Dieu 46",),
+        )
+
+        prompt = format_context_for_prompt((context,), max_chars=200)
+
+        self.assertLessEqual(len(prompt), 200)
+        self.assertIn("[NGU CANH 1]", prompt)
+        self.assertIn("Co so phap ly: Dieu 46", prompt)
+        self.assertTrue(prompt.endswith("..."))
+
+    def test_build_context_block_omits_redundant_match_section(self) -> None:
+        context = RetrievalContext(
+            chunk_id="chunk-1",
+            citation_text="Dieu 46",
+            text="Noi dung",
+            payload={},
+            score=1.0,
+            matched_chunk_ids=("chunk-1",),
+            matched_citations=("Dieu 46",),
+        )
+
+        block = build_context_block(context, 1)
+
+        self.assertNotIn("Match goc:", block)
 
     def test_assemble_contexts_deduplicates_shared_parent(self) -> None:
         parent = RetrievedRecord(

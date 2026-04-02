@@ -179,6 +179,7 @@ ISSUE_KEYWORDS = {
         "bao truoc",
     ),
 }
+DEFAULT_MAX_CONTEXT_CHARS = 8000
 
 
 @dataclass(frozen=True)
@@ -324,22 +325,83 @@ def format_intent_summary(intent: QueryIntent) -> str:
     return "; ".join(parts) if parts else "khong co filter heuristic"
 
 
-def format_context_for_prompt(contexts: Sequence[RetrievalContext]) -> str:
+def build_context_block(context: RetrievalContext, index: int) -> str:
+    lines = [
+        f"[NGU CANH {index}]",
+        f"Co so phap ly: {context.citation_text}",
+    ]
+
+    unique_matched_citations = dedupe_preserve_order(context.matched_citations)
+    if unique_matched_citations and unique_matched_citations != (context.citation_text,):
+        lines.append("Match goc:")
+        lines.extend(f"- {citation}" for citation in unique_matched_citations)
+
+    lines.extend(
+        [
+            "Noi dung:",
+            context.text.strip(),
+        ]
+    )
+    return "\n".join(lines).strip()
+
+
+def select_contexts_for_prompt(
+    contexts: Sequence[RetrievalContext],
+    *,
+    max_contexts: int | None = None,
+    max_chars: int = DEFAULT_MAX_CONTEXT_CHARS,
+) -> tuple[RetrievalContext, ...]:
+    limited_contexts = contexts[:max_contexts] if max_contexts is not None else contexts
+    selected: list[RetrievalContext] = []
+    current_len = 0
+
+    for index, context in enumerate(limited_contexts, start=1):
+        block = build_context_block(context, index)
+        separator_len = 2 if selected else 0
+        remaining_chars = max_chars - current_len - separator_len
+        if remaining_chars <= 0:
+            break
+
+        if len(block) <= remaining_chars:
+            selected.append(context)
+            current_len += separator_len + len(block)
+            continue
+
+        if not selected:
+            selected.append(context)
+        break
+
+    return tuple(selected)
+
+
+def format_context_for_prompt(
+    contexts: Sequence[RetrievalContext],
+    *,
+    max_chars: int = DEFAULT_MAX_CONTEXT_CHARS,
+) -> str:
     blocks: list[str] = []
+    current_len = 0
+
     for index, context in enumerate(contexts, start=1):
-        matched_citations = "\n".join(f"- {citation}" for citation in context.matched_citations)
-        blocks.append(
-            "\n".join(
-                [
-                    f"[NGU CANH {index}]",
-                    f"Co so phap ly: {context.citation_text}",
-                    f"Match goc:",
-                    matched_citations,
-                    "Noi dung:",
-                    context.text.strip(),
-                ]
-            ).strip()
-        )
+        block = build_context_block(context, index)
+        separator = "\n\n" if blocks else ""
+        remaining_chars = max_chars - current_len - len(separator)
+        if remaining_chars <= 0:
+            break
+
+        if len(block) <= remaining_chars:
+            blocks.append(block)
+            current_len += len(separator) + len(block)
+            continue
+
+        if not blocks:
+            truncated_block = block[:remaining_chars].rstrip()
+            if remaining_chars >= 3 and len(truncated_block) == remaining_chars:
+                truncated_block = truncated_block[:-3].rstrip() + "..."
+            if truncated_block:
+                blocks.append(truncated_block)
+        break
+
     return "\n\n".join(blocks).strip()
 
 
@@ -634,10 +696,13 @@ __all__ = [
     "RetrievalResult",
     "SearchHit",
     "RetrievedRecord",
+    "build_context_block",
     "dedupe_preserve_order",
+    "DEFAULT_MAX_CONTEXT_CHARS",
     "format_context_for_prompt",
     "format_intent_summary",
     "load_manifest",
     "parse_reference_values",
     "route_query",
+    "select_contexts_for_prompt",
 ]
