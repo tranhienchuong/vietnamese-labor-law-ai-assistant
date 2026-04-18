@@ -6,11 +6,13 @@ import tempfile
 import unittest
 
 from src.vn_labor_law_ai_assistant.corpus_pipeline import (
+    ARTICLE_RE,
     PageRecord,
     build_corpus,
     chunk_sections,
     enrich_chunk,
     infer_document_title,
+    infer_chunk_taxonomy,
     normalize_extracted_text,
     slugify_text,
     split_sections,
@@ -136,6 +138,18 @@ class CorpusPipelineTests(unittest.TestCase):
     def test_infer_document_title_uses_first_meaningful_line(self) -> None:
         text = "Nghị định 145/2020/NĐ-CP\n\nMục 2. CHẤM DỨT HỢP ĐỒNG LAO ĐỘNG\n"
         self.assertEqual(infer_document_title(text, "fallback"), "Nghị định 145/2020/NĐ-CP")
+
+    def test_infer_document_title_prefers_legal_identifier_from_fallback_name(self) -> None:
+        text = (
+            "CHAPTER I\n\n"
+            "GENERAL PROVISIONS\n\n"
+            "Article 1. Scope\n"
+        )
+
+        self.assertEqual(
+            infer_document_title(text, "45_2019_QH14"),
+            "Bộ luật số 45/2019/QH14",
+        )
 
     def test_chunk_sections_splits_long_text(self) -> None:
         long_body = " ".join(["trợ cấp thôi việc"] * 200)
@@ -369,6 +383,19 @@ class CorpusPipelineTests(unittest.TestCase):
         self.assertIn("điểm c.2", enriched["citation_text"])
         self.assertEqual(enriched["source_pages"], [3])
 
+    def test_infer_chunk_taxonomy_does_not_tag_maternity_benefit_as_tro_cap(self) -> None:
+        topics, actors, issue_types = infer_chunk_taxonomy(
+            document_title="Bộ luật số 45/2019/QH14",
+            section_heading="Mục 2. LAO ĐỘNG NỮ VÀ BẢO ĐẢM BÌNH ĐẲNG GIỚI",
+            article_title="Nghỉ thai sản",
+            body_text="Trong thời gian nghỉ thai sản, lao động nữ được hưởng chế độ thai sản theo quy định của pháp luật về bảo hiểm xã hội.",
+        )
+
+        self.assertIn("bao_ve_thai_san", topics)
+        self.assertIn("bao_ve_thai_san", issue_types)
+        self.assertNotIn("tro_cap", topics)
+        self.assertIn("lao_dong_nu", actors)
+
     def test_build_corpus_curated_text_overrides_same_document_id_from_raw_pdf(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -400,6 +427,73 @@ class CorpusPipelineTests(unittest.TestCase):
             self.assertEqual(chunk_payload["source_kind"], "curated_text")
             self.assertEqual(chunk_payload["document_title"], "Nghị định 145/2020/NĐ-CP")
             self.assertNotIn("source_pages", chunk_payload)
+
+
+    def test_build_corpus_prefers_full_curated_text_over_partial_duplicate_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            raw_dir = root / "raw"
+            cleaned_dir = root / "cleaned"
+            chunks_dir = root / "chunks"
+            metadata_dir = root / "metadata"
+            raw_dir.mkdir()
+            cleaned_dir.mkdir()
+
+            article_prefix = ARTICLE_RE.pattern.split(r"\s+", 1)[0].lstrip("^")
+            full_law_path = cleaned_dir / "45_2019_QH14.txt"
+            full_law_path.write_text(
+                (
+                    "Äiá»u 1. Pháº¡m vi Ä‘iá»u chá»‰nh\n\n"
+                    "1. Ná»™i dung toÃ n vÄƒn.\n\n"
+                    "Äiá»u 34. CÃ¡c trÆ°á»ng há»£p cháº¥m dá»©t há»£p Ä‘á»“ng lao Ä‘á»™ng\n\n"
+                    "1. Háº¿t háº¡n há»£p Ä‘á»“ng lao Ä‘á»™ng."
+                ),
+                encoding="utf-8",
+            )
+            full_law_path.write_text(
+                (
+                    f"{article_prefix} 1. Scope\n\n"
+                    "1. Full curated source body.\n\n"
+                    f"{article_prefix} 34. Termination\n\n"
+                    "1. End of contract."
+                ),
+                encoding="utf-8",
+            )
+            partial_extract_path = cleaned_dir / "45_2019_QH14_extract.txt"
+            partial_extract_path.write_text(
+                (
+                    "BO DU LIEU TRICH XUAT TU BO LUAT LAO DONG 2019\n"
+                    "Nguá»“n: Bá»™ luáº­t sá»‘ 45/2019/QH14\n"
+                    "Pham vi trich xuat: cham dut hop dong lao dong\n\n"
+                    "Partial extract content."
+                ),
+                encoding="utf-8",
+            )
+            partial_extract_path.write_text(
+                (
+                    "BO DU LIEU TRICH XUAT TU BO LUAT LAO DONG 2019\n"
+                    "Pham vi trich xuat: cham dut hop dong lao dong\n\n"
+                    "Partial extract content."
+                ),
+                encoding="utf-8",
+            )
+
+            manifest = build_corpus(
+                raw_dir=raw_dir,
+                cleaned_dir=cleaned_dir,
+                chunks_dir=chunks_dir,
+                metadata_dir=metadata_dir,
+                curated_text_paths=[full_law_path, partial_extract_path],
+            )
+
+            self.assertEqual(manifest["document_count"], 1)
+            self.assertEqual(manifest["documents"][0]["source_path"], str(full_law_path.as_posix()))
+            self.assertTrue(manifest["warnings"])
+            self.assertIn("skipped", manifest["warnings"][0].lower())
+            chunk_payload = json.loads(
+                Path(manifest["documents"][0]["chunks_path"]).read_text(encoding="utf-8").splitlines()[0]
+            )
+            self.assertEqual(chunk_payload["document_title"], "Bộ luật số 45/2019/QH14")
 
 
 if __name__ == "__main__":

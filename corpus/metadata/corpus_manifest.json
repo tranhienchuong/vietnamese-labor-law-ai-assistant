@@ -1,26 +1,26 @@
 {
-  "generated_at": "2026-04-01T05:15:07.032418+00:00",
+  "generated_at": "2026-04-16T19:25:06.362167+00:00",
   "document_count": 2,
   "ready_documents": 2,
   "needs_ocr_documents": 0,
   "documents": [
     {
-      "document_id": "du-lieu-cham-dut-hop-dong-lao-dong",
-      "document_title": "Bộ luật số 45/2019/QH 14",
-      "source_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/cleaned/du_lieu_cham_dut_hop_dong_lao_dong.txt",
+      "document_id": "45-2019-qh14",
+      "document_title": "Bộ luật số 45/2019/QH14",
+      "source_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/cleaned/45_2019_QH14.txt",
       "source_kind": "curated_text",
       "status": "ready",
       "page_count": 1,
       "text_page_count": 1,
       "text_ratio": 1.0,
-      "total_characters": 37018,
-      "cleaned_text_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/cleaned/du_lieu_cham_dut_hop_dong_lao_dong.txt",
-      "chunks_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/chunks/du-lieu-cham-dut-hop-dong-lao-dong.jsonl",
-      "section_count": 37,
-      "chunk_count": 204,
+      "total_characters": 190306,
+      "cleaned_text_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/cleaned/45_2019_QH14.txt",
+      "chunks_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/chunks/45-2019-qh14.jsonl",
+      "section_count": 221,
+      "chunk_count": 985,
       "warnings": [],
       "pages_with_text": [],
-      "generated_at": "2026-04-01T05:15:07.012605+00:00"
+      "generated_at": "2026-04-16T19:25:06.339164+00:00"
     },
     {
       "document_id": "nghi-dinh-145-2020-nd-cp",
@@ -38,7 +38,8 @@
       "chunk_count": 28,
       "warnings": [],
       "pages_with_text": [],
-      "generated_at": "2026-04-01T05:15:07.031416+00:00"
+      "generated_at": "2026-04-16T19:25:06.361168+00:00"
     }
-  ]
+  ],
+  "warnings": []
 }

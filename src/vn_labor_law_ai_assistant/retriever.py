@@ -21,12 +21,15 @@ from .indexing import (
 ARTICLE_REF_RE = re.compile(r"\bdieu\s+(?P<value>\d+[a-z]?)")
 CLAUSE_REF_RE = re.compile(r"\bkhoan\s+(?P<value>\d+)")
 POINT_REF_RE = re.compile(r"\bdiem\s+(?P<value>[a-z](?:\.\d+)?)")
+YEAR_COUNT_RE = re.compile(r"\b\d+\s+nam\b")
 
 DOCUMENT_KEYWORDS = {
-    "du-lieu-cham-dut-hop-dong-lao-dong": (
+    "45-2019-qh14": (
         "bo luat lao dong",
+        "bo luat lao dong 2019",
         "bo luat 2019",
         "45/2019",
+        "45/2019/qh14",
         "qh 14",
         "qh14",
     ),
@@ -68,6 +71,7 @@ ACTOR_KEYWORDS = {
         "giay phep lao dong",
     ),
 }
+GENERIC_ACTOR_FILTERS = frozenset({"nguoi_lao_dong", "nguoi_su_dung_lao_dong"})
 
 TOPIC_KEYWORDS = {
     "cham_dut_hop_dong_lao_dong": (
@@ -76,6 +80,11 @@ TOPIC_KEYWORDS = {
         "duoi viec",
         "cho nghi viec",
         "nghi viec",
+        "xin nghi",
+        "thoi viec",
+        "nghi dung quy dinh",
+        "nghi dung luat",
+        "het han hop dong",
         "cham dut hdld",
     ),
     "don_phuong_cham_dut": (
@@ -155,6 +164,10 @@ ISSUE_KEYWORDS = {
     "nghia_vu_khi_cham_dut": (
         "thanh toan",
         "tra so",
+        "phai tra",
+        "phai thanh toan",
+        "duoc nhan nhung khoan nao",
+        "quyen loi con lai",
         "xac nhan thoi gian dong bhxh",
         "nghia vu",
     ),
@@ -180,6 +193,61 @@ ISSUE_KEYWORDS = {
     ),
 }
 DEFAULT_MAX_CONTEXT_CHARS = 8000
+CALCULATION_QUERY_HINTS = (
+    "cach tinh",
+    "duoc tinh",
+    "tinh nhu the nao",
+    "tinh the nao",
+    "bao nhieu",
+)
+CALCULATION_CONTEXT_HINTS = (
+    "de tinh",
+    "moi nam",
+    "tong thoi gian",
+    "tien luong",
+    "binh quan",
+    "mot nua thang",
+)
+IMPLEMENTATION_DETAIL_HINTS = (
+    "chi tiet",
+    "huong dan",
+    "nghi dinh",
+    "chinh phu",
+)
+DELEGATION_CONTEXT_HINTS = (
+    "chinh phu quy dinh chi tiet dieu nay",
+    "quy dinh chi tiet dieu nay",
+)
+TERMINATION_QUERY_HINTS = (
+    "cham dut hop dong",
+    "nghi viec",
+    "xin nghi",
+    "thoi viec",
+    "het han hop dong",
+    "nghi dung quy dinh",
+    "nghi dung luat",
+)
+TERMINATION_SECTION_HINTS = ("cham dut hop dong lao dong",)
+TERMINATION_BENEFIT_CONTEXT_HINTS = (
+    "tro cap thoi viec",
+    "tro cap mat viec",
+    "bao hiem that nghiep",
+    "mat viec lam",
+)
+BENEFIT_COMPUTATION_QUERY_HINTS = (
+    "bao hiem that nghiep",
+    "da dong bao hiem that nghiep",
+    "lam o cong ty",
+)
+MATERNITY_CONTEXT_HINTS = (
+    "thai san",
+    "mang thai",
+    "nuoi con duoi 12 thang",
+)
+RETIREMENT_CONTEXT_HINTS = (
+    "nghi huu",
+    "luong huu",
+)
 
 
 @dataclass(frozen=True)
@@ -281,6 +349,21 @@ def collect_keyword_matches(normalized_query: str, mapping: dict[str, Sequence[s
         if any(keyword in normalized_query for keyword in keywords)
     ]
     return tuple(matches)
+
+
+def contains_normalized_phrase(normalized_text: str, phrases: Sequence[str]) -> bool:
+    return any(phrase in normalized_text for phrase in phrases)
+
+
+def filter_specific_actor_labels(actor_labels: Sequence[str]) -> tuple[str, ...]:
+    return tuple(label for label in actor_labels if label not in GENERIC_ACTOR_FILTERS)
+
+
+def prioritize_issue_filters(issue_labels: Sequence[str]) -> tuple[str, ...]:
+    prioritized = tuple(issue_labels)
+    if any(label in prioritized for label in ("tro_cap_thoi_viec", "tro_cap_mat_viec")):
+        return tuple(label for label in prioritized if label != "nghia_vu_khi_cham_dut")
+    return prioritized
 
 
 def route_query(query: str) -> QueryIntent:
@@ -469,6 +552,7 @@ class HybridRetriever:
         must_conditions: list[object] = []
         ranked_conditions: list[object] = []
         models = self._qdrant_models
+        prioritized_issue_filters = prioritize_issue_filters(intent.issue_filters)
 
         if intent.document_filters:
             must_conditions.append(
@@ -478,11 +562,12 @@ class HybridRetriever:
                 )
             )
 
-        if intent.actor_filters:
+        specific_actor_filters = filter_specific_actor_labels(intent.actor_filters)
+        if specific_actor_filters:
             ranked_conditions.append(
                 models.FieldCondition(
                     key="actor",
-                    match=models.MatchAny(any=list(intent.actor_filters)),
+                    match=models.MatchAny(any=list(specific_actor_filters)),
                 )
             )
         if intent.topic_filters:
@@ -492,11 +577,11 @@ class HybridRetriever:
                     match=models.MatchAny(any=list(intent.topic_filters)),
                 )
             )
-        if intent.issue_filters:
+        if prioritized_issue_filters:
             ranked_conditions.append(
                 models.FieldCondition(
                     key="issue_type",
-                    match=models.MatchAny(any=list(intent.issue_filters)),
+                    match=models.MatchAny(any=list(prioritized_issue_filters)),
                 )
             )
 
@@ -536,6 +621,30 @@ class HybridRetriever:
 
         return models.Filter(must=must_conditions)
 
+    def _build_issue_focus_filter(self, intent: QueryIntent):
+        prioritized_issue_filters = prioritize_issue_filters(intent.issue_filters)
+        if not prioritized_issue_filters:
+            return None
+
+        models = self._qdrant_models
+        must_conditions: list[object] = []
+
+        if intent.document_filters:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="document_id",
+                    match=models.MatchAny(any=list(intent.document_filters)),
+                )
+            )
+
+        must_conditions.append(
+            models.FieldCondition(
+                key="issue_type",
+                match=models.MatchAny(any=list(prioritized_issue_filters)),
+            )
+        )
+        return models.Filter(must=must_conditions)
+
     def _fetch_records(self, chunk_ids: Sequence[str]) -> dict[str, RetrievedRecord]:
         ordered_ids = dedupe_preserve_order(chunk_ids)
         if not ordered_ids:
@@ -564,6 +673,163 @@ class HybridRetriever:
                 payload=payload,
             )
         return records
+
+    def _score_hit_relevance(
+        self,
+        hit: SearchHit,
+        record: RetrievedRecord,
+        intent: QueryIntent,
+    ) -> float:
+        boost = 0.0
+        prioritized_issue_filters = prioritize_issue_filters(intent.issue_filters)
+        article_number = str(record.payload.get("article_number") or "").lower()
+        clause_ref = str(record.payload.get("clause_ref") or "").lower()
+        document_id = str(record.payload.get("document_id") or "")
+        level = str(record.payload.get("level") or "")
+        topic_values = {str(value) for value in (record.payload.get("topic") or [])}
+        issue_values = {str(value) for value in (record.payload.get("issue_type") or [])}
+        section_heading = normalize_for_matching(str(record.payload.get("section_heading") or ""))
+        heading_text = normalize_for_matching(
+            " ".join(
+                part
+                for part in [
+                    str(record.payload.get("article_title") or ""),
+                    str(record.payload.get("heading") or ""),
+                    record.citation_text,
+                ]
+                if part
+            )
+        )
+        normalized_text = normalize_for_matching(f" {record.citation_text} {record.text} ")
+        is_calculation_query = (
+            contains_normalized_phrase(intent.normalized_query, CALCULATION_QUERY_HINTS)
+            or (
+                "tro_cap_thoi_viec" in intent.issue_filters
+                and (
+                    contains_normalized_phrase(intent.normalized_query, BENEFIT_COMPUTATION_QUERY_HINTS)
+                    or YEAR_COUNT_RE.search(intent.normalized_query) is not None
+                )
+            )
+        )
+        wants_implementation_detail = contains_normalized_phrase(
+            intent.normalized_query,
+            IMPLEMENTATION_DETAIL_HINTS,
+        )
+        is_termination_query = (
+            "cham_dut_hop_dong_lao_dong" in intent.topic_filters
+            or "tro_cap_thoi_viec" in intent.issue_filters
+            or "tro_cap_mat_viec" in intent.issue_filters
+            or "nghia_vu_khi_cham_dut" in intent.issue_filters
+            or contains_normalized_phrase(intent.normalized_query, TERMINATION_QUERY_HINTS)
+        )
+        is_termination_benefit_query = (
+            is_termination_query
+            and (
+                "tro_cap" in intent.topic_filters
+                or "tro_cap_thoi_viec" in intent.issue_filters
+                or "tro_cap_mat_viec" in intent.issue_filters
+            )
+        )
+        query_has_maternity_hint = contains_normalized_phrase(intent.normalized_query, MATERNITY_CONTEXT_HINTS)
+        query_has_retirement_hint = contains_normalized_phrase(intent.normalized_query, RETIREMENT_CONTEXT_HINTS)
+        prefers_primary_law = (
+            is_termination_query
+            and not wants_implementation_detail
+            and "nghi dinh" not in intent.normalized_query
+        )
+
+        if intent.article_numbers and article_number in intent.article_numbers:
+            boost += 0.2
+        if intent.clause_refs and clause_ref in intent.clause_refs:
+            boost += 0.25
+        if prioritized_issue_filters and issue_values.intersection(prioritized_issue_filters):
+            boost += 0.15
+        if intent.topic_filters and topic_values.intersection(intent.topic_filters):
+            boost += 0.05
+
+        if is_termination_query:
+            if contains_normalized_phrase(section_heading, TERMINATION_SECTION_HINTS):
+                boost += 0.25
+            if "cham_dut_hop_dong_lao_dong" in topic_values:
+                boost += 0.15
+            if "nghia_vu_khi_cham_dut" in issue_values:
+                boost += 0.1
+
+        if is_termination_benefit_query:
+            if issue_values.intersection({"tro_cap_thoi_viec", "tro_cap_mat_viec"}):
+                boost += 0.35
+            if contains_normalized_phrase(normalized_text, TERMINATION_BENEFIT_CONTEXT_HINTS):
+                boost += 0.15
+            if "bao hiem that nghiep" in intent.normalized_query and "bao hiem that nghiep" in normalized_text:
+                boost += 0.25
+            if contains_normalized_phrase(heading_text, MATERNITY_CONTEXT_HINTS) and not query_has_maternity_hint:
+                boost -= 0.7
+            if contains_normalized_phrase(heading_text, RETIREMENT_CONTEXT_HINTS) and not query_has_retirement_hint:
+                boost -= 0.45
+            if "tro_cap_thoi_viec" in prioritized_issue_filters:
+                if "tro cap thoi viec" in heading_text:
+                    boost += 0.4
+                if "tro cap mat viec" in heading_text and "tro cap thoi viec" not in heading_text:
+                    boost -= 0.2
+                if "nghia vu" in heading_text or "trach nhiem" in heading_text:
+                    boost -= 0.15
+            if "tro_cap_mat_viec" in prioritized_issue_filters:
+                if "tro cap mat viec" in heading_text:
+                    boost += 0.4
+                if "tro cap thoi viec" in heading_text and "tro cap mat viec" not in heading_text:
+                    boost -= 0.2
+
+        if not wants_implementation_detail and not intent.point_refs and not intent.clause_refs:
+            if level == "clause":
+                boost += 0.12
+            elif level == "point":
+                boost -= 0.35
+
+        if prefers_primary_law:
+            if document_id == "45-2019-qh14":
+                boost += 0.22
+            elif document_id == "nghi-dinh-145-2020-nd-cp":
+                boost -= 0.08
+                if level == "point":
+                    boost -= 0.18
+
+        if is_calculation_query:
+            if contains_normalized_phrase(normalized_text, CALCULATION_CONTEXT_HINTS):
+                boost += 0.25
+            if (
+                contains_normalized_phrase(normalized_text, DELEGATION_CONTEXT_HINTS)
+                and not wants_implementation_detail
+            ):
+                boost -= 0.9
+
+        return hit.score + boost
+
+    def _rerank_hits(
+        self,
+        hits: Sequence[SearchHit],
+        intent: QueryIntent,
+        direct_records: dict[str, RetrievedRecord],
+    ) -> tuple[SearchHit, ...]:
+        scored_hits: list[tuple[float, SearchHit]] = []
+        for hit in hits:
+            record = direct_records.get(hit.chunk_id)
+            adjusted_score = self._score_hit_relevance(hit, record, intent) if record is not None else hit.score
+            scored_hits.append((adjusted_score, hit))
+
+        ordered = sorted(
+            scored_hits,
+            key=lambda item: (-item[0], -item[1].score, item[1].citation_text),
+        )
+        return tuple(
+            SearchHit(
+                chunk_id=hit.chunk_id,
+                qdrant_point_id=hit.qdrant_point_id,
+                score=adjusted_score,
+                citation_text=hit.citation_text,
+                payload=hit.payload,
+            )
+            for adjusted_score, hit in ordered
+        )
 
     def _assemble_contexts(self, hits: Sequence[SearchHit]) -> tuple[RetrievalContext, ...]:
         direct_ids = [hit.chunk_id for hit in hits]
@@ -633,6 +899,7 @@ class HybridRetriever:
         intent = route_query(query)
         query_filter = self._build_query_filter(intent)
         reference_boost_filter = self._build_reference_boost_filter(intent)
+        issue_focus_filter = self._build_issue_focus_filter(intent)
         dense_query = self._encode_dense_query(query)
         _, sparse_query = self._encode_sparse_query(intent)
         models = self._qdrant_models
@@ -661,12 +928,23 @@ class HybridRetriever:
                     limit=max(8, prefetch_limit // 2),
                 )
             )
+        if issue_focus_filter is not None:
+            prefetches.append(
+                models.Prefetch(
+                    query=sparse_query,
+                    using=self._sparse_vector_name,
+                    filter=issue_focus_filter,
+                    limit=max(12, prefetch_limit),
+                )
+            )
+
+        candidate_limit = max(top_k * 6, prefetch_limit * 4, 64)
 
         response = self._qdrant.query_points(
             collection_name=self._collection_name,
             prefetch=prefetches,
             query=models.FusionQuery(fusion=models.Fusion.RRF),
-            limit=top_k,
+            limit=candidate_limit,
             with_payload=True,
         )
 
@@ -680,6 +958,8 @@ class HybridRetriever:
             )
             for point in response.points
         )
+        direct_records = self._fetch_records([hit.chunk_id for hit in hits])
+        hits = self._rerank_hits(hits, intent, direct_records)[:top_k]
         contexts = self._assemble_contexts(hits)
         return RetrievalResult(
             query=query,

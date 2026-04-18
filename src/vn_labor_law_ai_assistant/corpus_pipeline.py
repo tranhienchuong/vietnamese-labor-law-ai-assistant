@@ -31,7 +31,7 @@ TOPIC_RULES = {
     "cham_dut_hop_dong_lao_dong": ["cham dut hop dong lao dong"],
     "don_phuong_cham_dut": ["don phuong cham dut"],
     "bao_truoc": ["bao truoc", "thoi han bao truoc"],
-    "tro_cap": ["tro cap", "tro cap thoi viec", "tro cap mat viec"],
+    "tro_cap": ["tro cap thoi viec", "tro cap mat viec"],
     "ky_luat_sa_thai": ["sa thai", "ky luat"],
     "thay_doi_co_cau_kinh_te": ["thay doi co cau", "ly do kinh te", "phuong an su dung lao dong"],
     "tam_hoan_hop_dong": ["tam hoan thuc hien hop dong lao dong"],
@@ -118,6 +118,27 @@ KNOWN_JOIN_FIXES = {
     "nghềnghiệp": "nghề nghiệp",
     "sốngành": "số ngành",
 }
+FALLBACK_QH_TITLE_RE = re.compile(
+    r"(?P<number>\d+)[_\-/ ]+(?P<year>\d{4})[_\-/ ]+qh(?P<session>\d+)",
+    re.IGNORECASE,
+)
+FALLBACK_ND_CP_TITLE_RE = re.compile(
+    r"(?P<number>\d+)[_\-/ ]+(?P<year>\d{4})[_\-/ ]+nd[_\-/ ]+cp",
+    re.IGNORECASE,
+)
+TITLE_QH_SIGNATURE_RE = re.compile(
+    r"(?P<number>\d+)\s*/?\s*(?P<year>\d{4})\s*/?\s*qh\s*(?P<session>\d+)",
+    re.IGNORECASE,
+)
+TITLE_ND_CP_SIGNATURE_RE = re.compile(
+    r"(?P<number>\d+)\s*/?\s*(?P<year>\d{4})\s*/?\s*nd\s*-?\s*cp",
+    re.IGNORECASE,
+)
+PARTIAL_EXTRACT_HINTS = (
+    "bo du lieu trich xuat",
+    "pham vi trich xuat",
+    "danh sach dieu da trich",
+)
 
 
 @dataclass
@@ -136,6 +157,15 @@ class SectionRecord:
     section_heading: str | None
     source_pages: list[int]
     text: str
+
+
+@dataclass(frozen=True)
+class CuratedTextCandidate:
+    path: Path
+    document_title: str
+    canonical_title_key: str
+    cleaned_text_length: int
+    is_partial_extract: bool
 
 
 def slugify_text(value: str) -> str:
@@ -238,6 +268,8 @@ def infer_document_title(text: str, fallback_title: str) -> str:
         source_match = SOURCE_HINT_RE.match(stripped)
         if source_match:
             return source_match.group("title").strip()
+    if inferred_title := infer_legal_title_from_fallback(fallback_title):
+        return inferred_title
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped:
@@ -248,6 +280,79 @@ def infer_document_title(text: str, fallback_title: str) -> str:
             continue
         return stripped
     return fallback_title
+
+
+def infer_legal_title_from_fallback(fallback_title: str) -> str | None:
+    if qh_match := FALLBACK_QH_TITLE_RE.search(fallback_title):
+        return (
+            f"Bộ luật số {qh_match.group('number')}/{qh_match.group('year')}/"
+            f"QH{qh_match.group('session')}"
+        )
+    if nd_match := FALLBACK_ND_CP_TITLE_RE.search(fallback_title):
+        return f"Nghị định {nd_match.group('number')}/{nd_match.group('year')}/NĐ-CP"
+    return None
+
+
+def is_partial_curated_extract(text: str) -> bool:
+    normalized_text = normalize_for_matching(text)
+    return any(hint in normalized_text for hint in PARTIAL_EXTRACT_HINTS)
+
+
+def canonical_document_identity_key(document_title: str) -> str:
+    normalized_title = normalize_for_matching(document_title)
+    if qh_match := TITLE_QH_SIGNATURE_RE.search(normalized_title):
+        return (
+            f"qh:{qh_match.group('number')}/{qh_match.group('year')}/"
+            f"qh{qh_match.group('session')}"
+        )
+    if nd_match := TITLE_ND_CP_SIGNATURE_RE.search(normalized_title):
+        return f"nd:{nd_match.group('number')}/{nd_match.group('year')}/nd-cp"
+    return normalized_title
+
+
+def inspect_curated_text_candidate(text_path: Path) -> CuratedTextCandidate:
+    source_text = text_path.read_text(encoding="utf-8")
+    page_records = build_page_records_from_text(source_text)
+    cleaned_text = build_cleaned_text(page_records)
+    document_title = infer_document_title(cleaned_text, fallback_title=text_path.stem)
+    return CuratedTextCandidate(
+        path=text_path,
+        document_title=document_title,
+        canonical_title_key=canonical_document_identity_key(document_title),
+        cleaned_text_length=len(cleaned_text),
+        is_partial_extract=is_partial_curated_extract(cleaned_text),
+    )
+
+
+def select_curated_text_sources(curated_text_paths: Sequence[Path]) -> tuple[list[Path], list[str]]:
+    grouped_candidates: dict[str, list[CuratedTextCandidate]] = {}
+    for path in curated_text_paths:
+        candidate = inspect_curated_text_candidate(path)
+        grouped_candidates.setdefault(candidate.canonical_title_key, []).append(candidate)
+
+    selected_paths: list[Path] = []
+    warnings: list[str] = []
+
+    for candidates in grouped_candidates.values():
+        preferred = sorted(
+            candidates,
+            key=lambda candidate: (
+                candidate.is_partial_extract,
+                -candidate.cleaned_text_length,
+                candidate.path.as_posix(),
+            ),
+        )[0]
+        selected_paths.append(preferred.path)
+
+        skipped_candidates = [candidate for candidate in candidates if candidate.path != preferred.path]
+        if skipped_candidates:
+            skipped_paths = ", ".join(candidate.path.name for candidate in skipped_candidates)
+            warnings.append(
+                f"Skipped duplicate curated sources for '{preferred.document_title}': "
+                f"kept {preferred.path.name}, skipped {skipped_paths}."
+            )
+
+    return sorted(selected_paths), warnings
 
 
 def list_pages_for_citation(source_pages: list[int]) -> str | None:
@@ -991,6 +1096,7 @@ def build_corpus(
     metadata_dir.mkdir(parents=True, exist_ok=True)
 
     curated_text_paths = [path.resolve() for path in (curated_text_paths or [])]
+    curated_text_paths, curated_selection_warnings = select_curated_text_sources(curated_text_paths)
     curated_document_ids = {slugify_text(path.stem) for path in curated_text_paths}
     pdf_paths = sorted(raw_dir.glob("*.pdf"))
     documents = [
@@ -1019,6 +1125,7 @@ def build_corpus(
         "ready_documents": sum(1 for doc in documents if doc["status"] == "ready"),
         "needs_ocr_documents": sum(1 for doc in documents if doc["status"] == "needs_ocr"),
         "documents": documents,
+        "warnings": curated_selection_warnings,
     }
 
     manifest_path = metadata_dir / "corpus_manifest.json"

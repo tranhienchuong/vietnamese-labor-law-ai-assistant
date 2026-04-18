@@ -1,4 +1,5 @@
 .venv/
+.env
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -6,6 +7,8 @@ __pycache__/
 .artifacts/
 artifacts/
 .ROADMAP.md
+eval/results/*
+!eval/results/.gitkeep
 
 # Local weekly LaTeX reports
 docs/bao_cao_tuan_*.tex

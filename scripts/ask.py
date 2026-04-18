@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
 import sys
 
-import ollama
-
 from vn_labor_law_ai_assistant.answering import build_messages, parse_answer_payload
+from vn_labor_law_ai_assistant.llm import (
+    DEFAULT_PROVIDER,
+    SUPPORTED_PROVIDERS,
+    chat_completion,
+    provider_model_label,
+)
 from vn_labor_law_ai_assistant.retriever import (
     DEFAULT_MAX_CONTEXT_CHARS,
     HybridRetriever,
@@ -15,9 +18,6 @@ from vn_labor_law_ai_assistant.retriever import (
     format_context_for_prompt,
     select_contexts_for_prompt,
 )
-
-
-DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:4b")
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,9 +32,15 @@ def parse_args() -> argparse.Namespace:
         help="Path to artifacts/index or directly to current.json.",
     )
     parser.add_argument(
+        "--provider",
+        default=DEFAULT_PROVIDER,
+        choices=SUPPORTED_PROVIDERS,
+        help=f"LLM provider for answer generation (default: {DEFAULT_PROVIDER}).",
+    )
+    parser.add_argument(
         "--model",
-        default=DEFAULT_MODEL,
-        help=f"Ollama model name to use for answer generation (default: {DEFAULT_MODEL}).",
+        default="",
+        help="Model name to use for answer generation. Leave empty to use the provider default.",
     )
     parser.add_argument(
         "--top-k",
@@ -63,7 +69,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--retrieve-only",
         action="store_true",
-        help="Only print retrieved context and skip the Ollama generation step.",
+        help="Only print retrieved context and skip the LLM generation step.",
     )
     parser.add_argument(
         "--show-hits",
@@ -71,6 +77,23 @@ def parse_args() -> argparse.Namespace:
         help="Print raw hybrid hits before the final answer.",
     )
     return parser.parse_args()
+
+
+def print_answer_block(label: str, answer_payload) -> None:
+    print(f"\n===== {label} =====")
+    print("\nTra loi:")
+    print(answer_payload.answer or "Khong co noi dung tra loi.")
+
+    print("\nCo so phap ly:")
+    if answer_payload.legal_basis:
+        for citation in answer_payload.legal_basis:
+            print(f"- {citation}")
+    else:
+        print("- Khong co co so phap ly hop le duoc xac nhan tu output cua mo hinh.")
+
+    print(f"\nInsufficient context: {'co' if answer_payload.insufficient_context else 'khong'}")
+    if answer_payload.notes:
+        print(f"Ghi chu: {answer_payload.notes}")
 
 
 def main() -> None:
@@ -117,27 +140,14 @@ def main() -> None:
             print(format_context_for_prompt(contexts, max_chars=args.max_context_chars))
             return
 
-        response = ollama.chat(
+        response = chat_completion(
+            provider=args.provider,
             model=args.model,
-            format="json",
-            options={"temperature": 0},
             messages=build_messages(question, contexts, max_context_chars=args.max_context_chars),
+            temperature=0,
         )
-        parsed = parse_answer_payload(response["message"]["content"], contexts)
-
-        print("\nTra loi:")
-        print(parsed.answer or "Khong co noi dung tra loi.")
-
-        print("\nCo so phap ly:")
-        if parsed.legal_basis:
-            for citation in parsed.legal_basis:
-                print(f"- {citation}")
-        else:
-            print("- Khong co co so phap ly hop le duoc xac nhan tu output cua mo hinh.")
-
-        print(f"\nInsufficient context: {'co' if parsed.insufficient_context else 'khong'}")
-        if parsed.notes:
-            print(f"Ghi chu: {parsed.notes}")
+        parsed = parse_answer_payload(response.content, contexts)
+        print_answer_block(provider_model_label(response.provider, response.model), parsed)
     finally:
         retriever.close()
 

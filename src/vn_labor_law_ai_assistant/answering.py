@@ -33,6 +33,21 @@ Ban phai tra dung JSON voi cau truc:
 }
 """
 
+ANSWER_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "answer": {"type": "string"},
+        "legal_basis": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "insufficient_context": {"type": "boolean"},
+        "notes": {"type": "string"},
+    },
+    "required": ["answer", "legal_basis", "insufficient_context", "notes"],
+    "additionalProperties": False,
+}
+
 
 @dataclass(frozen=True)
 class ParsedAnswer:
@@ -150,6 +165,7 @@ def parse_answer_payload(raw_content: str, contexts: Sequence[RetrievalContext])
 
 
 __all__ = [
+    "ANSWER_JSON_SCHEMA",
     "ParsedAnswer",
     "build_allowed_citations",
     "build_messages",

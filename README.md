@@ -16,6 +16,7 @@ Tro ly AI hoi dap phap luat lao dong Viet Nam, truoc mat tap trung vao chu de `c
 
 - Da co du lieu goc trong [corpus/raw](C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/raw).
 - Da co smoke test cho Ollama trong [test_ollama.py](C:/Workspace/vietnamese-labor-law-ai-assistant/test_ollama.py).
+- Da co smoke test cho Groq trong [test_groq.py](C:/Workspace/vietnamese-labor-law-ai-assistant/test_groq.py).
 - Da them pipeline xay dung corpus o [scripts/build_corpus.py](C:/Workspace/vietnamese-labor-law-ai-assistant/scripts/build_corpus.py).
 
 ## Cau truc du an
@@ -28,19 +29,29 @@ corpus/
   metadata/   # metadata tung van ban va manifest tong
 docs/
   project_scope.md
+eval/
+  data/       # benchmark JSONL da import
+  results/    # ket qua benchmark local
 scripts/
   ask.py
   build_corpus.py
   build_index.py
+  import_benchmark.py
+  run_benchmark.py
 src/
   vn_labor_law_ai_assistant/
     answering.py
+    config.py
+    evaluation.py
     indexing.py
+    llm.py
     retriever.py
 tests/
   test_answering.py
   test_corpus_pipeline.py
+  test_evaluation.py
   test_indexing.py
+  test_llm.py
   test_retriever.py
 ```
 
@@ -50,11 +61,25 @@ tests/
 .venv\Scripts\python.exe -m pip install -e .
 .venv\Scripts\python.exe scripts\build_corpus.py --curated-text corpus\cleaned\du_lieu_cham_dut_hop_dong_lao_dong.txt corpus\cleaned\nghi-dinh-145-2020-nd-cp.txt
 .venv\Scripts\python.exe scripts\build_index.py --dense-model keepitreal/vietnamese-sbert
+.venv\Scripts\python.exe scripts\import_benchmark.py C:\Users\tranh\Downloads\golden_benchmark_100_answered_v1.xlsx
+.venv\Scripts\python.exe scripts\run_benchmark.py --limit 10
+.venv\Scripts\python.exe scripts\run_benchmark.py --provider ollama --model qwen3:4b --limit 10
+.venv\Scripts\python.exe scripts\run_benchmark.py --provider groq --model openai/gpt-oss-20b --limit 10
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 .venv\Scripts\python.exe scripts\ask.py --retrieve-only "tro cap thoi viec tinh the nao theo Dieu 46?"
-.venv\Scripts\python.exe scripts\ask.py --model qwen3:4b "tro cap thoi viec tinh the nao theo Dieu 46?"
+.venv\Scripts\python.exe scripts\ask.py --provider ollama --model qwen3:4b "tro cap thoi viec tinh the nao theo Dieu 46?"
+.venv\Scripts\python.exe scripts\ask.py --provider groq --model openai/gpt-oss-20b "tro cap thoi viec tinh the nao theo Dieu 46?"
 .venv\Scripts\python.exe test_ollama.py
+.venv\Scripts\python.exe test_groq.py
 ```
+
+Bien moi truong:
+
+- Sua file `.env` o root project de dat bien moi truong local.
+- `OLLAMA_MODEL`: model mac dinh khi dung provider `ollama`.
+- `GROQ_MODEL`: model mac dinh khi dung provider `groq`.
+- `GROQ_API_KEY`: API key de goi Groq.
+- `LLM_PROVIDER`: provider mac dinh cho `scripts/ask.py` va `scripts/run_benchmark.py`.
 
 ## Dau ra cua pipeline
 
@@ -85,8 +110,26 @@ Lenh `scripts/ask.py` se:
 - route cau hoi thanh cac metadata heuristic nhu `actor`, `topic`, `issue_type`, `dieu/khoan/diem`;
 - chay hybrid search `dense + sparse + RRF` trong Qdrant;
 - dedup small-to-big context qua `parent_chunk_id` bang SQLite;
-- gui context da loc cho Ollama voi guardrails citation;
+- gui context da loc cho provider LLM duoc chon (`ollama` hoac `groq`) voi guardrails citation;
 - chi chap nhan `legal_basis` nam trong danh sach `citation_text` da retrieve.
+
+## Evaluation
+
+Lenh `scripts/import_benchmark.py` se:
+
+- doc workbook benchmark `.xlsx`;
+- tim dong header thuc te trong sheet `golden_benchmark`;
+- convert 100 cau hoi ve JSONL repo-native trong `eval/data/`.
+
+Lenh `scripts/run_benchmark.py` se:
+
+- tai benchmark JSONL da import;
+- chay retriever hien tai tren tung cau hoi;
+- ghi `retrieval_hit_at_5` va cac citation retrieve duoc;
+- neu co `--model`, chay them generation qua provider da chon va luu output de review;
+- ghi ket qua ra `eval/results/*.jsonl` va `eval/results/*.csv`, trong do ten file co kem `provider:model` da duoc slugify de de tach tung run.
+
+De so sanh model, chay `scripts/run_benchmark.py` rieng cho tung provider/model va doi chieu cac file ket qua trong `eval/results/`.
 
 ## Luu y runtime
 
