@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import csv
 import json
 from pathlib import Path
@@ -29,11 +29,46 @@ RESULTS_COLUMNS = (
     "comments",
     "question",
     "expected_citations",
+    "expected_citations_in_scope",
+    "expected_citations_out_of_scope",
+    "case_scope",
     "retrieved_citations",
     "generated_answer",
     "generated_legal_basis",
     "insufficient_context",
 )
+
+LEGAL_ARTICLE_RE = re.compile(r"\bdieu\s+(?P<value>\d+[a-z]?)")
+LEGAL_CLAUSE_RE = re.compile(r"\bkhoan\s+(?P<value>\d+)")
+LEGAL_POINT_GROUP_RE = re.compile(
+    r"\bdiem\s+(?P<value>[a-z](?:\s*(?:,|va)\s*[a-z])*)"
+)
+TOP_LEVEL_CITATION_SPLIT_RE = re.compile(r"\s*;\s*")
+
+DOCUMENT_FAMILY_LABELS = {
+    "bo_luat_2019": "Bộ luật Lao động 2019",
+    "nghi_dinh_145": "Nghị định 145/2020/NĐ-CP",
+    "nghi_dinh_12_2022": "Nghị định 12/2022/NĐ-CP",
+    "luat_cong_doan_2024": "Luật Công đoàn 2024",
+    "thuvienphapluat_article": "THƯ VIỆN PHÁP LUẬT",
+}
+DOCUMENT_FAMILY_SIGNATURES = {
+    "bo_luat_2019": (
+        "bo luat lao dong 2019",
+        "45 2019 qh 14",
+        "45 2019 qh14",
+    ),
+    "nghi_dinh_145": (
+        "nghi dinh 145 2020 nd cp",
+        "145 2020 nd cp",
+    ),
+    "nghi_dinh_12_2022": (
+        "nghi dinh 12 2022 nd cp",
+        "12 2022 nd cp",
+    ),
+    "luat_cong_doan_2024": ("luat cong doan 2024",),
+    "thuvienphapluat_article": ("thu vien phap luat",),
+}
 
 
 def require_openpyxl():
@@ -65,6 +100,22 @@ class BenchmarkCase:
     annotator: str | None
     review_status: str | None
     notes: str | None
+    gold_citations: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        raw_citations: Iterable[str | None]
+        if self.gold_citations:
+            raw_citations = tuple(self.gold_citations)
+        else:
+            raw_citations = (
+                self.gold_citation_primary,
+                self.gold_citation_secondary,
+            )
+        object.__setattr__(
+            self,
+            "gold_citations",
+            expand_expected_citations(raw_citations),
+        )
 
 
 def coerce_optional_text(value: object) -> str | None:
@@ -84,6 +135,146 @@ def coerce_required_text(value: object, field_name: str) -> str:
 def parse_yes_no_flag(value: object) -> bool:
     text = normalize_for_matching(str(value or ""))
     return text in {"yes", "y", "true", "1"}
+
+
+def unique_preserve_order(values: Iterable[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for value in values:
+        cleaned = value.strip()
+        if not cleaned:
+            continue
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        ordered.append(cleaned)
+    return tuple(ordered)
+
+
+def normalize_signature_text(text: str) -> str:
+    normalized = normalize_for_matching(text)
+    return re.sub(r"[^a-z0-9]+", " ", normalized).strip()
+
+
+def citation_document_families(text: str) -> tuple[str, ...]:
+    normalized = normalize_signature_text(text)
+    matches: list[str] = []
+    for family, signatures in DOCUMENT_FAMILY_SIGNATURES.items():
+        if any(signature in normalized for signature in signatures):
+            matches.append(family)
+    return tuple(matches)
+
+
+def split_citation_field(text: str) -> tuple[str, ...]:
+    return unique_preserve_order(
+        part.strip(" ;")
+        for part in TOP_LEVEL_CITATION_SPLIT_RE.split(text.strip())
+        if part.strip(" ;")
+    )
+
+
+def extract_point_values(text: str) -> tuple[str, ...]:
+    normalized = normalize_for_matching(text)
+    values: list[str] = []
+    for match in LEGAL_POINT_GROUP_RE.finditer(normalized):
+        raw_values = match.group("value")
+        for point in re.split(r"\s*(?:,|va)\s*", raw_values):
+            cleaned = point.strip()
+            if cleaned:
+                values.append(cleaned)
+    return unique_preserve_order(values)
+
+
+def compose_atomic_citation(
+    *,
+    article: str | None = None,
+    clause: str | None = None,
+    point: str | None = None,
+    document_family: str | None = None,
+) -> str:
+    parts: list[str] = []
+    if article:
+        parts.append(f"Điều {article}")
+    if clause:
+        parts.append(f"khoản {clause}")
+    if point:
+        parts.append(f"điểm {point}")
+    if document_family:
+        parts.append(DOCUMENT_FAMILY_LABELS[document_family])
+    return " ".join(parts).strip()
+
+
+def expand_compound_citation(fragment: str, *, default_family: str | None = None) -> tuple[str, ...]:
+    cleaned_fragment = fragment.strip()
+    if not cleaned_fragment:
+        return ()
+
+    explicit_families = citation_document_families(cleaned_fragment)
+    document_family = explicit_families[0] if len(explicit_families) == 1 else default_family
+    normalized = normalize_signature_text(cleaned_fragment)
+    article_values = unique_preserve_order(match.group("value") for match in LEGAL_ARTICLE_RE.finditer(normalized))
+    clause_values = unique_preserve_order(match.group("value") for match in LEGAL_CLAUSE_RE.finditer(normalized))
+    point_values = extract_point_values(cleaned_fragment)
+
+    if len(article_values) > 1 and (clause_values or point_values):
+        return (cleaned_fragment,)
+    if len(clause_values) > 1 and point_values:
+        return (cleaned_fragment,)
+
+    if len(article_values) > 1:
+        return unique_preserve_order(
+            compose_atomic_citation(article=article, document_family=document_family)
+            for article in article_values
+        )
+
+    if article_values:
+        article = article_values[0]
+        if point_values:
+            clause = clause_values[0] if len(clause_values) == 1 else None
+            if clause is None and clause_values:
+                return (cleaned_fragment,)
+            return unique_preserve_order(
+                compose_atomic_citation(
+                    article=article,
+                    clause=clause,
+                    point=point,
+                    document_family=document_family,
+                )
+                for point in point_values
+            )
+
+        if len(clause_values) > 1:
+            return unique_preserve_order(
+                compose_atomic_citation(
+                    article=article,
+                    clause=clause,
+                    document_family=document_family,
+                )
+                for clause in clause_values
+            )
+
+        return (
+            compose_atomic_citation(
+                article=article,
+                clause=clause_values[0] if clause_values else None,
+                document_family=document_family,
+            ),
+        )
+
+    return (cleaned_fragment,)
+
+
+def expand_expected_citations(values: Iterable[str | None]) -> tuple[str, ...]:
+    expanded: list[str] = []
+    for value in values:
+        if not value:
+            continue
+        fragments = split_citation_field(value)
+        families = citation_document_families(value)
+        default_family = families[0] if len(families) == 1 else None
+        for fragment in fragments:
+            expanded.extend(expand_compound_citation(fragment, default_family=default_family))
+    return unique_preserve_order(expanded)
 
 
 def locate_header_row(rows: Sequence[Sequence[object]]) -> tuple[int, list[str]]:
@@ -129,6 +320,12 @@ def parse_benchmark_rows(rows: Sequence[Sequence[object]]) -> list[BenchmarkCase
                 annotator=coerce_optional_text(value_for("annotator")),
                 review_status=coerce_optional_text(value_for("review_status")),
                 notes=coerce_optional_text(value_for("notes")),
+                gold_citations=expand_expected_citations(
+                    (
+                        coerce_optional_text(value_for("gold_citation_primary")),
+                        coerce_optional_text(value_for("gold_citation_secondary")),
+                    )
+                ),
             )
         )
 
@@ -184,16 +381,87 @@ def write_results_jsonl(rows: Sequence[dict[str, object]], output_path: Path) ->
 
 
 def expected_citations(case: BenchmarkCase) -> tuple[str, ...]:
-    citations = [case.gold_citation_primary, case.gold_citation_secondary]
-    return tuple(citation for citation in citations if citation)
+    return tuple(case.gold_citations)
+
+
+def partition_citations_by_scope(
+    citations: Sequence[str],
+    *,
+    allowed_document_families: Sequence[str] | None,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    if not allowed_document_families:
+        return tuple(citations), ()
+
+    allowed = set(allowed_document_families)
+    in_scope: list[str] = []
+    out_of_scope: list[str] = []
+
+    for citation in citations:
+        family = citation_document_family(citation)
+        if family is None or family in allowed:
+            in_scope.append(citation)
+        else:
+            out_of_scope.append(citation)
+
+    return tuple(in_scope), tuple(out_of_scope)
+
+
+def expected_citations_in_scope(
+    case: BenchmarkCase,
+    *,
+    allowed_document_families: Sequence[str] | None,
+) -> tuple[str, ...]:
+    in_scope, _ = partition_citations_by_scope(
+        expected_citations(case),
+        allowed_document_families=allowed_document_families,
+    )
+    return in_scope
+
+
+def expected_citations_out_of_scope(
+    case: BenchmarkCase,
+    *,
+    allowed_document_families: Sequence[str] | None,
+) -> tuple[str, ...]:
+    _, out_of_scope = partition_citations_by_scope(
+        expected_citations(case),
+        allowed_document_families=allowed_document_families,
+    )
+    return out_of_scope
+
+
+def expected_citation_scope(
+    case: BenchmarkCase,
+    *,
+    allowed_document_families: Sequence[str] | None,
+) -> str:
+    citations = expected_citations(case)
+    if not citations:
+        return "no_gold_citation"
+
+    in_scope, out_of_scope = partition_citations_by_scope(
+        citations,
+        allowed_document_families=allowed_document_families,
+    )
+    if in_scope and out_of_scope:
+        return "mixed_scope"
+    if in_scope:
+        return "in_scope"
+    return "out_of_scope"
+
+
+def document_families_from_chunk_paths(chunk_paths: Sequence[str | Path]) -> tuple[str, ...]:
+    families: list[str] = []
+    for chunk_path in chunk_paths:
+        for family in citation_document_families(str(chunk_path)):
+            families.append(family)
+    return unique_preserve_order(families)
 
 
 def citation_document_family(text: str) -> str | None:
-    normalized = normalize_for_matching(text)
-    if "bo luat" in normalized or "45/2019" in normalized or "qh 14" in normalized:
-        return "bo_luat_2019"
-    if "nghi dinh" in normalized or "145/2020" in normalized or "nd cp" in normalized:
-        return "nghi_dinh_145"
+    families = citation_document_families(text)
+    if len(families) == 1:
+        return families[0]
     return None
 
 
@@ -219,10 +487,14 @@ def retrieval_hit_at_k(
     observed_citations: Sequence[str],
     *,
     k: int = 5,
-) -> bool:
-    gold_citations = expected_citations(case)
+    allowed_document_families: Sequence[str] | None = None,
+) -> bool | None:
+    gold_citations = expected_citations_in_scope(
+        case,
+        allowed_document_families=allowed_document_families,
+    )
     if not gold_citations:
-        return False
+        return None if allowed_document_families else False
 
     for expected in gold_citations:
         for observed in observed_citations[:k]:
@@ -235,10 +507,22 @@ def score_citation_correctness(
     case: BenchmarkCase,
     observed_citations: Sequence[str],
 ) -> str:
-    gold_citations = expected_citations(case)
-    if not observed_citations:
-        return "no"
+    return score_citation_correctness_for_scope(case, observed_citations)
+
+
+def score_citation_correctness_for_scope(
+    case: BenchmarkCase,
+    observed_citations: Sequence[str],
+    *,
+    allowed_document_families: Sequence[str] | None = None,
+) -> str:
+    gold_citations = expected_citations_in_scope(
+        case,
+        allowed_document_families=allowed_document_families,
+    )
     if not gold_citations:
+        return "na" if allowed_document_families else "no"
+    if not observed_citations:
         return "no"
 
     matched = [
@@ -273,14 +557,20 @@ __all__ = [
     "WORKBOOK_RESULTS_SHEET_NAME",
     "WORKBOOK_SHEET_NAME",
     "citation_matches_expected",
+    "document_families_from_chunk_paths",
     "expected_citations",
+    "expected_citations_in_scope",
+    "expected_citations_out_of_scope",
+    "expected_citation_scope",
     "load_benchmark_jsonl",
     "load_benchmark_workbook",
     "parse_benchmark_rows",
     "parse_yes_no_flag",
+    "partition_citations_by_scope",
     "require_openpyxl",
     "retrieval_hit_at_k",
     "score_citation_correctness",
+    "score_citation_correctness_for_scope",
     "summarize_benchmark_cases",
     "write_benchmark_jsonl",
     "write_results_csv",

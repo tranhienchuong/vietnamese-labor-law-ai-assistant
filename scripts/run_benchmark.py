@@ -10,10 +10,14 @@ from vn_labor_law_ai_assistant.answering import build_messages, parse_answer_pay
 from vn_labor_law_ai_assistant.evaluation import (
     BENCHMARK_JSONL_NAME,
     BenchmarkCase,
+    document_families_from_chunk_paths,
     expected_citations,
+    expected_citation_scope,
+    expected_citations_in_scope,
+    expected_citations_out_of_scope,
     load_benchmark_jsonl,
     retrieval_hit_at_k,
-    score_citation_correctness,
+    score_citation_correctness_for_scope,
     write_results_csv,
     write_results_jsonl,
 )
@@ -106,16 +110,25 @@ def build_result_row(
     case: BenchmarkCase,
     model_version: str,
     top_hit_citations: list[str],
-    retrieval_hit: bool,
+    retrieval_hit: bool | None,
     evaluator: str,
+    expected_citations_all: tuple[str, ...],
+    expected_citations_scoped: tuple[str, ...],
+    expected_citations_excluded: tuple[str, ...],
+    case_scope: str,
     generated_answer: str = "",
     generated_legal_basis: tuple[str, ...] = (),
     insufficient_context: str = "",
 ) -> dict[str, object]:
+    if retrieval_hit is None:
+        retrieval_hit_value = "N/A"
+    else:
+        retrieval_hit_value = "Yes" if retrieval_hit else "No"
+
     return {
         "id": case.id,
         "model_version": model_version,
-        "retrieval_hit_at_5": "Yes" if retrieval_hit else "No",
+        "retrieval_hit_at_5": retrieval_hit_value,
         "citation_correct": "",
         "answer_correct": "",
         "hallucination_flag": "",
@@ -126,7 +139,10 @@ def build_result_row(
         "evaluator": evaluator,
         "comments": "",
         "question": case.question,
-        "expected_citations": " | ".join(expected_citations(case)),
+        "expected_citations": " | ".join(expected_citations_all),
+        "expected_citations_in_scope": " | ".join(expected_citations_scoped),
+        "expected_citations_out_of_scope": " | ".join(expected_citations_excluded),
+        "case_scope": case_scope,
         "retrieved_citations": " | ".join(top_hit_citations),
         "generated_answer": generated_answer,
         "generated_legal_basis": " | ".join(generated_legal_basis),
@@ -156,6 +172,9 @@ def main() -> None:
     output_stem = f"benchmark_{slugify_model_version(model_version)}_{timestamp}"
     output_jsonl = args.output_dir / f"{output_stem}.jsonl"
     output_csv = args.output_dir / f"{output_stem}.csv"
+    allowed_document_families = document_families_from_chunk_paths(
+        retriever.manifest.get("chunk_paths", [])
+    )
 
     try:
         for index, case in enumerate(cases, start=1):
@@ -165,7 +184,25 @@ def main() -> None:
                 prefetch_limit=args.prefetch_limit,
             )
             top_hit_citations = [hit.citation_text for hit in retrieval_result.hits[: args.top_k]]
-            retrieval_hit = retrieval_hit_at_k(case, top_hit_citations, k=args.top_k)
+            expected_all = expected_citations(case)
+            expected_scoped = expected_citations_in_scope(
+                case,
+                allowed_document_families=allowed_document_families,
+            )
+            expected_excluded = expected_citations_out_of_scope(
+                case,
+                allowed_document_families=allowed_document_families,
+            )
+            case_scope = expected_citation_scope(
+                case,
+                allowed_document_families=allowed_document_families,
+            )
+            retrieval_hit = retrieval_hit_at_k(
+                case,
+                top_hit_citations,
+                k=args.top_k,
+                allowed_document_families=allowed_document_families,
+            )
 
             generated_answer = ""
             generated_legal_basis: tuple[str, ...] = ()
@@ -194,15 +231,22 @@ def main() -> None:
                 generated_answer = parsed.answer
                 generated_legal_basis = parsed.legal_basis
                 insufficient_context = "Yes" if parsed.insufficient_context else "No"
-                citation_correct = score_citation_correctness(case, parsed.legal_basis)
+                citation_correct = score_citation_correctness_for_scope(
+                    case,
+                    parsed.legal_basis,
+                    allowed_document_families=allowed_document_families,
+                )
                 abstention_correct = (
                     "yes" if parsed.insufficient_context == case.abstain_required else "no"
                 )
-                hallucination_flag = (
-                    "yes"
-                    if (not parsed.insufficient_context and citation_correct == "no")
-                    else "no"
-                )
+                if citation_correct == "na":
+                    hallucination_flag = "na"
+                else:
+                    hallucination_flag = (
+                        "yes"
+                        if (not parsed.insufficient_context and citation_correct == "no")
+                        else "no"
+                    )
 
             row = build_result_row(
                 case=case,
@@ -210,6 +254,10 @@ def main() -> None:
                 top_hit_citations=top_hit_citations,
                 retrieval_hit=retrieval_hit,
                 evaluator=args.evaluator,
+                expected_citations_all=expected_all,
+                expected_citations_scoped=expected_scoped,
+                expected_citations_excluded=expected_excluded,
+                case_scope=case_scope,
                 generated_answer=generated_answer,
                 generated_legal_basis=generated_legal_basis,
                 insufficient_context=insufficient_context,

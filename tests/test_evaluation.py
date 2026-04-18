@@ -9,10 +9,15 @@ from openpyxl import Workbook
 from vn_labor_law_ai_assistant.evaluation import (
     BenchmarkCase,
     citation_matches_expected,
+    expected_citation_scope,
+    expected_citations,
+    expected_citations_in_scope,
+    expected_citations_out_of_scope,
     load_benchmark_workbook,
     parse_benchmark_rows,
     retrieval_hit_at_k,
     score_citation_correctness,
+    score_citation_correctness_for_scope,
 )
 
 
@@ -71,6 +76,10 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(cases[0].id, "LBR_001")
         self.assertFalse(cases[0].abstain_required)
         self.assertEqual(cases[0].gold_citation_primary, "Điều 35 khoản 1 điểm a Bộ luật Lao động 2019")
+        self.assertEqual(
+            expected_citations(cases[0]),
+            ("Điều 35 khoản 1 điểm a Bộ luật Lao động 2019",),
+        )
 
     def test_load_benchmark_workbook_reads_real_xlsx(self) -> None:
         workbook = Workbook()
@@ -169,6 +178,137 @@ class EvaluationTests(unittest.TestCase):
 
         self.assertTrue(retrieval_hit_at_k(case, observed, k=5))
         self.assertEqual(score_citation_correctness(case, observed), "partial")
+
+    def test_expected_citations_expand_compound_references(self) -> None:
+        case = BenchmarkCase(
+            id="LBR_004",
+            category="notice_period",
+            subtopic="compound citations",
+            difficulty="medium",
+            question_type="direct_qa",
+            question="Cau hoi?",
+            scenario="Tinh huong",
+            gold_issue="Gold issue",
+            gold_citation_primary="Điều 35 khoản 1 điểm b, c Bộ luật Lao động 2019",
+            gold_citation_secondary="Điều 97 khoản 4 Bộ luật Lao động 2019",
+            gold_answer_short="Tra loi ngan",
+            gold_answer_full="Tra loi day du",
+            abstain_required=False,
+            missing_information=None,
+            source_document="Bộ luật Lao động 2019",
+            source_url=None,
+            annotator=None,
+            review_status=None,
+            notes=None,
+        )
+
+        self.assertEqual(
+            expected_citations(case),
+            (
+                "Điều 35 khoản 1 điểm b Bộ luật Lao động 2019",
+                "Điều 35 khoản 1 điểm c Bộ luật Lao động 2019",
+                "Điều 97 khoản 4 Bộ luật Lao động 2019",
+            ),
+        )
+
+    def test_scope_partition_keeps_in_scope_and_excludes_out_of_scope(self) -> None:
+        case = BenchmarkCase(
+            id="LBR_005",
+            category="mixed_scope",
+            subtopic="mixed scope",
+            difficulty="medium",
+            question_type="direct_qa",
+            question="Cau hoi?",
+            scenario="Tinh huong",
+            gold_issue="Gold issue",
+            gold_citation_primary="Điều 35 Bộ luật Lao động 2019; Điều 39 Nghị định 12/2022/NĐ-CP",
+            gold_citation_secondary=None,
+            gold_answer_short="Tra loi ngan",
+            gold_answer_full="Tra loi day du",
+            abstain_required=False,
+            missing_information=None,
+            source_document="Bo luat Lao dong 2019",
+            source_url=None,
+            annotator=None,
+            review_status=None,
+            notes=None,
+        )
+        allowed_families = ("bo_luat_2019", "nghi_dinh_145")
+        observed = ["Bộ luật số 45/2019/QH14, Điều 35"]
+
+        self.assertEqual(
+            expected_citations_in_scope(case, allowed_document_families=allowed_families),
+            ("Điều 35 Bộ luật Lao động 2019",),
+        )
+        self.assertEqual(
+            expected_citations_out_of_scope(case, allowed_document_families=allowed_families),
+            ("Điều 39 Nghị định 12/2022/NĐ-CP",),
+        )
+        self.assertEqual(
+            expected_citation_scope(case, allowed_document_families=allowed_families),
+            "mixed_scope",
+        )
+        self.assertTrue(
+            retrieval_hit_at_k(
+                case,
+                observed,
+                k=5,
+                allowed_document_families=allowed_families,
+            )
+        )
+        self.assertEqual(
+            score_citation_correctness_for_scope(
+                case,
+                observed,
+                allowed_document_families=allowed_families,
+            ),
+            "exact",
+        )
+
+    def test_scope_partition_marks_fully_out_of_scope_cases_as_na(self) -> None:
+        case = BenchmarkCase(
+            id="LBR_006",
+            category="out_of_scope",
+            subtopic="out of scope",
+            difficulty="medium",
+            question_type="direct_qa",
+            question="Cau hoi?",
+            scenario="Tinh huong",
+            gold_issue="Gold issue",
+            gold_citation_primary="Luật Công đoàn 2024",
+            gold_citation_secondary=None,
+            gold_answer_short="Tra loi ngan",
+            gold_answer_full="Tra loi day du",
+            abstain_required=False,
+            missing_information=None,
+            source_document="Luat Cong doan 2024",
+            source_url=None,
+            annotator=None,
+            review_status=None,
+            notes=None,
+        )
+        allowed_families = ("bo_luat_2019", "nghi_dinh_145")
+
+        self.assertIsNone(
+            retrieval_hit_at_k(
+                case,
+                ["Bộ luật số 45/2019/QH14, Điều 63"],
+                k=5,
+                allowed_document_families=allowed_families,
+            )
+        )
+        self.assertEqual(
+            expected_citation_scope(case, allowed_document_families=allowed_families),
+            "out_of_scope",
+        )
+        self.assertEqual(
+            score_citation_correctness_for_scope(
+                case,
+                ["Bộ luật số 45/2019/QH14, Điều 63"],
+                allowed_document_families=allowed_families,
+            ),
+            "na",
+        )
 
 
 if __name__ == "__main__":
