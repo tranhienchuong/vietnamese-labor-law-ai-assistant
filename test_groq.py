@@ -9,7 +9,7 @@ from vn_labor_law_ai_assistant.llm import build_groq_client
 
 load_repo_env()
 
-MODEL_NAME = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+MODEL_NAME = os.getenv("GROQ_MODEL", "qwen/qwen3-32b")
 PROMPT = "Chao, hay tra loi ngan gon bang tieng Viet."
 
 if hasattr(sys.stdout, "reconfigure"):

@@ -64,11 +64,12 @@ tests/
 .venv\Scripts\python.exe scripts\import_benchmark.py C:\Users\tranh\Downloads\golden_benchmark_100_answered_v1.xlsx
 .venv\Scripts\python.exe scripts\run_benchmark.py --limit 10
 .venv\Scripts\python.exe scripts\run_benchmark.py --provider ollama --model qwen3:4b --limit 10
-.venv\Scripts\python.exe scripts\run_benchmark.py --provider groq --model openai/gpt-oss-20b --limit 10
+.venv\Scripts\python.exe scripts\run_benchmark.py --provider ollama --model qwen3:4b --no-judge --limit 10
+.venv\Scripts\python.exe scripts\run_benchmark.py --provider groq --model qwen/qwen3-32b --limit 10
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 .venv\Scripts\python.exe scripts\ask.py --retrieve-only "tro cap thoi viec tinh the nao theo Dieu 46?"
 .venv\Scripts\python.exe scripts\ask.py --provider ollama --model qwen3:4b "tro cap thoi viec tinh the nao theo Dieu 46?"
-.venv\Scripts\python.exe scripts\ask.py --provider groq --model openai/gpt-oss-20b "tro cap thoi viec tinh the nao theo Dieu 46?"
+.venv\Scripts\python.exe scripts\ask.py --provider groq --model qwen/qwen3-32b "tro cap thoi viec tinh the nao theo Dieu 46?"
 .venv\Scripts\python.exe test_ollama.py
 .venv\Scripts\python.exe test_groq.py
 ```
@@ -80,6 +81,8 @@ Bien moi truong:
 - `GROQ_MODEL`: model mac dinh khi dung provider `groq`.
 - `GROQ_API_KEY`: API key de goi Groq.
 - `LLM_PROVIDER`: provider mac dinh cho `scripts/ask.py` va `scripts/run_benchmark.py`.
+- `BENCHMARK_JUDGE_PROVIDER`: provider mac dinh cho LLM judge trong `scripts/run_benchmark.py` khi co `--model` va khong dung `--no-judge`. Mac dinh la `groq`.
+- `BENCHMARK_JUDGE_MODEL`: model mac dinh cho LLM judge. Neu de trong, script se lay model mac dinh cua `BENCHMARK_JUDGE_PROVIDER`.
 
 ## Dau ra cua pipeline
 
@@ -127,6 +130,8 @@ Lenh `scripts/run_benchmark.py` se:
 - chay retriever hien tai tren tung cau hoi;
 - ghi `retrieval_hit_at_5` va cac citation retrieve duoc;
 - neu co `--model`, chay them generation qua provider da chon va luu output de review;
+- mac dinh se bat them LLM-as-a-judge bang provider/model rieng de cham `answer_correct`, `clarity_score_1_5`, `format_score_1_5`, `final_score_10`;
+- neu muon chi sinh cau tra loi ma khong cham bang judge, them `--no-judge`;
 - ghi ket qua ra `eval/results/*.jsonl` va `eval/results/*.csv`, trong do ten file co kem `provider:model` da duoc slugify de de tach tung run.
 
 De so sanh model, chay `scripts/run_benchmark.py` rieng cho tung provider/model va doi chieu cac file ket qua trong `eval/results/`.

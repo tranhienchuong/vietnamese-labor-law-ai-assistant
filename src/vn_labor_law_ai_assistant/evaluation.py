@@ -18,6 +18,8 @@ RESULTS_COLUMNS = (
     "id",
     "model_version",
     "retrieval_hit_at_5",
+    "retrieval_first_relevant_rank",
+    "retrieval_reciprocal_rank",
     "citation_correct",
     "answer_correct",
     "hallucination_flag",
@@ -37,6 +39,47 @@ RESULTS_COLUMNS = (
     "generated_legal_basis",
     "insufficient_context",
 )
+
+JUDGE_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "answer_correct": {
+            "type": "string",
+            "enum": ["yes", "partial", "no"],
+        },
+        "clarity_score_1_5": {"type": "integer", "minimum": 1, "maximum": 5},
+        "format_score_1_5": {"type": "integer", "minimum": 1, "maximum": 5},
+        "final_score_10": {"type": "integer", "minimum": 1, "maximum": 10},
+        "comments": {"type": "string"},
+    },
+    "required": [
+        "answer_correct",
+        "clarity_score_1_5",
+        "format_score_1_5",
+        "final_score_10",
+        "comments",
+    ],
+    "additionalProperties": False,
+}
+
+JUDGE_SYSTEM_PROMPT = """Bạn là giám khảo benchmark cho trợ lý pháp lý lao động.
+
+Hãy so sánh GENERATED_ANSWER với GOLD_ANSWER và chấm thật nghiêm khắc.
+
+Tiêu chí:
+1. answer_correct:
+- yes: trả lời đúng ý chính và không có sai sót pháp lý đáng kể.
+- partial: đúng một phần nhưng thiếu ý quan trọng, quá chung chung, hoặc có lỗi nhẹ.
+- no: sai trọng yếu, mâu thuẫn với đáp án chuẩn, hoặc trả lời lạc đề.
+2. clarity_score_1_5: độ mạch lạc, dễ hiểu, ngắn gọn đúng mức.
+3. format_score_1_5: đúng format trả lời ngắn gọn, có cấu trúc hợp lý, không lan man.
+4. final_score_10: điểm tổng hợp, ưu tiên độ đúng hơn hình thức.
+5. comments: tối đa 2 câu, nêu rõ điểm mạnh/yếu chính.
+
+Lưu ý:
+- Nếu benchmark yêu cầu abstain và GENERATED_ANSWER từ chối hợp lý, không nên chấm thấp chỉ vì thiếu kết luận.
+- Nếu GENERATED_ANSWER chứa khẳng định vượt quá GOLD_ANSWER, phải trừ điểm.
+- Trả đúng JSON theo schema."""
 
 LEGAL_ARTICLE_RE = re.compile(r"\bdieu\s+(?P<value>\d+[a-z]?)")
 LEGAL_CLAUSE_RE = re.compile(r"\bkhoan\s+(?P<value>\d+)")
@@ -116,6 +159,16 @@ class BenchmarkCase:
             "gold_citations",
             expand_expected_citations(raw_citations),
         )
+
+
+@dataclass(frozen=True)
+class JudgeScore:
+    answer_correct: str
+    clarity_score_1_5: int
+    format_score_1_5: int
+    final_score_10: int
+    comments: str
+    raw_content: str
 
 
 def coerce_optional_text(value: object) -> str | None:
@@ -537,6 +590,139 @@ def score_citation_correctness_for_scope(
     return "no"
 
 
+def first_relevant_rank(
+    case: BenchmarkCase,
+    observed_citations: Sequence[str],
+    *,
+    k: int = 5,
+    allowed_document_families: Sequence[str] | None = None,
+) -> int | None:
+    gold_citations = expected_citations_in_scope(
+        case,
+        allowed_document_families=allowed_document_families,
+    )
+    if not gold_citations:
+        return None if allowed_document_families else 0
+
+    for rank, observed in enumerate(observed_citations[:k], start=1):
+        if any(citation_matches_expected(expected, observed) for expected in gold_citations):
+            return rank
+    return 0
+
+
+def reciprocal_rank(
+    case: BenchmarkCase,
+    observed_citations: Sequence[str],
+    *,
+    k: int = 5,
+    allowed_document_families: Sequence[str] | None = None,
+) -> float | None:
+    rank = first_relevant_rank(
+        case,
+        observed_citations,
+        k=k,
+        allowed_document_families=allowed_document_families,
+    )
+    if rank is None:
+        return None
+    if rank <= 0:
+        return 0.0
+    return 1.0 / rank
+
+
+def mean_reciprocal_rank(reciprocal_ranks: Sequence[float | None]) -> float | None:
+    scored = [rank for rank in reciprocal_ranks if rank is not None]
+    if not scored:
+        return None
+    return sum(scored) / len(scored)
+
+
+def build_judge_messages(
+    case: BenchmarkCase,
+    *,
+    generated_answer: str,
+    generated_legal_basis: Sequence[str],
+    insufficient_context: str,
+    expected_citations_scoped: Sequence[str],
+    retrieved_citations: Sequence[str],
+    case_scope: str,
+) -> list[dict[str, str]]:
+    user_prompt = "\n\n".join(
+        [
+            f"QUESTION:\n{case.question.strip()}",
+            f"GOLD_ISSUE:\n{case.gold_issue.strip()}",
+            f"GOLD_ANSWER:\n{case.gold_answer_full.strip()}",
+            f"GOLD_ANSWER_SHORT:\n{case.gold_answer_short.strip()}",
+            f"ABSTAIN_REQUIRED:\n{case.abstain_required}",
+            f"MISSING_INFORMATION:\n{(case.missing_information or '').strip()}",
+            f"CASE_SCOPE:\n{case_scope}",
+            "EXPECTED_CITATIONS_IN_SCOPE:",
+            "\n".join(f"- {citation}" for citation in expected_citations_scoped) or "-",
+            "RETRIEVED_CITATIONS:",
+            "\n".join(f"- {citation}" for citation in retrieved_citations) or "-",
+            f"GENERATED_ANSWER:\n{generated_answer.strip()}",
+            "GENERATED_LEGAL_BASIS:",
+            "\n".join(f"- {citation}" for citation in generated_legal_basis) or "-",
+            f"INSUFFICIENT_CONTEXT:\n{insufficient_context}",
+        ]
+    )
+    return [
+        {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
+    ]
+
+
+def extract_json_candidate(raw_content: str) -> str:
+    cleaned_content = raw_content.strip()
+
+    fenced_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned_content, re.IGNORECASE)
+    if fenced_match:
+        cleaned_content = fenced_match.group(1).strip()
+
+    if cleaned_content.startswith("{") and cleaned_content.endswith("}"):
+        return cleaned_content
+
+    container_match = re.search(r"(\{.*\})", cleaned_content, re.DOTALL)
+    if container_match:
+        return container_match.group(1).strip()
+
+    return cleaned_content
+
+
+def parse_judge_payload(raw_content: str) -> JudgeScore | None:
+    cleaned_content = extract_json_candidate(raw_content)
+    try:
+        payload = json.loads(cleaned_content)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    answer_correct = str(payload.get("answer_correct") or "").strip().lower()
+    if answer_correct not in {"yes", "partial", "no"}:
+        return None
+
+    try:
+        clarity_score = int(payload["clarity_score_1_5"])
+        format_score = int(payload["format_score_1_5"])
+        final_score = int(payload["final_score_10"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+    if not (1 <= clarity_score <= 5 and 1 <= format_score <= 5 and 1 <= final_score <= 10):
+        return None
+
+    return JudgeScore(
+        answer_correct=answer_correct,
+        clarity_score_1_5=clarity_score,
+        format_score_1_5=format_score,
+        final_score_10=final_score,
+        comments=str(payload.get("comments") or "").strip(),
+        raw_content=raw_content,
+    )
+
+
 def summarize_benchmark_cases(cases: Sequence[BenchmarkCase]) -> dict[str, object]:
     difficulties: dict[str, int] = {}
     categories: dict[str, int] = {}
@@ -558,15 +744,22 @@ __all__ = [
     "WORKBOOK_SHEET_NAME",
     "citation_matches_expected",
     "document_families_from_chunk_paths",
+    "JUDGE_JSON_SCHEMA",
+    "JudgeScore",
+    "build_judge_messages",
     "expected_citations",
     "expected_citations_in_scope",
     "expected_citations_out_of_scope",
     "expected_citation_scope",
+    "first_relevant_rank",
     "load_benchmark_jsonl",
     "load_benchmark_workbook",
+    "mean_reciprocal_rank",
     "parse_benchmark_rows",
     "parse_yes_no_flag",
+    "parse_judge_payload",
     "partition_citations_by_scope",
+    "reciprocal_rank",
     "require_openpyxl",
     "retrieval_hit_at_k",
     "score_citation_correctness",

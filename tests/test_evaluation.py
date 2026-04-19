@@ -13,8 +13,12 @@ from vn_labor_law_ai_assistant.evaluation import (
     expected_citations,
     expected_citations_in_scope,
     expected_citations_out_of_scope,
+    first_relevant_rank,
     load_benchmark_workbook,
+    mean_reciprocal_rank,
+    parse_judge_payload,
     parse_benchmark_rows,
+    reciprocal_rank,
     retrieval_hit_at_k,
     score_citation_correctness,
     score_citation_correctness_for_scope,
@@ -309,6 +313,61 @@ class EvaluationTests(unittest.TestCase):
             ),
             "na",
         )
+
+    def test_rank_metrics_capture_first_match_and_reciprocal_rank(self) -> None:
+        case = BenchmarkCase(
+            id="LBR_007",
+            category="ranking",
+            subtopic="mrr",
+            difficulty="easy",
+            question_type="direct_qa",
+            question="Cau hoi?",
+            scenario="Tinh huong",
+            gold_issue="Gold issue",
+            gold_citation_primary="Điều 35 khoản 2 điểm d Bộ luật Lao động 2019",
+            gold_citation_secondary=None,
+            gold_answer_short="Tra loi ngan",
+            gold_answer_full="Tra loi day du",
+            abstain_required=False,
+            missing_information=None,
+            source_document="Bộ luật Lao động 2019",
+            source_url=None,
+            annotator=None,
+            review_status=None,
+            notes=None,
+        )
+        observed = [
+            "Bộ luật số 45/2019/QH14, Điều 34, khoản 1",
+            "Bộ luật số 45/2019/QH14, Điều 35, khoản 2, điểm d",
+            "Bộ luật số 45/2019/QH14, Điều 41, khoản 1",
+        ]
+
+        self.assertEqual(first_relevant_rank(case, observed, k=5), 2)
+        self.assertEqual(reciprocal_rank(case, observed, k=5), 0.5)
+        self.assertEqual(mean_reciprocal_rank([1.0, 0.5, 0.0, None]), 0.5)
+
+    def test_parse_judge_payload_reads_valid_json(self) -> None:
+        score = parse_judge_payload(
+            """
+            {
+              "answer_correct": "partial",
+              "clarity_score_1_5": 4,
+              "format_score_1_5": 5,
+              "final_score_10": 7,
+              "comments": "Thiếu một ý quan trọng."
+            }
+            """
+        )
+
+        self.assertIsNotNone(score)
+        assert score is not None
+        self.assertEqual(score.answer_correct, "partial")
+        self.assertEqual(score.clarity_score_1_5, 4)
+        self.assertEqual(score.format_score_1_5, 5)
+        self.assertEqual(score.final_score_10, 7)
+
+    def test_parse_judge_payload_rejects_invalid_json(self) -> None:
+        self.assertIsNone(parse_judge_payload("khong phai json"))
 
 
 if __name__ == "__main__":

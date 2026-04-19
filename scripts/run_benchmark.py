@@ -10,12 +10,18 @@ from vn_labor_law_ai_assistant.answering import build_messages, parse_answer_pay
 from vn_labor_law_ai_assistant.evaluation import (
     BENCHMARK_JSONL_NAME,
     BenchmarkCase,
+    JUDGE_JSON_SCHEMA,
+    build_judge_messages,
     document_families_from_chunk_paths,
     expected_citations,
     expected_citation_scope,
     expected_citations_in_scope,
     expected_citations_out_of_scope,
+    first_relevant_rank,
     load_benchmark_jsonl,
+    mean_reciprocal_rank,
+    parse_judge_payload,
+    reciprocal_rank,
     retrieval_hit_at_k,
     score_citation_correctness_for_scope,
     write_results_csv,
@@ -25,7 +31,12 @@ from vn_labor_law_ai_assistant.llm import (
     DEFAULT_PROVIDER,
     SUPPORTED_PROVIDERS,
     chat_completion,
+    default_benchmark_judge_model,
+    default_benchmark_judge_provider,
+    default_model_for_provider,
+    normalize_provider,
     provider_model_label,
+    resolve_model_name,
 )
 from vn_labor_law_ai_assistant.retriever import (
     DEFAULT_MAX_CONTEXT_CHARS,
@@ -98,6 +109,27 @@ def parse_args() -> argparse.Namespace:
         help="Optional model name. Leave empty for retrieval-only benchmarking.",
     )
     parser.add_argument(
+        "--judge-provider",
+        default="",
+        help=(
+            "Optional judge provider for answer scoring. Leave empty to use the benchmark "
+            f"default ({default_benchmark_judge_provider()})."
+        ),
+    )
+    parser.add_argument(
+        "--judge-model",
+        default="",
+        help=(
+            "Optional judge model name for LLM-as-a-judge scoring. Leave empty to use the "
+            "default model for the chosen judge provider."
+        ),
+    )
+    parser.add_argument(
+        "--no-judge",
+        action="store_true",
+        help="Disable LLM-as-a-judge scoring even when --model is provided.",
+    )
+    parser.add_argument(
         "--evaluator",
         default="auto-benchmark",
         help="Evaluator label stored in output rows.",
@@ -111,6 +143,8 @@ def build_result_row(
     model_version: str,
     top_hit_citations: list[str],
     retrieval_hit: bool | None,
+    retrieval_first_relevant_rank: int | None,
+    retrieval_reciprocal_rank: float | None,
     evaluator: str,
     expected_citations_all: tuple[str, ...],
     expected_citations_scoped: tuple[str, ...],
@@ -129,6 +163,12 @@ def build_result_row(
         "id": case.id,
         "model_version": model_version,
         "retrieval_hit_at_5": retrieval_hit_value,
+        "retrieval_first_relevant_rank": (
+            "" if retrieval_first_relevant_rank is None else retrieval_first_relevant_rank
+        ),
+        "retrieval_reciprocal_rank": (
+            "" if retrieval_reciprocal_rank is None else round(retrieval_reciprocal_rank, 6)
+        ),
         "citation_correct": "",
         "answer_correct": "",
         "hallucination_flag": "",
@@ -155,11 +195,50 @@ def slugify_model_version(text: str) -> str:
     return cleaned.strip("-") or "run"
 
 
+def resolve_judge_configuration(args: argparse.Namespace) -> tuple[str, str, bool]:
+    if args.no_judge or not str(args.model or "").strip():
+        return "", "", False
+
+    provider_input = str(args.judge_provider or "").strip()
+    if provider_input:
+        provider_name = normalize_provider(provider_input)
+        if str(args.judge_model or "").strip():
+            model_name = resolve_model_name(provider_name, args.judge_model)
+        else:
+            model_name = default_model_for_provider(provider_name)
+        return provider_name, model_name, True
+
+    provider_name = default_benchmark_judge_provider()
+    model_name = default_benchmark_judge_model(provider_name)
+    if str(args.judge_model or "").strip():
+        model_name = str(args.judge_model).strip()
+    return provider_name, model_name, True
+
+
+def resolve_evaluator_label(
+    requested_label: str,
+    *,
+    judge_enabled: bool,
+    judge_provider: str,
+    judge_model: str,
+) -> str:
+    if requested_label != "auto-benchmark" or not judge_enabled:
+        return requested_label
+    return f"llm-judge:{provider_model_label(judge_provider, judge_model)}"
+
+
 def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
     args = parse_args()
+    if args.judge_provider:
+        normalize_provider(args.judge_provider)
+    if args.no_judge and (args.judge_provider or args.judge_model):
+        raise ValueError("--no-judge cannot be combined with --judge-provider or --judge-model.")
+    if (args.judge_provider or args.judge_model) and not args.model:
+        raise ValueError("Judge options require --model because there is no generated answer otherwise.")
+
     cases = load_benchmark_jsonl(args.benchmark_path)
     if args.limit > 0:
         cases = cases[: args.limit]
@@ -172,11 +251,25 @@ def main() -> None:
     output_stem = f"benchmark_{slugify_model_version(model_version)}_{timestamp}"
     output_jsonl = args.output_dir / f"{output_stem}.jsonl"
     output_csv = args.output_dir / f"{output_stem}.csv"
+    reciprocal_ranks: list[float | None] = []
     allowed_document_families = document_families_from_chunk_paths(
         retriever.manifest.get("chunk_paths", [])
     )
+    judge_provider, judge_model, judge_enabled = resolve_judge_configuration(args)
+    evaluator_label = resolve_evaluator_label(
+        args.evaluator,
+        judge_enabled=judge_enabled,
+        judge_provider=judge_provider,
+        judge_model=judge_model,
+    )
 
     try:
+        if args.model:
+            print(f"Answer model: {provider_model_label(args.provider, args.model)}")
+            if judge_enabled:
+                print(f"Judge model: {provider_model_label(judge_provider, judge_model)}")
+            else:
+                print("Judge model: disabled")
         for index, case in enumerate(cases, start=1):
             retrieval_result = retriever.retrieve(
                 case.question,
@@ -203,6 +296,19 @@ def main() -> None:
                 k=args.top_k,
                 allowed_document_families=allowed_document_families,
             )
+            relevant_rank = first_relevant_rank(
+                case,
+                top_hit_citations,
+                k=args.top_k,
+                allowed_document_families=allowed_document_families,
+            )
+            reciprocal = reciprocal_rank(
+                case,
+                top_hit_citations,
+                k=args.top_k,
+                allowed_document_families=allowed_document_families,
+            )
+            reciprocal_ranks.append(reciprocal)
 
             generated_answer = ""
             generated_legal_basis: tuple[str, ...] = ()
@@ -210,6 +316,11 @@ def main() -> None:
             citation_correct = ""
             abstention_correct = ""
             hallucination_flag = ""
+            answer_correct = ""
+            clarity_score = ""
+            format_score = ""
+            final_score = ""
+            judge_comment = ""
 
             if args.model:
                 contexts = select_contexts_for_prompt(
@@ -226,6 +337,7 @@ def main() -> None:
                         max_context_chars=args.max_context_chars,
                     ),
                     temperature=0,
+                    json_schema_name="legal_answer",
                 )
                 parsed = parse_answer_payload(response.content, contexts)
                 generated_answer = parsed.answer
@@ -248,12 +360,41 @@ def main() -> None:
                         else "no"
                     )
 
+                if judge_enabled:
+                    judge_response = chat_completion(
+                        provider=judge_provider,
+                        model=judge_model,
+                        messages=build_judge_messages(
+                            case,
+                            generated_answer=generated_answer,
+                            generated_legal_basis=generated_legal_basis,
+                            insufficient_context=insufficient_context,
+                            expected_citations_scoped=expected_scoped,
+                            retrieved_citations=top_hit_citations,
+                            case_scope=case_scope,
+                        ),
+                        temperature=0,
+                        json_schema=JUDGE_JSON_SCHEMA,
+                        json_schema_name="benchmark_judge",
+                    )
+                    judged = parse_judge_payload(judge_response.content)
+                    if judged is not None:
+                        answer_correct = judged.answer_correct
+                        clarity_score = judged.clarity_score_1_5
+                        format_score = judged.format_score_1_5
+                        final_score = judged.final_score_10
+                        judge_comment = judged.comments
+                    else:
+                        judge_comment = "Judge model did not return valid JSON."
+
             row = build_result_row(
                 case=case,
                 model_version=model_version,
                 top_hit_citations=top_hit_citations,
                 retrieval_hit=retrieval_hit,
-                evaluator=args.evaluator,
+                retrieval_first_relevant_rank=relevant_rank,
+                retrieval_reciprocal_rank=reciprocal,
+                evaluator=evaluator_label,
                 expected_citations_all=expected_all,
                 expected_citations_scoped=expected_scoped,
                 expected_citations_excluded=expected_excluded,
@@ -264,9 +405,16 @@ def main() -> None:
             )
             if args.model:
                 row["citation_correct"] = citation_correct
+                row["answer_correct"] = answer_correct
                 row["abstention_correct"] = abstention_correct
                 row["hallucination_flag"] = hallucination_flag
-                row["comments"] = f"Retrieved: {' | '.join(top_hit_citations)}"
+                row["clarity_score_1_5"] = clarity_score
+                row["format_score_1_5"] = format_score
+                row["final_score_10"] = final_score
+                comments = [f"Retrieved: {' | '.join(top_hit_citations)}"]
+                if judge_comment:
+                    comments.append(f"Judge: {judge_comment}")
+                row["comments"] = " | ".join(comment for comment in comments if comment)
 
             rows.append(row)
             print(f"[{index}/{len(cases)}] {case.id}: retrieval_hit_at_{args.top_k}={row['retrieval_hit_at_5']}")
@@ -276,6 +424,16 @@ def main() -> None:
 
     write_results_jsonl(rows, output_jsonl)
     write_results_csv(rows, output_csv)
+    scored_hit_cases = [row for row in rows if row["retrieval_hit_at_5"] in {"Yes", "No"}]
+    hit_rate = (
+        sum(1 for row in scored_hit_cases if row["retrieval_hit_at_5"] == "Yes") / len(scored_hit_cases)
+        if scored_hit_cases
+        else 0.0
+    )
+    mrr = mean_reciprocal_rank(reciprocal_ranks)
+    print(f"Retrieval hit@{args.top_k}: {hit_rate:.2%} over {len(scored_hit_cases)} scored cases")
+    if mrr is not None:
+        print(f"Retrieval MRR@{args.top_k}: {mrr:.4f}")
     print(f"Saved benchmark JSONL: {output_jsonl.resolve()}")
     print(f"Saved benchmark CSV: {output_csv.resolve()}")
 
