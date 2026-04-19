@@ -100,6 +100,14 @@ def require_sentence_transformers():
     return SentenceTransformer
 
 
+def require_cross_encoder():
+    try:
+        from sentence_transformers import CrossEncoder
+    except ImportError as exc:
+        raise RuntimeError("sentence-transformers is required for cross-encoder reranking.") from exc
+    return CrossEncoder
+
+
 def require_qdrant():
     try:
         from qdrant_client import QdrantClient, models
@@ -700,5 +708,6 @@ __all__ = [
     "load_chunk_payloads",
     "make_qdrant_point_id",
     "normalize_reference_token",
+    "require_cross_encoder",
     "resolve_chunk_paths",
 ]

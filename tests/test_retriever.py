@@ -7,6 +7,7 @@ from qdrant_client import models
 from vn_labor_law_ai_assistant.retriever import (
     ARTICLE_REF_RE,
     DEFAULT_MAX_CONTEXT_CHARS,
+    DEFAULT_RERANKER_TOP_N,
     HybridRetriever,
     RetrievedRecord,
     RetrievalContext,
@@ -153,7 +154,34 @@ class RetrievalAssemblyTests(unittest.TestCase):
         self.assertEqual(len(selected), 1)
         self.assertEqual(selected[0].chunk_id, "chunk-1")
 
-    def test_format_context_for_prompt_truncates_first_oversized_block(self) -> None:
+    def test_select_contexts_for_prompt_respects_token_budget(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="chunk-1",
+                citation_text="Dieu 46",
+                text="mot hai ba bon nam sau bay tam chin muoi",
+                payload={},
+                score=1.0,
+                matched_chunk_ids=("chunk-1",),
+                matched_citations=("Dieu 46",),
+            ),
+            RetrievalContext(
+                chunk_id="chunk-2",
+                citation_text="Dieu 47",
+                text="mot hai ba bon nam sau bay tam chin muoi",
+                payload={},
+                score=0.9,
+                matched_chunk_ids=("chunk-2",),
+                matched_citations=("Dieu 47",),
+            ),
+        )
+
+        selected = select_contexts_for_prompt(contexts, max_contexts=6, max_chars=1000, max_tokens=20)
+
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0].chunk_id, "chunk-1")
+
+    def test_format_context_for_prompt_preserves_first_oversized_block_without_ellipsis(self) -> None:
         context = RetrievalContext(
             chunk_id="chunk-1",
             citation_text="Dieu 46",
@@ -166,10 +194,10 @@ class RetrievalAssemblyTests(unittest.TestCase):
 
         prompt = format_context_for_prompt((context,), max_chars=200)
 
-        self.assertLessEqual(len(prompt), 200)
+        self.assertGreater(len(prompt), 200)
         self.assertIn("[NGU CANH 1]", prompt)
         self.assertIn("Co so phap ly: Dieu 46", prompt)
-        self.assertTrue(prompt.endswith("..."))
+        self.assertFalse(prompt.endswith("..."))
 
     def test_build_context_block_omits_redundant_match_section(self) -> None:
         context = RetrievalContext(
@@ -555,6 +583,44 @@ class RetrievalAssemblyTests(unittest.TestCase):
         )
 
         self.assertEqual(reranked[0].chunk_id, "dieu-46-k1")
+
+    def test_semantic_rerank_hits_promotes_cross_encoder_preferred_candidate(self) -> None:
+        retriever = HybridRetriever.__new__(HybridRetriever)
+        retriever._reranker_model_name = "BAAI/bge-reranker-v2-m3"
+        retriever._reranker_top_n = DEFAULT_RERANKER_TOP_N
+
+        hits = (
+            SearchHit("chunk-a", "point-a", 0.9, "Dieu 41", {"chunk_id": "chunk-a"}),
+            SearchHit("chunk-b", "point-b", 0.8, "Dieu 35", {"chunk_id": "chunk-b"}),
+            SearchHit("chunk-c", "point-c", 0.7, "Dieu 46", {"chunk_id": "chunk-c"}),
+        )
+
+        retriever._predict_reranker_scores = lambda query, candidate_hits, direct_records: {
+            "chunk-a": 0.1,
+            "chunk-b": 0.95,
+            "chunk-c": 0.2,
+        }
+
+        reranked = HybridRetriever._semantic_rerank_hits(retriever, "Cau hoi", hits, {})
+
+        self.assertEqual(reranked[0].chunk_id, "chunk-b")
+        self.assertEqual(reranked[1].chunk_id, "chunk-a")
+        self.assertEqual(reranked[2].chunk_id, "chunk-c")
+        self.assertGreater(reranked[0].score, reranked[1].score)
+
+    def test_semantic_rerank_hits_keeps_order_when_disabled(self) -> None:
+        retriever = HybridRetriever.__new__(HybridRetriever)
+        retriever._reranker_model_name = ""
+        retriever._reranker_top_n = DEFAULT_RERANKER_TOP_N
+
+        hits = (
+            SearchHit("chunk-a", "point-a", 0.9, "Dieu 41", {"chunk_id": "chunk-a"}),
+            SearchHit("chunk-b", "point-b", 0.8, "Dieu 35", {"chunk_id": "chunk-b"}),
+        )
+
+        reranked = HybridRetriever._semantic_rerank_hits(retriever, "Cau hoi", hits, {})
+
+        self.assertEqual(reranked, hits)
 
 
 if __name__ == "__main__":

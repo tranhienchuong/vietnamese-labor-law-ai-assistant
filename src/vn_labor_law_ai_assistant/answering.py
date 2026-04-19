@@ -5,11 +5,15 @@ import json
 import re
 from typing import Sequence
 
+from .corpus_pipeline import normalize_for_matching
+from .indexing import extract_legal_hint_tokens
 from .retriever import (
     DEFAULT_MAX_CONTEXT_CHARS,
+    DEFAULT_MAX_CONTEXT_TOKENS,
     RetrievalContext,
     dedupe_preserve_order,
     format_context_for_prompt,
+    select_contexts_for_prompt,
 )
 
 
@@ -20,9 +24,12 @@ Quy tac bat buoc:
 2. Khong duoc tu bia so Dieu, khoan, diem hoac ten van ban.
 3. Neu CONTEXT chua du de ket luan chac chan, phai noi ro la chua du can cu.
 4. Truong legal_basis chi duoc dung cac chuoi citation nam trong danh sach ALLOWED_CITATIONS.
+4a. Phai sao chep citation tu ALLOWED_CITATIONS, khong tu rut gon hoac che lai citation.
+4b. Neu co citation cu the hon (vi du co diem a/b/c) thi uu tien citation cu the do.
 5. Khong duoc chep cau chu noi dung luat vao legal_basis. legal_basis chi chua citation_text.
 6. Tra loi bang tieng Viet, ngan gon va thuc te.
 7. Neu insufficient_context = true thi legal_basis phai la mang rong.
+8. Cau tra loi phai theo mau: ket luan ngan gon -> can cu phap ly -> dien giai rat ngan neu can.
 
 Ban phai tra dung JSON voi cau truc:
 {
@@ -30,6 +37,39 @@ Ban phai tra dung JSON voi cau truc:
   "legal_basis": ["citation_text 1", "citation_text 2"],
   "insufficient_context": false,
   "notes": "neu can thi ghi them 1 cau ngan, neu khong thi de chuoi rong"
+}
+"""
+
+ANSWER_FEW_SHOT_PROMPT = """VI DU DINH DANG:
+
+Vi du 1:
+- Cau hoi: Nguoi lao dong hop dong khong xac dinh thoi han co duoc nghi viec khong?
+- Cau tra loi tot:
+{
+  "answer": "Co. Nguoi lao dong duoc don phuong cham dut hop dong, nhung phai bao truoc theo quy dinh neu context xac nhan dieu do.",
+  "legal_basis": ["Bo luat so 45/2019/QH14, Dieu 35, khoan 1, diem a"],
+  "insufficient_context": false,
+  "notes": ""
+}
+
+Vi du 2:
+- Cau hoi: Tro cap thoi viec tinh the nao?
+- Cau tra loi tot:
+{
+  "answer": "Tro cap thoi viec duoc tinh theo thoi gian lam viec du hop le va tien luong binh quan theo context da cung cap.",
+  "legal_basis": ["Bo luat so 45/2019/QH14, Dieu 46, khoan 1", "Bo luat so 45/2019/QH14, Dieu 46, khoan 2"],
+  "insufficient_context": false,
+  "notes": ""
+}
+
+Vi du 3:
+- Cau hoi: Toi co duoc nghi ngay khong?
+- Neu context khong xac dinh du thong tin:
+{
+  "answer": "Chua du can cu de ket luan vi context hien tai chua xac dinh ro truong hop ap dung.",
+  "legal_basis": [],
+  "insufficient_context": true,
+  "notes": "Can doi chieu them dieu kien cu the trong tinh huong thuc te."
 }
 """
 
@@ -59,7 +99,76 @@ class ParsedAnswer:
 
 
 def build_allowed_citations(contexts: Sequence[RetrievalContext]) -> tuple[str, ...]:
-    return dedupe_preserve_order([context.citation_text for context in contexts if context.citation_text])
+    allowed_citations: list[str] = []
+    for context in contexts:
+        allowed_citations.extend(
+            citation
+            for citation in context.matched_citations
+            if str(citation or "").strip()
+        )
+        if context.citation_text:
+            allowed_citations.append(context.citation_text)
+    return dedupe_preserve_order(allowed_citations)
+
+
+def citation_overlap_matches(allowed_citation: str, requested_citation: str) -> bool:
+    allowed_normalized = normalize_for_matching(allowed_citation)
+    requested_normalized = normalize_for_matching(requested_citation)
+    if not allowed_normalized or not requested_normalized:
+        return False
+    if allowed_normalized == requested_normalized:
+        return True
+
+    allowed_tokens = set(extract_legal_hint_tokens(allowed_citation))
+    requested_tokens = set(extract_legal_hint_tokens(requested_citation))
+    if allowed_tokens and requested_tokens:
+        if not (
+            allowed_tokens.issubset(requested_tokens)
+            or requested_tokens.issubset(allowed_tokens)
+        ):
+            return False
+        return (
+            allowed_normalized in requested_normalized
+            or requested_normalized in allowed_normalized
+        )
+
+    return (
+        allowed_normalized in requested_normalized
+        or requested_normalized in allowed_normalized
+    )
+
+
+def canonicalize_citation(
+    requested_citation: str,
+    allowed_citations: Sequence[str],
+) -> str | None:
+    requested_normalized = normalize_for_matching(requested_citation)
+    requested_tokens = tuple(extract_legal_hint_tokens(requested_citation))
+
+    for allowed_citation in allowed_citations:
+        if normalize_for_matching(allowed_citation) == requested_normalized:
+            return allowed_citation
+
+    fuzzy_matches: list[tuple[int, int, int, str]] = []
+    for index, allowed_citation in enumerate(allowed_citations):
+        if not citation_overlap_matches(allowed_citation, requested_citation):
+            continue
+
+        allowed_tokens = tuple(extract_legal_hint_tokens(allowed_citation))
+        fuzzy_matches.append(
+            (
+                abs(len(allowed_tokens) - len(requested_tokens)),
+                abs(len(normalize_for_matching(allowed_citation)) - len(requested_normalized)),
+                index,
+                allowed_citation,
+            )
+        )
+
+    if not fuzzy_matches:
+        return None
+
+    fuzzy_matches.sort()
+    return fuzzy_matches[0][3]
 
 
 def build_messages(
@@ -67,11 +176,22 @@ def build_messages(
     contexts: Sequence[RetrievalContext],
     *,
     max_context_chars: int = DEFAULT_MAX_CONTEXT_CHARS,
+    max_context_tokens: int | None = DEFAULT_MAX_CONTEXT_TOKENS,
 ) -> list[dict[str, str]]:
-    allowed_citations = build_allowed_citations(contexts)
-    context_text = format_context_for_prompt(contexts, max_chars=max_context_chars)
+    selected_contexts = select_contexts_for_prompt(
+        contexts,
+        max_chars=max_context_chars,
+        max_tokens=max_context_tokens,
+    )
+    allowed_citations = build_allowed_citations(selected_contexts)
+    context_text = format_context_for_prompt(
+        selected_contexts,
+        max_chars=max_context_chars,
+        max_tokens=max_context_tokens,
+    )
     user_prompt = "\n\n".join(
         [
+            ANSWER_FEW_SHOT_PROMPT,
             f"Cau hoi:\n{question.strip()}",
             "ALLOWED_CITATIONS:",
             "\n".join(f"- {citation}" for citation in allowed_citations),
@@ -91,14 +211,19 @@ def sanitize_legal_basis(
     if not legal_basis:
         return ()
 
-    allowed_set = set(build_allowed_citations(contexts))
+    allowed_citations = build_allowed_citations(contexts)
 
     if isinstance(legal_basis, str):
         requested = [legal_basis]
     else:
         requested = [str(item) for item in legal_basis]
 
-    filtered = [citation for citation in requested if citation in allowed_set]
+    filtered: list[str] = []
+    for citation in requested:
+        canonical_citation = canonicalize_citation(citation, allowed_citations)
+        if canonical_citation is None:
+            continue
+        filtered.append(canonical_citation)
     return dedupe_preserve_order(filtered)
 
 
@@ -169,6 +294,8 @@ __all__ = [
     "ParsedAnswer",
     "build_allowed_citations",
     "build_messages",
+    "canonicalize_citation",
+    "citation_overlap_matches",
     "extract_json_candidate",
     "parse_answer_payload",
     "sanitize_legal_basis",

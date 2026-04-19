@@ -34,6 +34,7 @@ eval/
   results/    # ket qua benchmark local
 scripts/
   ask.py
+  analyze_benchmark_failures.py
   build_corpus.py
   build_index.py
   import_benchmark.py
@@ -64,10 +65,13 @@ tests/
 .venv\Scripts\python.exe scripts\import_benchmark.py C:\Users\tranh\Downloads\golden_benchmark_100_answered_v1.xlsx
 .venv\Scripts\python.exe scripts\run_benchmark.py --limit 10
 .venv\Scripts\python.exe scripts\run_benchmark.py --provider ollama --model qwen3:4b --limit 10
+.venv\Scripts\python.exe scripts\run_benchmark.py --provider ollama --model qwen3:4b --reranker-model BAAI/bge-reranker-v2-m3 --limit 10
 .venv\Scripts\python.exe scripts\run_benchmark.py --provider ollama --model qwen3:4b --no-judge --limit 10
 .venv\Scripts\python.exe scripts\run_benchmark.py --provider groq --model qwen/qwen3-32b --limit 10
+.venv\Scripts\python.exe scripts\analyze_benchmark_failures.py eval\results\benchmark_ollama-qwen3-4b_20260419_175749.csv --failure-type retrieval_miss --limit 5
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 .venv\Scripts\python.exe scripts\ask.py --retrieve-only "tro cap thoi viec tinh the nao theo Dieu 46?"
+.venv\Scripts\python.exe scripts\ask.py --retrieve-only --reranker-model BAAI/bge-reranker-v2-m3 "tro cap thoi viec tinh the nao theo Dieu 46?"
 .venv\Scripts\python.exe scripts\ask.py --provider ollama --model qwen3:4b "tro cap thoi viec tinh the nao theo Dieu 46?"
 .venv\Scripts\python.exe scripts\ask.py --provider groq --model qwen/qwen3-32b "tro cap thoi viec tinh the nao theo Dieu 46?"
 .venv\Scripts\python.exe test_ollama.py
@@ -83,6 +87,8 @@ Bien moi truong:
 - `LLM_PROVIDER`: provider mac dinh cho `scripts/ask.py` va `scripts/run_benchmark.py`.
 - `BENCHMARK_JUDGE_PROVIDER`: provider mac dinh cho LLM judge trong `scripts/run_benchmark.py` khi co `--model` va khong dung `--no-judge`. Mac dinh la `groq`.
 - `BENCHMARK_JUDGE_MODEL`: model mac dinh cho LLM judge. Neu de trong, script se lay model mac dinh cua `BENCHMARK_JUDGE_PROVIDER`.
+- `RERANKER_MODEL`: model cross-encoder reranker tuy chon, vi du `BAAI/bge-reranker-v2-m3`. De trong neu muon tat semantic reranking.
+- `RERANKER_TOP_N`: so candidate top dau duoc dua qua reranker. Mac dinh la `24`.
 
 ## Dau ra cua pipeline
 
@@ -112,8 +118,11 @@ Lenh `scripts/ask.py` se:
 
 - route cau hoi thanh cac metadata heuristic nhu `actor`, `topic`, `issue_type`, `dieu/khoan/diem`;
 - chay hybrid search `dense + sparse + RRF` trong Qdrant;
+- co the chay them semantic re-ranker cross-encoder neu truyen `--reranker-model`;
 - dedup small-to-big context qua `parent_chunk_id` bang SQLite;
+- uu tien giu nguyen tung block context va loai bot block diem thap theo budget token/char thay vi cat cut ngang dieu khoan;
 - gui context da loc cho provider LLM duoc chon (`ollama` hoac `groq`) voi guardrails citation;
+- bo sung few-shot prompting de model format cau tra loi on dinh hon;
 - chi chap nhan `legal_basis` nam trong danh sach `citation_text` da retrieve.
 
 ## Evaluation
@@ -128,9 +137,11 @@ Lenh `scripts/run_benchmark.py` se:
 
 - tai benchmark JSONL da import;
 - chay retriever hien tai tren tung cau hoi;
+- co the bat semantic re-ranker cross-encoder bang `--reranker-model` de thu nghiem giam false negative o retrieval;
 - ghi `retrieval_hit_at_5` va cac citation retrieve duoc;
 - neu co `--model`, chay them generation qua provider da chon va luu output de review;
 - mac dinh se bat them LLM-as-a-judge bang provider/model rieng de cham `answer_correct`, `clarity_score_1_5`, `format_score_1_5`, `final_score_10`;
+- judge co them rubric `groundedness_score_1_5` de phat manh cau tra loi vuot qua evidence va citation duoc cap;
 - neu muon chi sinh cau tra loi ma khong cham bang judge, them `--no-judge`;
 - ghi ket qua ra `eval/results/*.jsonl` va `eval/results/*.csv`, trong do ten file co kem `provider:model` da duoc slugify de de tach tung run.
 

@@ -351,6 +351,7 @@ class EvaluationTests(unittest.TestCase):
             """
             {
               "answer_correct": "partial",
+              "groundedness_score_1_5": 2,
               "clarity_score_1_5": 4,
               "format_score_1_5": 5,
               "final_score_10": 7,
@@ -362,6 +363,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertIsNotNone(score)
         assert score is not None
         self.assertEqual(score.answer_correct, "partial")
+        self.assertEqual(score.groundedness_score_1_5, 2)
         self.assertEqual(score.clarity_score_1_5, 4)
         self.assertEqual(score.format_score_1_5, 5)
         self.assertEqual(score.final_score_10, 7)

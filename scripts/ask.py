@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import sys
 
@@ -13,6 +14,8 @@ from vn_labor_law_ai_assistant.llm import (
 )
 from vn_labor_law_ai_assistant.retriever import (
     DEFAULT_MAX_CONTEXT_CHARS,
+    DEFAULT_MAX_CONTEXT_TOKENS,
+    DEFAULT_RERANKER_TOP_N,
     HybridRetriever,
     format_intent_summary,
     format_context_for_prompt,
@@ -67,6 +70,29 @@ def parse_args() -> argparse.Namespace:
         help=f"Hard character budget for assembled prompt context (default: {DEFAULT_MAX_CONTEXT_CHARS}).",
     )
     parser.add_argument(
+        "--max-context-tokens",
+        type=int,
+        default=DEFAULT_MAX_CONTEXT_TOKENS,
+        help=(
+            "Soft token budget for assembled prompt context. Lower-ranked context blocks are "
+            f"dropped before truncation (default: {DEFAULT_MAX_CONTEXT_TOKENS})."
+        ),
+    )
+    parser.add_argument(
+        "--reranker-model",
+        default=os.getenv("RERANKER_MODEL", "").strip(),
+        help=(
+            "Optional cross-encoder reranker model applied after Hybrid Search, e.g. "
+            "`BAAI/bge-reranker-v2-m3`. Leave empty to disable."
+        ),
+    )
+    parser.add_argument(
+        "--reranker-top-n",
+        type=int,
+        default=max(1, int(os.getenv("RERANKER_TOP_N", str(DEFAULT_RERANKER_TOP_N)))),
+        help=f"Number of top candidates sent to the reranker (default: {DEFAULT_RERANKER_TOP_N}).",
+    )
+    parser.add_argument(
         "--retrieve-only",
         action="store_true",
         help="Only print retrieved context and skip the LLM generation step.",
@@ -107,7 +133,11 @@ def main() -> None:
     if not question:
         raise SystemExit("Cau hoi khong duoc de trong.")
 
-    retriever = HybridRetriever(index_path=args.index_path)
+    retriever = HybridRetriever(
+        index_path=args.index_path,
+        reranker_model=args.reranker_model,
+        reranker_top_n=args.reranker_top_n,
+    )
     try:
         result = retriever.retrieve(
             question,
@@ -116,6 +146,8 @@ def main() -> None:
         )
 
         print(f"Query routing: {format_intent_summary(result.intent)}")
+        if retriever.reranker_enabled:
+            print(f"Semantic reranker: {retriever.reranker_model_name} (top {args.reranker_top_n})")
 
         if args.show_hits:
             print("\nTop hits:")
@@ -126,6 +158,7 @@ def main() -> None:
             result.contexts,
             max_contexts=args.max_contexts,
             max_chars=args.max_context_chars,
+            max_tokens=args.max_context_tokens,
         )
         if not contexts:
             print("\nKhong tim thay ngu canh phu hop trong index.")
@@ -137,13 +170,24 @@ def main() -> None:
 
         if args.retrieve_only:
             print("\n----- CONTEXT -----")
-            print(format_context_for_prompt(contexts, max_chars=args.max_context_chars))
+            print(
+                format_context_for_prompt(
+                    contexts,
+                    max_chars=args.max_context_chars,
+                    max_tokens=args.max_context_tokens,
+                )
+            )
             return
 
         response = chat_completion(
             provider=args.provider,
             model=args.model,
-            messages=build_messages(question, contexts, max_context_chars=args.max_context_chars),
+            messages=build_messages(
+                question,
+                contexts,
+                max_context_chars=args.max_context_chars,
+                max_context_tokens=args.max_context_tokens,
+            ),
             temperature=0,
         )
         parsed = parse_answer_payload(response.content, contexts)

@@ -3,7 +3,10 @@ from __future__ import annotations
 import unittest
 
 from vn_labor_law_ai_assistant.answering import (
+    build_allowed_citations,
     build_messages,
+    canonicalize_citation,
+    citation_overlap_matches,
     extract_json_candidate,
     parse_answer_payload,
     sanitize_legal_basis,
@@ -48,6 +51,87 @@ class AnsweringTests(unittest.TestCase):
 
         self.assertEqual(sanitize_legal_basis([], contexts), ())
         self.assertEqual(sanitize_legal_basis(None, contexts), ())
+
+    def test_build_allowed_citations_includes_matched_child_citations(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="ctx-35",
+                citation_text="Bo luat so 45/2019/QH 14, Dieu 35, khoan 1",
+                text="Noi dung phap ly",
+                payload={},
+                score=1.0,
+                matched_chunk_ids=("ctx-35-point-a",),
+                matched_citations=("Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a",),
+            ),
+        )
+
+        allowed_citations = build_allowed_citations(contexts)
+
+        self.assertEqual(
+            allowed_citations,
+            (
+                "Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a",
+                "Bo luat so 45/2019/QH 14, Dieu 35, khoan 1",
+            ),
+        )
+
+    def test_citation_overlap_matches_parent_and_child_citation(self) -> None:
+        self.assertTrue(
+            citation_overlap_matches(
+                "Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a",
+                "Bo luat so 45/2019/QH 14, Dieu 35, khoan 1",
+            )
+        )
+        self.assertFalse(
+            citation_overlap_matches(
+                "Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a",
+                "Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem b",
+            )
+        )
+
+    def test_canonicalize_citation_prefers_closest_allowed_match(self) -> None:
+        allowed_citations = (
+            "Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a",
+            "Bo luat so 45/2019/QH 14, Dieu 35, khoan 1",
+        )
+
+        self.assertEqual(
+            canonicalize_citation(
+                "Bo luat so 45/2019/QH 14, Dieu 35, khoan 1",
+                allowed_citations,
+            ),
+            "Bo luat so 45/2019/QH 14, Dieu 35, khoan 1",
+        )
+        self.assertEqual(
+            canonicalize_citation(
+                "Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a",
+                allowed_citations,
+            ),
+            "Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a",
+        )
+
+    def test_sanitize_legal_basis_accepts_specific_child_citation_from_matched_hits(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="ctx-35",
+                citation_text="Bo luat so 45/2019/QH 14, Dieu 35, khoan 1",
+                text="Noi dung phap ly",
+                payload={},
+                score=1.0,
+                matched_chunk_ids=("ctx-35-point-a",),
+                matched_citations=("Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a",),
+            ),
+        )
+
+        legal_basis = sanitize_legal_basis(
+            ["Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a"],
+            contexts,
+        )
+
+        self.assertEqual(
+            legal_basis,
+            ("Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a",),
+        )
 
     def test_parse_answer_payload_does_not_invent_citations_when_model_returns_invalid_basis(self) -> None:
         contexts = (
@@ -118,6 +202,35 @@ class AnsweringTests(unittest.TestCase):
 
         self.assertFalse(parsed.insufficient_context)
         self.assertEqual(parsed.legal_basis, ("Bo luat so 45/2019/QH 14, Dieu 36, khoan 1",))
+
+    def test_parse_answer_payload_accepts_child_citation_listed_in_matched_citations(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="ctx-35",
+                citation_text="Bo luat so 45/2019/QH 14, Dieu 35, khoan 1",
+                text="Noi dung phap ly",
+                payload={},
+                score=1.0,
+                matched_chunk_ids=("ctx-35-point-a",),
+                matched_citations=("Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a",),
+            ),
+        )
+        raw_content = """
+        {
+          "answer": "Khong. Nguoi lao dong khong can ly do chinh dang khi don phuong cham dut hop dong trong truong hop nay.",
+          "legal_basis": ["Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a"],
+          "insufficient_context": false,
+          "notes": ""
+        }
+        """
+
+        parsed = parse_answer_payload(raw_content, contexts)
+
+        self.assertFalse(parsed.insufficient_context)
+        self.assertEqual(
+            parsed.legal_basis,
+            ("Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a",),
+        )
 
     def test_parse_answer_payload_rejects_valid_json_with_wrong_top_level_type(self) -> None:
         contexts = (make_context("Bo luat so 45/2019/QH 14, Dieu 36, khoan 1"),)
@@ -207,16 +320,25 @@ class AnsweringTests(unittest.TestCase):
         self.assertFalse(parsed.insufficient_context)
         self.assertEqual(parsed.legal_basis, ("Bo luat so 45/2019/QH 14, Dieu 36, khoan 1",))
 
-    def test_build_messages_respects_context_char_budget(self) -> None:
+    def test_build_messages_drops_lower_ranked_context_blocks_to_fit_budget(self) -> None:
         contexts = (
             RetrievalContext(
                 chunk_id="chunk-1",
                 citation_text="Bo luat so 45/2019/QH 14, Dieu 36, khoan 1",
-                text="A" * 500,
+                text="A" * 80,
                 payload={},
                 score=1.0,
                 matched_chunk_ids=("chunk-1",),
                 matched_citations=("Bo luat so 45/2019/QH 14, Dieu 36, khoan 1",),
+            ),
+            RetrievalContext(
+                chunk_id="chunk-2",
+                citation_text="Bo luat so 45/2019/QH 14, Dieu 36, khoan 2",
+                text="B" * 80,
+                payload={},
+                score=0.9,
+                matched_chunk_ids=("chunk-2",),
+                matched_citations=("Bo luat so 45/2019/QH 14, Dieu 36, khoan 2",),
             ),
         )
 
@@ -224,13 +346,16 @@ class AnsweringTests(unittest.TestCase):
             "Cau hoi mau?",
             contexts,
             max_context_chars=180,
+            max_context_tokens=200,
         )
 
         self.assertEqual(messages[0]["role"], "system")
         self.assertIn("Cau hoi:\nCau hoi mau?", messages[1]["content"])
         self.assertIn("CONTEXT:\n[NGU CANH 1]", messages[1]["content"])
+        self.assertIn("Dieu 36, khoan 1", messages[1]["content"])
+        self.assertNotIn("Dieu 36, khoan 2", messages[1]["content"])
         context_text = messages[1]["content"].split("CONTEXT:\n", 1)[1]
-        self.assertLessEqual(len(context_text), 180)
+        self.assertNotIn("...", context_text)
 
 
 if __name__ == "__main__":

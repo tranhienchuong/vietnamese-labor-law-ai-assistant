@@ -13,6 +13,7 @@ from .indexing import (
     SparseBM25Encoder,
     extract_legal_hint_tokens,
     load_sparse_encoder,
+    require_cross_encoder,
     require_qdrant,
     require_sentence_transformers,
 )
@@ -193,6 +194,7 @@ ISSUE_KEYWORDS = {
     ),
 }
 DEFAULT_MAX_CONTEXT_CHARS = 8000
+DEFAULT_MAX_CONTEXT_TOKENS = 1400
 CALCULATION_QUERY_HINTS = (
     "cach tinh",
     "duoc tinh",
@@ -248,6 +250,9 @@ RETIREMENT_CONTEXT_HINTS = (
     "nghi huu",
     "luong huu",
 )
+TOKEN_ESTIMATE_RE = re.compile(r"\S+")
+DEFAULT_RERANKER_TOP_N = 24
+RRF_K = 60.0
 
 
 @dataclass(frozen=True)
@@ -428,30 +433,45 @@ def build_context_block(context: RetrievalContext, index: int) -> str:
     return "\n".join(lines).strip()
 
 
+def estimate_token_count(text: str) -> int:
+    return len(TOKEN_ESTIMATE_RE.findall(text))
+
+
 def select_contexts_for_prompt(
     contexts: Sequence[RetrievalContext],
     *,
     max_contexts: int | None = None,
     max_chars: int = DEFAULT_MAX_CONTEXT_CHARS,
+    max_tokens: int | None = DEFAULT_MAX_CONTEXT_TOKENS,
 ) -> tuple[RetrievalContext, ...]:
     limited_contexts = contexts[:max_contexts] if max_contexts is not None else contexts
     selected: list[RetrievalContext] = []
     current_len = 0
+    current_tokens = 0
 
-    for index, context in enumerate(limited_contexts, start=1):
-        block = build_context_block(context, index)
+    for context in limited_contexts:
+        block = build_context_block(context, len(selected) + 1)
+        block_tokens = estimate_token_count(block)
         separator_len = 2 if selected else 0
-        remaining_chars = max_chars - current_len - separator_len
-        if remaining_chars <= 0:
+        next_len = current_len + separator_len + len(block)
+        next_tokens = current_tokens + block_tokens
+        exceeds_char_budget = max_chars > 0 and next_len > max_chars
+        exceeds_token_budget = max_tokens is not None and max_tokens > 0 and next_tokens > max_tokens
+
+        if selected and (exceeds_char_budget or exceeds_token_budget):
             break
 
-        if len(block) <= remaining_chars:
+        if not exceeds_char_budget and not exceeds_token_budget:
             selected.append(context)
-            current_len += separator_len + len(block)
+            current_len = next_len
+            current_tokens = next_tokens
             continue
 
+        # Preserve the highest-ranked block intact instead of truncating legal text mid-sentence.
         if not selected:
             selected.append(context)
+            current_len = next_len
+            current_tokens = next_tokens
         break
 
     return tuple(selected)
@@ -461,29 +481,17 @@ def format_context_for_prompt(
     contexts: Sequence[RetrievalContext],
     *,
     max_chars: int = DEFAULT_MAX_CONTEXT_CHARS,
+    max_tokens: int | None = DEFAULT_MAX_CONTEXT_TOKENS,
 ) -> str:
-    blocks: list[str] = []
-    current_len = 0
-
-    for index, context in enumerate(contexts, start=1):
-        block = build_context_block(context, index)
-        separator = "\n\n" if blocks else ""
-        remaining_chars = max_chars - current_len - len(separator)
-        if remaining_chars <= 0:
-            break
-
-        if len(block) <= remaining_chars:
-            blocks.append(block)
-            current_len += len(separator) + len(block)
-            continue
-
-        if not blocks:
-            truncated_block = block[:remaining_chars].rstrip()
-            if remaining_chars >= 3 and len(truncated_block) == remaining_chars:
-                truncated_block = truncated_block[:-3].rstrip() + "..."
-            if truncated_block:
-                blocks.append(truncated_block)
-        break
+    selected_contexts = select_contexts_for_prompt(
+        contexts,
+        max_chars=max_chars,
+        max_tokens=max_tokens,
+    )
+    blocks = [
+        build_context_block(context, index)
+        for index, context in enumerate(selected_contexts, start=1)
+    ]
 
     return "\n\n".join(blocks).strip()
 
@@ -494,6 +502,8 @@ class HybridRetriever:
         *,
         index_path: Path = Path("artifacts/index"),
         device: str | None = None,
+        reranker_model: str | None = None,
+        reranker_top_n: int = DEFAULT_RERANKER_TOP_N,
     ) -> None:
         self._manifest = load_manifest(index_path)
         self._device = device or str(self._manifest.get("device") or "cpu")
@@ -510,10 +520,21 @@ class HybridRetriever:
         qdrant_client_cls, self._qdrant_models = require_qdrant()
         self._qdrant = qdrant_client_cls(path=str(self._qdrant_path))
         self._dense_model = None
+        self._reranker_model_name = str(reranker_model or "").strip()
+        self._reranker_top_n = max(1, int(reranker_top_n))
+        self._reranker = None
 
     @property
     def manifest(self) -> dict[str, object]:
         return dict(self._manifest)
+
+    @property
+    def reranker_model_name(self) -> str:
+        return self._reranker_model_name
+
+    @property
+    def reranker_enabled(self) -> bool:
+        return bool(self._reranker_model_name)
 
     def close(self) -> None:
         self._qdrant.close()
@@ -524,6 +545,14 @@ class HybridRetriever:
             sentence_transformer_cls = require_sentence_transformers()
             self._dense_model = sentence_transformer_cls(self._dense_model_name, device=self._device)
         return self._dense_model
+
+    def _get_reranker(self):
+        if not self.reranker_enabled:
+            return None
+        if self._reranker is None:
+            cross_encoder_cls = require_cross_encoder()
+            self._reranker = cross_encoder_cls(self._reranker_model_name, device=self._device)
+        return self._reranker
 
     def _encode_dense_query(self, query: str) -> list[float]:
         model = self._get_dense_model()
@@ -831,6 +860,113 @@ class HybridRetriever:
             for adjusted_score, hit in ordered
         )
 
+    def _predict_reranker_scores(
+        self,
+        query: str,
+        hits: Sequence[SearchHit],
+        direct_records: dict[str, RetrievedRecord],
+    ) -> dict[str, float]:
+        reranker = self._get_reranker()
+        if reranker is None:
+            return {}
+
+        hit_records: list[tuple[SearchHit, RetrievedRecord]] = []
+        for hit in hits[: self._reranker_top_n]:
+            record = direct_records.get(hit.chunk_id)
+            if record is None:
+                continue
+            hit_records.append((hit, record))
+
+        if not hit_records:
+            return {}
+
+        pairs = [
+            (
+                query,
+                record.dense_text.strip() or f"{record.citation_text}\n{record.text}".strip(),
+            )
+            for _, record in hit_records
+        ]
+        raw_scores = reranker.predict(pairs, show_progress_bar=False)
+        if hasattr(raw_scores, "tolist"):
+            raw_scores = raw_scores.tolist()
+
+        def coerce_score(value: object) -> float:
+            if isinstance(value, (list, tuple)):
+                return float(value[0])
+            if hasattr(value, "item"):
+                return float(value.item())
+            return float(value)
+
+        return {
+            hit.chunk_id: coerce_score(score)
+            for (hit, _), score in zip(hit_records, raw_scores)
+        }
+
+    def _semantic_rerank_hits(
+        self,
+        query: str,
+        hits: Sequence[SearchHit],
+        direct_records: dict[str, RetrievedRecord],
+    ) -> tuple[SearchHit, ...]:
+        if not self.reranker_enabled:
+            return tuple(hits)
+
+        candidate_hits = tuple(hits[: self._reranker_top_n])
+        if not candidate_hits:
+            return tuple(hits)
+
+        semantic_scores = self._predict_reranker_scores(query, candidate_hits, direct_records)
+        if not semantic_scores:
+            return tuple(hits)
+
+        heuristic_rank = {hit.chunk_id: rank for rank, hit in enumerate(candidate_hits, start=1)}
+        semantic_rank = {
+            hit.chunk_id: rank
+            for rank, hit in enumerate(
+                sorted(
+                    candidate_hits,
+                    key=lambda current_hit: (
+                        -semantic_scores.get(current_hit.chunk_id, float("-inf")),
+                        -current_hit.score,
+                        current_hit.citation_text,
+                    ),
+                ),
+                start=1,
+            )
+        }
+
+        def fused_rrf_score(hit: SearchHit) -> float:
+            return (
+                1.0 / (RRF_K + heuristic_rank[hit.chunk_id])
+                + 1.0 / (RRF_K + semantic_rank[hit.chunk_id])
+            )
+
+        fused_candidates = sorted(
+            candidate_hits,
+            key=lambda hit: (
+                -fused_rrf_score(hit),
+                -semantic_scores.get(hit.chunk_id, float("-inf")),
+                -hit.score,
+                hit.citation_text,
+            ),
+        )
+
+        max_existing_score = max((hit.score for hit in hits), default=0.0)
+        score_step = 1e-4
+        reranked_candidates = tuple(
+            SearchHit(
+                chunk_id=hit.chunk_id,
+                qdrant_point_id=hit.qdrant_point_id,
+                score=max_existing_score + 1.0 - (rank * score_step),
+                citation_text=hit.citation_text,
+                payload=hit.payload,
+            )
+            for rank, hit in enumerate(fused_candidates)
+        )
+        remainder = tuple(hits[len(candidate_hits) :])
+        return reranked_candidates + remainder
+
     def _assemble_contexts(self, hits: Sequence[SearchHit]) -> tuple[RetrievalContext, ...]:
         direct_ids = [hit.chunk_id for hit in hits]
         direct_records = self._fetch_records(direct_ids)
@@ -959,7 +1095,8 @@ class HybridRetriever:
             for point in response.points
         )
         direct_records = self._fetch_records([hit.chunk_id for hit in hits])
-        hits = self._rerank_hits(hits, intent, direct_records)[:top_k]
+        hits = self._rerank_hits(hits, intent, direct_records)
+        hits = self._semantic_rerank_hits(query, hits, direct_records)[:top_k]
         contexts = self._assemble_contexts(hits)
         return RetrievalResult(
             query=query,
@@ -979,6 +1116,9 @@ __all__ = [
     "build_context_block",
     "dedupe_preserve_order",
     "DEFAULT_MAX_CONTEXT_CHARS",
+    "DEFAULT_MAX_CONTEXT_TOKENS",
+    "DEFAULT_RERANKER_TOP_N",
+    "estimate_token_count",
     "format_context_for_prompt",
     "format_intent_summary",
     "load_manifest",

@@ -24,6 +24,7 @@ RESULTS_COLUMNS = (
     "answer_correct",
     "hallucination_flag",
     "abstention_correct",
+    "groundedness_score_1_5",
     "clarity_score_1_5",
     "format_score_1_5",
     "final_score_10",
@@ -47,6 +48,7 @@ JUDGE_JSON_SCHEMA = {
             "type": "string",
             "enum": ["yes", "partial", "no"],
         },
+        "groundedness_score_1_5": {"type": "integer", "minimum": 1, "maximum": 5},
         "clarity_score_1_5": {"type": "integer", "minimum": 1, "maximum": 5},
         "format_score_1_5": {"type": "integer", "minimum": 1, "maximum": 5},
         "final_score_10": {"type": "integer", "minimum": 1, "maximum": 10},
@@ -54,6 +56,7 @@ JUDGE_JSON_SCHEMA = {
     },
     "required": [
         "answer_correct",
+        "groundedness_score_1_5",
         "clarity_score_1_5",
         "format_score_1_5",
         "final_score_10",
@@ -80,6 +83,30 @@ Lưu ý:
 - Nếu benchmark yêu cầu abstain và GENERATED_ANSWER từ chối hợp lý, không nên chấm thấp chỉ vì thiếu kết luận.
 - Nếu GENERATED_ANSWER chứa khẳng định vượt quá GOLD_ANSWER, phải trừ điểm.
 - Trả đúng JSON theo schema."""
+
+JUDGE_SYSTEM_PROMPT = """Ban la giam khao benchmark cho tro ly phap ly lao dong.
+
+Hay so sanh GENERATED_ANSWER voi GOLD_ANSWER va cham rat nghiem khac.
+
+Tieu chi:
+1. answer_correct:
+- yes: tra loi dung y chinh va khong co sai sot phap ly dang ke.
+- partial: dung mot phan nhung thieu y quan trong, qua chung chung, hoac co loi nhe.
+- no: sai trong yeu, mau thuan voi dap an chuan, hoac lac de.
+2. groundedness_score_1_5:
+- 5: moi khang dinh phap ly deu bam sat EXPECTED_CITATIONS_IN_SCOPE va khong vuot qua RETRIEVED_CITATIONS.
+- 3: co y dung nhung van con dien giai rong hon evidence duoc cap.
+- 1: co khang dinh phap ly, ngoai le, hoac citation khong duoc ho tro boi evidence duoc cap.
+3. clarity_score_1_5: do mach lac, de hieu, ngan gon dung muc.
+4. format_score_1_5: dung format tra loi ngan gon, co cau truc hop ly, khong lan man.
+5. final_score_10: diem tong hop. Neu groundedness_score_1_5 <= 2 thi phai tru diem nang.
+6. comments: toi da 2 cau, neu ro diem manh va diem yeu chinh.
+
+Luu y:
+- Chi duoc cham dua tren thong tin duoc cung cap trong prompt nay.
+- Neu benchmark yeu cau abstain va GENERATED_ANSWER tu choi hop ly, khong nen cham thap chi vi thieu ket luan.
+- Neu GENERATED_ANSWER dua ra thong tin phap ly nam ngoai EXPECTED_CITATIONS_IN_SCOPE hoac trai voi RETRIEVED_CITATIONS, phai coi do la groundedness thap.
+- Tra dung JSON theo schema."""
 
 LEGAL_ARTICLE_RE = re.compile(r"\bdieu\s+(?P<value>\d+[a-z]?)")
 LEGAL_CLAUSE_RE = re.compile(r"\bkhoan\s+(?P<value>\d+)")
@@ -164,6 +191,7 @@ class BenchmarkCase:
 @dataclass(frozen=True)
 class JudgeScore:
     answer_correct: str
+    groundedness_score_1_5: int
     clarity_score_1_5: int
     format_score_1_5: int
     final_score_10: int
@@ -658,6 +686,7 @@ def build_judge_messages(
             f"CASE_SCOPE:\n{case_scope}",
             "EXPECTED_CITATIONS_IN_SCOPE:",
             "\n".join(f"- {citation}" for citation in expected_citations_scoped) or "-",
+            "Judge chi duoc dua tren evidence duoc cap trong prompt nay.",
             "RETRIEVED_CITATIONS:",
             "\n".join(f"- {citation}" for citation in retrieved_citations) or "-",
             f"GENERATED_ANSWER:\n{generated_answer.strip()}",
@@ -704,17 +733,24 @@ def parse_judge_payload(raw_content: str) -> JudgeScore | None:
         return None
 
     try:
+        groundedness_score = int(payload["groundedness_score_1_5"])
         clarity_score = int(payload["clarity_score_1_5"])
         format_score = int(payload["format_score_1_5"])
         final_score = int(payload["final_score_10"])
     except (KeyError, TypeError, ValueError):
         return None
 
-    if not (1 <= clarity_score <= 5 and 1 <= format_score <= 5 and 1 <= final_score <= 10):
+    if not (
+        1 <= groundedness_score <= 5
+        and 1 <= clarity_score <= 5
+        and 1 <= format_score <= 5
+        and 1 <= final_score <= 10
+    ):
         return None
 
     return JudgeScore(
         answer_correct=answer_correct,
+        groundedness_score_1_5=groundedness_score,
         clarity_score_1_5=clarity_score,
         format_score_1_5=format_score,
         final_score_10=final_score,

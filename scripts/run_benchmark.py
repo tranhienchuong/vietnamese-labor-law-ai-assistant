@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+import os
 from pathlib import Path
 import re
 import sys
@@ -40,6 +41,8 @@ from vn_labor_law_ai_assistant.llm import (
 )
 from vn_labor_law_ai_assistant.retriever import (
     DEFAULT_MAX_CONTEXT_CHARS,
+    DEFAULT_MAX_CONTEXT_TOKENS,
+    DEFAULT_RERANKER_TOP_N,
     HybridRetriever,
     select_contexts_for_prompt,
 )
@@ -90,6 +93,29 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_MAX_CONTEXT_CHARS,
         help=f"Hard character budget for prompt context (default: {DEFAULT_MAX_CONTEXT_CHARS}).",
+    )
+    parser.add_argument(
+        "--max-context-tokens",
+        type=int,
+        default=DEFAULT_MAX_CONTEXT_TOKENS,
+        help=(
+            "Soft token budget for prompt context. Lower-ranked context blocks are dropped "
+            f"before truncating text (default: {DEFAULT_MAX_CONTEXT_TOKENS})."
+        ),
+    )
+    parser.add_argument(
+        "--reranker-model",
+        default=os.getenv("RERANKER_MODEL", "").strip(),
+        help=(
+            "Optional cross-encoder reranker model applied after Hybrid Search, e.g. "
+            "`BAAI/bge-reranker-v2-m3`. Leave empty to disable."
+        ),
+    )
+    parser.add_argument(
+        "--reranker-top-n",
+        type=int,
+        default=max(1, int(os.getenv("RERANKER_TOP_N", str(DEFAULT_RERANKER_TOP_N)))),
+        help=f"Number of top candidates sent to the reranker (default: {DEFAULT_RERANKER_TOP_N}).",
     )
     parser.add_argument(
         "--limit",
@@ -173,6 +199,7 @@ def build_result_row(
         "answer_correct": "",
         "hallucination_flag": "",
         "abstention_correct": "",
+        "groundedness_score_1_5": "",
         "clarity_score_1_5": "",
         "format_score_1_5": "",
         "final_score_10": "",
@@ -245,7 +272,11 @@ def main() -> None:
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    retriever = HybridRetriever(index_path=args.index_path)
+    retriever = HybridRetriever(
+        index_path=args.index_path,
+        reranker_model=args.reranker_model,
+        reranker_top_n=args.reranker_top_n,
+    )
     rows: list[dict[str, object]] = []
     model_version = provider_model_label(args.provider, args.model) if args.model else "retrieval-only"
     output_stem = f"benchmark_{slugify_model_version(model_version)}_{timestamp}"
@@ -264,6 +295,10 @@ def main() -> None:
     )
 
     try:
+        if retriever.reranker_enabled:
+            print(f"Semantic reranker: {retriever.reranker_model_name} (top {args.reranker_top_n})")
+        else:
+            print("Semantic reranker: disabled")
         if args.model:
             print(f"Answer model: {provider_model_label(args.provider, args.model)}")
             if judge_enabled:
@@ -317,6 +352,7 @@ def main() -> None:
             abstention_correct = ""
             hallucination_flag = ""
             answer_correct = ""
+            groundedness_score = ""
             clarity_score = ""
             format_score = ""
             final_score = ""
@@ -327,6 +363,7 @@ def main() -> None:
                     retrieval_result.contexts,
                     max_contexts=args.max_contexts,
                     max_chars=args.max_context_chars,
+                    max_tokens=args.max_context_tokens,
                 )
                 response = chat_completion(
                     provider=args.provider,
@@ -335,6 +372,7 @@ def main() -> None:
                         case.question,
                         contexts,
                         max_context_chars=args.max_context_chars,
+                        max_context_tokens=args.max_context_tokens,
                     ),
                     temperature=0,
                     json_schema_name="legal_answer",
@@ -351,14 +389,6 @@ def main() -> None:
                 abstention_correct = (
                     "yes" if parsed.insufficient_context == case.abstain_required else "no"
                 )
-                if citation_correct == "na":
-                    hallucination_flag = "na"
-                else:
-                    hallucination_flag = (
-                        "yes"
-                        if (not parsed.insufficient_context and citation_correct == "no")
-                        else "no"
-                    )
 
                 if judge_enabled:
                     judge_response = chat_completion(
@@ -380,12 +410,26 @@ def main() -> None:
                     judged = parse_judge_payload(judge_response.content)
                     if judged is not None:
                         answer_correct = judged.answer_correct
+                        groundedness_score = judged.groundedness_score_1_5
                         clarity_score = judged.clarity_score_1_5
                         format_score = judged.format_score_1_5
                         final_score = judged.final_score_10
                         judge_comment = judged.comments
                     else:
                         judge_comment = "Judge model did not return valid JSON."
+
+                if citation_correct == "na":
+                    hallucination_flag = "na"
+                else:
+                    likely_hallucinated = not parsed.insufficient_context and citation_correct == "no"
+                    if (
+                        judge_enabled
+                        and groundedness_score != ""
+                        and not parsed.insufficient_context
+                        and int(groundedness_score) <= 2
+                    ):
+                        likely_hallucinated = True
+                    hallucination_flag = "yes" if likely_hallucinated else "no"
 
             row = build_result_row(
                 case=case,
@@ -408,6 +452,7 @@ def main() -> None:
                 row["answer_correct"] = answer_correct
                 row["abstention_correct"] = abstention_correct
                 row["hallucination_flag"] = hallucination_flag
+                row["groundedness_score_1_5"] = groundedness_score
                 row["clarity_score_1_5"] = clarity_score
                 row["format_score_1_5"] = format_score
                 row["final_score_10"] = final_score
