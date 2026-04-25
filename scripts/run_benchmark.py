@@ -13,6 +13,7 @@ from vn_labor_law_ai_assistant.evaluation import (
     BenchmarkCase,
     JUDGE_JSON_SCHEMA,
     build_judge_messages,
+    compute_final_score_10,
     document_families_from_chunk_paths,
     expected_citations,
     expected_citation_scope,
@@ -23,8 +24,10 @@ from vn_labor_law_ai_assistant.evaluation import (
     mean_reciprocal_rank,
     parse_judge_payload,
     reciprocal_rank,
+    result_columns,
     retrieval_hit_at_k,
-    score_citation_correctness_for_scope,
+    score_citation_article_correctness_for_scope,
+    score_citation_document_correctness_for_scope,
     write_results_csv,
     write_results_jsonl,
 )
@@ -167,6 +170,7 @@ def build_result_row(
     *,
     case: BenchmarkCase,
     model_version: str,
+    retrieval_hit_column: str,
     top_hit_citations: list[str],
     retrieval_hit: bool | None,
     retrieval_first_relevant_rank: int | None,
@@ -188,7 +192,7 @@ def build_result_row(
     return {
         "id": case.id,
         "model_version": model_version,
-        "retrieval_hit_at_5": retrieval_hit_value,
+        retrieval_hit_column: retrieval_hit_value,
         "retrieval_first_relevant_rank": (
             "" if retrieval_first_relevant_rank is None else retrieval_first_relevant_rank
         ),
@@ -196,8 +200,15 @@ def build_result_row(
             "" if retrieval_reciprocal_rank is None else round(retrieval_reciprocal_rank, 6)
         ),
         "citation_correct": "",
+        "citation_document_correct": "",
+        "citation_article_correct": "",
+        "citation_supports_answer": "",
         "answer_correct": "",
+        "legal_issue_classification_correct": "",
+        "legal_reasoning_score_1_5": "",
+        "missing_information_score_0_2": "",
         "hallucination_flag": "",
+        "hallucination_types": "",
         "abstention_correct": "",
         "groundedness_score_1_5": "",
         "clarity_score_1_5": "",
@@ -283,6 +294,7 @@ def main() -> None:
     output_jsonl = args.output_dir / f"{output_stem}.jsonl"
     output_csv = args.output_dir / f"{output_stem}.csv"
     reciprocal_ranks: list[float | None] = []
+    retrieval_hit_column = f"retrieval_hit_at_{args.top_k}"
     allowed_document_families = document_families_from_chunk_paths(
         retriever.manifest.get("chunk_paths", [])
     )
@@ -349,9 +361,16 @@ def main() -> None:
             generated_legal_basis: tuple[str, ...] = ()
             insufficient_context = ""
             citation_correct = ""
+            citation_document_correct = ""
+            citation_article_correct = ""
+            citation_supports_answer = ""
             abstention_correct = ""
             hallucination_flag = ""
+            hallucination_types = ""
             answer_correct = ""
+            legal_issue_classification_correct = ""
+            legal_reasoning_score = ""
+            missing_information_score = ""
             groundedness_score = ""
             clarity_score = ""
             format_score = ""
@@ -381,14 +400,20 @@ def main() -> None:
                 generated_answer = parsed.answer
                 generated_legal_basis = parsed.legal_basis
                 insufficient_context = "Yes" if parsed.insufficient_context else "No"
-                citation_correct = score_citation_correctness_for_scope(
+                citation_article_correct = score_citation_article_correctness_for_scope(
                     case,
                     parsed.legal_basis,
                     allowed_document_families=allowed_document_families,
                 )
-                abstention_correct = (
-                    "yes" if parsed.insufficient_context == case.abstain_required else "no"
+                citation_document_correct = score_citation_document_correctness_for_scope(
+                    case,
+                    parsed.legal_basis,
+                    allowed_document_families=allowed_document_families,
                 )
+                citation_correct = citation_article_correct
+                abstention_correct = "yes" if case.abstain_required and parsed.insufficient_context else "n/a"
+                if case.abstain_required and not parsed.insufficient_context:
+                    abstention_correct = "no"
 
                 if judge_enabled:
                     judge_response = chat_completion(
@@ -410,10 +435,28 @@ def main() -> None:
                     judged = parse_judge_payload(judge_response.content)
                     if judged is not None:
                         answer_correct = judged.answer_correct
+                        legal_issue_classification_correct = (
+                            judged.legal_issue_classification_correct
+                        )
+                        legal_reasoning_score = judged.legal_reasoning_score_1_5
+                        missing_information_score = judged.missing_information_score_0_2
+                        citation_supports_answer = judged.citation_supports_answer
                         groundedness_score = judged.groundedness_score_1_5
                         clarity_score = judged.clarity_score_1_5
                         format_score = judged.format_score_1_5
-                        final_score = judged.final_score_10
+                        hallucination_types = " | ".join(judged.hallucination_types) or "none"
+                        final_score = compute_final_score_10(
+                            case=case,
+                            answer_correct=answer_correct,
+                            legal_issue_classification_correct=legal_issue_classification_correct,
+                            legal_reasoning_score_1_5=legal_reasoning_score,
+                            missing_information_score_0_2=missing_information_score,
+                            citation_article_correct=citation_article_correct,
+                            citation_supports_answer=citation_supports_answer,
+                            groundedness_score_1_5=groundedness_score,
+                            clarity_score_1_5=clarity_score,
+                            format_score_1_5=format_score,
+                        )
                         judge_comment = judged.comments
                     else:
                         judge_comment = "Judge model did not return valid JSON."
@@ -429,11 +472,14 @@ def main() -> None:
                         and int(groundedness_score) <= 2
                     ):
                         likely_hallucinated = True
+                    if hallucination_types not in {"", "none"}:
+                        likely_hallucinated = True
                     hallucination_flag = "yes" if likely_hallucinated else "no"
 
             row = build_result_row(
                 case=case,
                 model_version=model_version,
+                retrieval_hit_column=retrieval_hit_column,
                 top_hit_citations=top_hit_citations,
                 retrieval_hit=retrieval_hit,
                 retrieval_first_relevant_rank=relevant_rank,
@@ -449,9 +495,16 @@ def main() -> None:
             )
             if args.model:
                 row["citation_correct"] = citation_correct
+                row["citation_document_correct"] = citation_document_correct
+                row["citation_article_correct"] = citation_article_correct
+                row["citation_supports_answer"] = citation_supports_answer
                 row["answer_correct"] = answer_correct
+                row["legal_issue_classification_correct"] = legal_issue_classification_correct
+                row["legal_reasoning_score_1_5"] = legal_reasoning_score
+                row["missing_information_score_0_2"] = missing_information_score
                 row["abstention_correct"] = abstention_correct
                 row["hallucination_flag"] = hallucination_flag
+                row["hallucination_types"] = hallucination_types
                 row["groundedness_score_1_5"] = groundedness_score
                 row["clarity_score_1_5"] = clarity_score
                 row["format_score_1_5"] = format_score
@@ -462,16 +515,26 @@ def main() -> None:
                 row["comments"] = " | ".join(comment for comment in comments if comment)
 
             rows.append(row)
-            print(f"[{index}/{len(cases)}] {case.id}: retrieval_hit_at_{args.top_k}={row['retrieval_hit_at_5']}")
+            print(
+                f"[{index}/{len(cases)}] {case.id}: "
+                f"{retrieval_hit_column}={row[retrieval_hit_column]}"
+            )
 
     finally:
         retriever.close()
 
     write_results_jsonl(rows, output_jsonl)
-    write_results_csv(rows, output_csv)
-    scored_hit_cases = [row for row in rows if row["retrieval_hit_at_5"] in {"Yes", "No"}]
+    write_results_csv(
+        rows,
+        output_csv,
+        fieldnames=result_columns(retrieval_hit_column),
+    )
+    scored_hit_cases = [
+        row for row in rows if row[retrieval_hit_column] in {"Yes", "No"}
+    ]
     hit_rate = (
-        sum(1 for row in scored_hit_cases if row["retrieval_hit_at_5"] == "Yes") / len(scored_hit_cases)
+        sum(1 for row in scored_hit_cases if row[retrieval_hit_column] == "Yes")
+        / len(scored_hit_cases)
         if scored_hit_cases
         else 0.0
     )

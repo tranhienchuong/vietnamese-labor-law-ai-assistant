@@ -49,9 +49,20 @@ def load_rows(results_path: Path) -> list[dict[str, str]]:
     raise ValueError(f"Unsupported results format: {results_path.suffix}")
 
 
+def retrieval_hit_value(row: dict[str, str]) -> str:
+    hit_columns = sorted(
+        column
+        for column in row
+        if column.startswith("retrieval_hit_at_")
+    )
+    if not hit_columns:
+        return ""
+    return row.get(hit_columns[0], "")
+
+
 def is_failure(row: dict[str, str], failure_type: str) -> bool:
     if failure_type == "retrieval_miss":
-        return row.get("retrieval_hit_at_5", "").strip().lower() == "no"
+        return retrieval_hit_value(row).strip().lower() == "no"
     if failure_type == "hallucination":
         return row.get("hallucination_flag", "").strip().lower() == "yes"
     return row.get("abstention_correct", "").strip().lower() == "no"

@@ -21,8 +21,15 @@ RESULTS_COLUMNS = (
     "retrieval_first_relevant_rank",
     "retrieval_reciprocal_rank",
     "citation_correct",
+    "citation_document_correct",
+    "citation_article_correct",
+    "citation_supports_answer",
     "answer_correct",
+    "legal_issue_classification_correct",
+    "legal_reasoning_score_1_5",
+    "missing_information_score_0_2",
     "hallucination_flag",
+    "hallucination_types",
     "abstention_correct",
     "groundedness_score_1_5",
     "clarity_score_1_5",
@@ -48,18 +55,38 @@ JUDGE_JSON_SCHEMA = {
             "type": "string",
             "enum": ["yes", "partial", "no"],
         },
+        "legal_issue_classification_correct": {
+            "type": "string",
+            "enum": ["yes", "partial", "no"],
+        },
+        "legal_reasoning_score_1_5": {"type": "integer", "minimum": 1, "maximum": 5},
+        "missing_information_score_0_2": {"type": "integer", "minimum": 0, "maximum": 2},
+        "citation_supports_answer": {
+            "type": "string",
+            "enum": ["yes", "partial", "no"],
+        },
         "groundedness_score_1_5": {"type": "integer", "minimum": 1, "maximum": 5},
         "clarity_score_1_5": {"type": "integer", "minimum": 1, "maximum": 5},
         "format_score_1_5": {"type": "integer", "minimum": 1, "maximum": 5},
-        "final_score_10": {"type": "integer", "minimum": 1, "maximum": 10},
+        "hallucination_types": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": ["legal_basis", "rule", "fact"],
+            },
+        },
         "comments": {"type": "string"},
     },
     "required": [
         "answer_correct",
+        "legal_issue_classification_correct",
+        "legal_reasoning_score_1_5",
+        "missing_information_score_0_2",
+        "citation_supports_answer",
         "groundedness_score_1_5",
         "clarity_score_1_5",
         "format_score_1_5",
-        "final_score_10",
+        "hallucination_types",
         "comments",
     ],
     "additionalProperties": False,
@@ -74,39 +101,44 @@ Tiêu chí:
 - yes: trả lời đúng ý chính và không có sai sót pháp lý đáng kể.
 - partial: đúng một phần nhưng thiếu ý quan trọng, quá chung chung, hoặc có lỗi nhẹ.
 - no: sai trọng yếu, mâu thuẫn với đáp án chuẩn, hoặc trả lời lạc đề.
-2. clarity_score_1_5: độ mạch lạc, dễ hiểu, ngắn gọn đúng mức.
-3. format_score_1_5: đúng format trả lời ngắn gọn, có cấu trúc hợp lý, không lan man.
-4. final_score_10: điểm tổng hợp, ưu tiên độ đúng hơn hình thức.
-5. comments: tối đa 2 câu, nêu rõ điểm mạnh/yếu chính.
+2. legal_issue_classification_correct:
+- yes: phân loại đúng chế định pháp lý trọng tâm, ví dụ đơn phương chấm dứt, sa thải kỷ luật, thỏa thuận chấm dứt, trợ cấp thôi việc/mất việc.
+- partial: nhận ra một phần chế định nhưng còn lẫn hoặc thiếu nhánh pháp lý quan trọng.
+- no: nhầm chế định pháp lý trọng yếu, ví dụ nhầm sa thải với đơn phương chấm dứt hoặc nhầm trợ cấp thôi việc với trợ cấp mất việc làm.
+3. legal_reasoning_score_1_5:
+- 5: phân loại đúng chế định, nêu đủ điều kiện, ngoại lệ, thủ tục bắt buộc và hậu quả pháp lý chính.
+- 4: đúng chính, chỉ thiếu chi tiết nhỏ.
+- 3: kết luận đúng nhưng thiếu điều kiện quan trọng.
+- 2: quá chung chung hoặc nhầm một phần chế định.
+- 1: sai chế định pháp lý.
+4. missing_information_score_0_2:
+- 2: nhận diện đúng dữ kiện thiếu và kết luận có điều kiện; nếu câu hỏi đã đủ dữ kiện thì không tự thêm điều kiện không cần thiết.
+- 1: có nói thiếu thông tin nhưng chưa rõ hoặc chưa gắn với kết luận.
+- 0: kết luận chắc chắn khi thiếu dữ kiện quan trọng, hoặc từ chối/đòi thêm dữ kiện không hợp lý.
+5. citation_supports_answer:
+- yes: citation được nêu thật sự hỗ trợ kết luận.
+- partial: citation có liên quan nhưng chưa đủ cho toàn bộ kết luận.
+- no: citation không hỗ trợ kết luận, nêu cho có, hoặc sai căn cứ.
+6. groundedness_score_1_5:
+- 5: mọi khẳng định pháp lý đều bám sát EXPECTED_CITATIONS_IN_SCOPE và không vượt quá RETRIEVED_CITATIONS.
+- 3: có ý đúng nhưng vẫn còn diễn giải rộng hơn evidence được cấp.
+- 1: có khẳng định pháp lý, ngoại lệ, hoặc citation không được hỗ trợ bởi evidence được cấp.
+7. clarity_score_1_5: độ mạch lạc, dễ hiểu, ngắn gọn đúng mức.
+8. format_score_1_5: đúng format trả lời ngắn gọn, có cấu trúc hợp lý, không lan man.
+9. hallucination_types:
+- legal_basis: bịa hoặc dùng sai căn cứ/citation.
+- rule: nêu quy tắc pháp lý không có trong evidence hoặc trái đáp án chuẩn.
+- fact: tự thêm dữ kiện không có trong câu hỏi/context.
+- trả [] nếu không có hallucination rõ.
+10. comments: tối đa 2 câu, nêu rõ điểm mạnh và điểm yếu chính.
 
 Lưu ý:
+- Chỉ được chấm dựa trên thông tin được cung cấp trong prompt này.
 - Nếu benchmark yêu cầu abstain và GENERATED_ANSWER từ chối hợp lý, không nên chấm thấp chỉ vì thiếu kết luận.
-- Nếu GENERATED_ANSWER chứa khẳng định vượt quá GOLD_ANSWER, phải trừ điểm.
+- Thiếu dữ kiện không đồng nghĩa phải từ chối hoàn toàn: câu trả lời tốt nên nêu nguyên tắc, điều kiện còn thiếu và các nhánh kết luận nếu phù hợp.
+- Nếu GENERATED_ANSWER đưa ra thông tin pháp lý nằm ngoài EXPECTED_CITATIONS_IN_SCOPE hoặc trái với RETRIEVED_CITATIONS, phải coi đó là groundedness thấp.
+- Không tự chấm final_score_10; hệ thống sẽ tính điểm tổng hợp bằng công thức riêng.
 - Trả đúng JSON theo schema."""
-
-JUDGE_SYSTEM_PROMPT = """Ban la giam khao benchmark cho tro ly phap ly lao dong.
-
-Hay so sanh GENERATED_ANSWER voi GOLD_ANSWER va cham rat nghiem khac.
-
-Tieu chi:
-1. answer_correct:
-- yes: tra loi dung y chinh va khong co sai sot phap ly dang ke.
-- partial: dung mot phan nhung thieu y quan trong, qua chung chung, hoac co loi nhe.
-- no: sai trong yeu, mau thuan voi dap an chuan, hoac lac de.
-2. groundedness_score_1_5:
-- 5: moi khang dinh phap ly deu bam sat EXPECTED_CITATIONS_IN_SCOPE va khong vuot qua RETRIEVED_CITATIONS.
-- 3: co y dung nhung van con dien giai rong hon evidence duoc cap.
-- 1: co khang dinh phap ly, ngoai le, hoac citation khong duoc ho tro boi evidence duoc cap.
-3. clarity_score_1_5: do mach lac, de hieu, ngan gon dung muc.
-4. format_score_1_5: dung format tra loi ngan gon, co cau truc hop ly, khong lan man.
-5. final_score_10: diem tong hop. Neu groundedness_score_1_5 <= 2 thi phai tru diem nang.
-6. comments: toi da 2 cau, neu ro diem manh va diem yeu chinh.
-
-Luu y:
-- Chi duoc cham dua tren thong tin duoc cung cap trong prompt nay.
-- Neu benchmark yeu cau abstain va GENERATED_ANSWER tu choi hop ly, khong nen cham thap chi vi thieu ket luan.
-- Neu GENERATED_ANSWER dua ra thong tin phap ly nam ngoai EXPECTED_CITATIONS_IN_SCOPE hoac trai voi RETRIEVED_CITATIONS, phai coi do la groundedness thap.
-- Tra dung JSON theo schema."""
 
 LEGAL_ARTICLE_RE = re.compile(r"\bdieu\s+(?P<value>\d+[a-z]?)")
 LEGAL_CLAUSE_RE = re.compile(r"\bkhoan\s+(?P<value>\d+)")
@@ -117,16 +149,36 @@ TOP_LEVEL_CITATION_SPLIT_RE = re.compile(r"\s*;\s*")
 
 DOCUMENT_FAMILY_LABELS = {
     "bo_luat_2019": "Bộ luật Lao động 2019",
+    "bo_luat_2012": "Bộ luật Lao động 2012",
     "nghi_dinh_145": "Nghị định 145/2020/NĐ-CP",
     "nghi_dinh_12_2022": "Nghị định 12/2022/NĐ-CP",
+    "nghi_dinh_115_2015": "Nghị định 115/2015/NĐ-CP",
+    "nghi_dinh_158_2025": "Nghị định 158/2025/NĐ-CP",
+    "nghi_dinh_57_2026": "Nghị định 57/2026/NĐ-CP",
+    "thong_tu_09_2020": "Thông tư 09/2020/TT-BLĐTBXH",
+    "thong_tu_10_2020": "Thông tư 10/2020/TT-BLĐTBXH",
+    "luat_bhxh_2014": "Luật Bảo hiểm xã hội 2014",
+    "luat_bhxh_2024": "Luật Bảo hiểm xã hội 2024",
     "luat_cong_doan_2024": "Luật Công đoàn 2024",
+    "bo_luat_dan_su_2015": "Bộ luật Dân sự 2015",
+    "bo_luat_to_tung_dan_su_2015": "Bộ luật Tố tụng dân sự 2015",
+    "luat_kinh_doanh_bao_hiem_2022": "Luật Kinh doanh bảo hiểm 2022",
+    "luat_phuc_hoi_pha_san_2025": "Luật Phục hồi, phá sản 2025",
+    "cong_van_1198_bhxh": "Công văn 1198/CTL&BHXH-BHXH",
+    "bo_tu_phap_guidance": "Giải thích của Bộ Tư pháp",
+    "judicial_practice": "Thực tiễn xét xử",
     "thuvienphapluat_article": "THƯ VIỆN PHÁP LUẬT",
 }
 DOCUMENT_FAMILY_SIGNATURES = {
     "bo_luat_2019": (
         "bo luat lao dong 2019",
+        "labor code 2019",
         "45 2019 qh 14",
         "45 2019 qh14",
+    ),
+    "bo_luat_2012": (
+        "bo luat lao dong 2012",
+        "labor code 2012",
     ),
     "nghi_dinh_145": (
         "nghi dinh 145 2020 nd cp",
@@ -136,7 +188,51 @@ DOCUMENT_FAMILY_SIGNATURES = {
         "nghi dinh 12 2022 nd cp",
         "12 2022 nd cp",
     ),
+    "nghi_dinh_115_2015": (
+        "nghi dinh 115 2015 nd cp",
+        "115 2015 nd cp",
+    ),
+    "nghi_dinh_158_2025": (
+        "nghi dinh 158 2025 nd cp",
+        "158 2025 nd cp",
+    ),
+    "nghi_dinh_57_2026": (
+        "nghi dinh 57 2026 nd cp",
+        "57 2026 nd cp",
+    ),
+    "thong_tu_09_2020": (
+        "thong tu 09 2020 tt bldtbxh",
+        "09 2020 tt bldtbxh",
+    ),
+    "thong_tu_10_2020": (
+        "thong tu 10 2020 tt bldtbxh",
+        "10 2020 tt bldtbxh",
+    ),
+    "luat_bhxh_2014": (
+        "luat bao hiem xa hoi 2014",
+        "luat bhxh 2014",
+    ),
+    "luat_bhxh_2024": (
+        "luat bao hiem xa hoi 2024",
+        "luat bhxh 2024",
+    ),
     "luat_cong_doan_2024": ("luat cong doan 2024",),
+    "bo_luat_dan_su_2015": (
+        "bo luat dan su 2015",
+        "blds 2015",
+    ),
+    "bo_luat_to_tung_dan_su_2015": (
+        "bo luat to tung dan su 2015",
+        "blttds 2015",
+    ),
+    "luat_kinh_doanh_bao_hiem_2022": ("luat kinh doanh bao hiem 2022",),
+    "luat_phuc_hoi_pha_san_2025": (
+        "luat phuc hoi pha san 2025",
+        "luat phuc hoi va pha san 2025",
+    ),
+    "cong_van_1198_bhxh": ("cong van 1198 ctl bhxh bhxh",),
+    "bo_tu_phap_guidance": ("giai thich cua bo tu phap",),
+    "judicial_practice": ("thuc tien xet xu",),
     "thuvienphapluat_article": ("thu vien phap luat",),
 }
 
@@ -191,10 +287,14 @@ class BenchmarkCase:
 @dataclass(frozen=True)
 class JudgeScore:
     answer_correct: str
+    legal_issue_classification_correct: str
+    legal_reasoning_score_1_5: int
+    missing_information_score_0_2: int
+    citation_supports_answer: str
     groundedness_score_1_5: int
     clarity_score_1_5: int
     format_score_1_5: int
-    final_score_10: int
+    hallucination_types: tuple[str, ...]
     comments: str
     raw_content: str
 
@@ -445,10 +545,22 @@ def write_benchmark_jsonl(cases: Sequence[BenchmarkCase], output_path: Path) -> 
             handle.write(json.dumps(asdict(case), ensure_ascii=False) + "\n")
 
 
-def write_results_csv(rows: Sequence[dict[str, object]], output_path: Path) -> None:
+def result_columns(retrieval_hit_column: str = "retrieval_hit_at_5") -> tuple[str, ...]:
+    return tuple(
+        retrieval_hit_column if column == "retrieval_hit_at_5" else column
+        for column in RESULTS_COLUMNS
+    )
+
+
+def write_results_csv(
+    rows: Sequence[dict[str, object]],
+    output_path: Path,
+    *,
+    fieldnames: Sequence[str] | None = None,
+) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(RESULTS_COLUMNS))
+        writer = csv.DictWriter(handle, fieldnames=list(fieldnames or RESULTS_COLUMNS))
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
@@ -563,6 +675,12 @@ def citation_matches_expected(expected: str, observed: str) -> bool:
     return expected_normalized in observed_normalized or observed_normalized in expected_normalized
 
 
+def citation_document_matches_expected(expected: str, observed: str) -> bool:
+    expected_family = citation_document_family(expected)
+    observed_family = citation_document_family(observed)
+    return bool(expected_family and observed_family and expected_family == observed_family)
+
+
 def retrieval_hit_at_k(
     case: BenchmarkCase,
     observed_citations: Sequence[str],
@@ -618,6 +736,54 @@ def score_citation_correctness_for_scope(
     return "no"
 
 
+def score_citation_article_correctness_for_scope(
+    case: BenchmarkCase,
+    observed_citations: Sequence[str],
+    *,
+    allowed_document_families: Sequence[str] | None = None,
+) -> str:
+    return score_citation_correctness_for_scope(
+        case,
+        observed_citations,
+        allowed_document_families=allowed_document_families,
+    )
+
+
+def score_citation_document_correctness_for_scope(
+    case: BenchmarkCase,
+    observed_citations: Sequence[str],
+    *,
+    allowed_document_families: Sequence[str] | None = None,
+) -> str:
+    gold_citations = expected_citations_in_scope(
+        case,
+        allowed_document_families=allowed_document_families,
+    )
+    expected_families = unique_preserve_order(
+        family
+        for citation in gold_citations
+        for family in (citation_document_family(citation),)
+        if family
+    )
+    if not expected_families:
+        return "na"
+    if not observed_citations:
+        return "no"
+
+    observed_families = {
+        family
+        for citation in observed_citations
+        for family in (citation_document_family(citation),)
+        if family
+    }
+    matched = [family for family in expected_families if family in observed_families]
+    if len(matched) == len(expected_families):
+        return "exact"
+    if matched:
+        return "partial"
+    return "no"
+
+
 def first_relevant_rank(
     case: BenchmarkCase,
     observed_citations: Sequence[str],
@@ -663,6 +829,84 @@ def mean_reciprocal_rank(reciprocal_ranks: Sequence[float | None]) -> float | No
     if not scored:
         return None
     return sum(scored) / len(scored)
+
+
+def case_requires_missing_information_handling(case: BenchmarkCase) -> bool:
+    return case.abstain_required or bool(case.missing_information)
+
+
+def yes_partial_no_points(value: str, *, full_points: int, partial_points: int) -> int:
+    normalized = value.strip().lower()
+    if normalized == "yes":
+        return full_points
+    if normalized == "partial":
+        return partial_points
+    return 0
+
+
+def exact_partial_no_points(value: str, *, full_points: int, partial_points: int) -> int:
+    normalized = value.strip().lower()
+    if normalized == "exact":
+        return full_points
+    if normalized == "partial":
+        return partial_points
+    return 0
+
+
+def legal_reasoning_points(score: int) -> int:
+    if score >= 4:
+        return 2
+    if score >= 2:
+        return 1
+    return 0
+
+
+def groundedness_points(score: int) -> int:
+    return 1 if score >= 3 else 0
+
+
+def clarity_format_points(clarity_score: int, format_score: int) -> int:
+    return 1 if (clarity_score + format_score) / 2 >= 4 else 0
+
+
+def compute_final_score_10(
+    *,
+    case: BenchmarkCase,
+    answer_correct: str,
+    legal_issue_classification_correct: str,
+    legal_reasoning_score_1_5: int,
+    missing_information_score_0_2: int,
+    citation_article_correct: str,
+    citation_supports_answer: str,
+    groundedness_score_1_5: int,
+    clarity_score_1_5: int,
+    format_score_1_5: int,
+) -> int:
+    score = 0
+    score += yes_partial_no_points(
+        legal_issue_classification_correct,
+        full_points=2,
+        partial_points=1,
+    )
+    score += yes_partial_no_points(answer_correct, full_points=2, partial_points=1)
+    if case_requires_missing_information_handling(case):
+        score += max(0, min(2, missing_information_score_0_2))
+    else:
+        score += legal_reasoning_points(legal_reasoning_score_1_5)
+    citation_article_points = exact_partial_no_points(
+        citation_article_correct,
+        full_points=2,
+        partial_points=1,
+    )
+    citation_support_points = yes_partial_no_points(
+        citation_supports_answer,
+        full_points=2,
+        partial_points=1,
+    )
+    score += min(citation_article_points, citation_support_points)
+    score += groundedness_points(groundedness_score_1_5)
+    score += clarity_format_points(clarity_score_1_5, format_score_1_5)
+    return max(0, min(10, score))
 
 
 def build_judge_messages(
@@ -718,6 +962,31 @@ def extract_json_candidate(raw_content: str) -> str:
     return cleaned_content
 
 
+def parse_hallucination_types(value: object) -> tuple[str, ...] | None:
+    if value is None:
+        return ()
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"", "none", "no", "[]"}:
+            return ()
+        raw_values = re.split(r"\s*(?:,|;|\|)\s*", normalized)
+    elif isinstance(value, list):
+        raw_values = [str(item).strip().lower() for item in value]
+    else:
+        return None
+
+    allowed = {"legal_basis", "rule", "fact"}
+    parsed: list[str] = []
+    for raw_value in raw_values:
+        if not raw_value:
+            continue
+        if raw_value not in allowed:
+            return None
+        parsed.append(raw_value)
+    return unique_preserve_order(parsed)
+
+
 def parse_judge_payload(raw_content: str) -> JudgeScore | None:
     cleaned_content = extract_json_candidate(raw_content)
     try:
@@ -732,28 +1001,48 @@ def parse_judge_payload(raw_content: str) -> JudgeScore | None:
     if answer_correct not in {"yes", "partial", "no"}:
         return None
 
+    legal_issue_classification_correct = str(
+        payload.get("legal_issue_classification_correct") or ""
+    ).strip().lower()
+    if legal_issue_classification_correct not in {"yes", "partial", "no"}:
+        return None
+
+    citation_supports_answer = str(payload.get("citation_supports_answer") or "").strip().lower()
+    if citation_supports_answer not in {"yes", "partial", "no"}:
+        return None
+
+    hallucination_types = parse_hallucination_types(payload.get("hallucination_types"))
+    if hallucination_types is None:
+        return None
+
     try:
+        legal_reasoning_score = int(payload["legal_reasoning_score_1_5"])
+        missing_information_score = int(payload["missing_information_score_0_2"])
         groundedness_score = int(payload["groundedness_score_1_5"])
         clarity_score = int(payload["clarity_score_1_5"])
         format_score = int(payload["format_score_1_5"])
-        final_score = int(payload["final_score_10"])
     except (KeyError, TypeError, ValueError):
         return None
 
     if not (
-        1 <= groundedness_score <= 5
+        1 <= legal_reasoning_score <= 5
+        and 0 <= missing_information_score <= 2
+        and 1 <= groundedness_score <= 5
         and 1 <= clarity_score <= 5
         and 1 <= format_score <= 5
-        and 1 <= final_score <= 10
     ):
         return None
 
     return JudgeScore(
         answer_correct=answer_correct,
+        legal_issue_classification_correct=legal_issue_classification_correct,
+        legal_reasoning_score_1_5=legal_reasoning_score,
+        missing_information_score_0_2=missing_information_score,
+        citation_supports_answer=citation_supports_answer,
         groundedness_score_1_5=groundedness_score,
         clarity_score_1_5=clarity_score,
         format_score_1_5=format_score,
-        final_score_10=final_score,
+        hallucination_types=hallucination_types,
         comments=str(payload.get("comments") or "").strip(),
         raw_content=raw_content,
     )
@@ -778,11 +1067,14 @@ __all__ = [
     "RESULTS_COLUMNS",
     "WORKBOOK_RESULTS_SHEET_NAME",
     "WORKBOOK_SHEET_NAME",
+    "case_requires_missing_information_handling",
     "citation_matches_expected",
+    "citation_document_matches_expected",
     "document_families_from_chunk_paths",
     "JUDGE_JSON_SCHEMA",
     "JudgeScore",
     "build_judge_messages",
+    "compute_final_score_10",
     "expected_citations",
     "expected_citations_in_scope",
     "expected_citations_out_of_scope",
@@ -793,13 +1085,17 @@ __all__ = [
     "mean_reciprocal_rank",
     "parse_benchmark_rows",
     "parse_yes_no_flag",
+    "parse_hallucination_types",
     "parse_judge_payload",
     "partition_citations_by_scope",
     "reciprocal_rank",
     "require_openpyxl",
+    "result_columns",
     "retrieval_hit_at_k",
+    "score_citation_article_correctness_for_scope",
     "score_citation_correctness",
     "score_citation_correctness_for_scope",
+    "score_citation_document_correctness_for_scope",
     "summarize_benchmark_cases",
     "write_benchmark_jsonl",
     "write_results_csv",

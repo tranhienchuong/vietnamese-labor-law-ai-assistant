@@ -62,7 +62,7 @@ tests/
 .venv\Scripts\python.exe -m pip install -e .
 .venv\Scripts\python.exe scripts\build_corpus.py --curated-text corpus\cleaned\du_lieu_cham_dut_hop_dong_lao_dong.txt corpus\cleaned\nghi-dinh-145-2020-nd-cp.txt
 .venv\Scripts\python.exe scripts\build_index.py --dense-model keepitreal/vietnamese-sbert
-.venv\Scripts\python.exe scripts\import_benchmark.py C:\Users\tranh\Downloads\golden_benchmark_100_answered_v1.xlsx
+.venv\Scripts\python.exe scripts\import_benchmark.py C:\Users\tranh\Downloads\golden_benchmark_template.xlsx
 .venv\Scripts\python.exe scripts\run_benchmark.py --limit 10
 .venv\Scripts\python.exe scripts\run_benchmark.py --provider ollama --model qwen3:4b --limit 10
 .venv\Scripts\python.exe scripts\run_benchmark.py --provider ollama --model qwen3:4b --reranker-model BAAI/bge-reranker-v2-m3 --limit 10
@@ -138,10 +138,13 @@ Lenh `scripts/run_benchmark.py` se:
 - tai benchmark JSONL da import;
 - chay retriever hien tai tren tung cau hoi;
 - co the bat semantic re-ranker cross-encoder bang `--reranker-model` de thu nghiem giam false negative o retrieval;
-- ghi `retrieval_hit_at_5` va cac citation retrieve duoc;
+- ghi cot `retrieval_hit_at_<top_k>` va cac citation retrieve duoc;
 - neu co `--model`, chay them generation qua provider da chon va luu output de review;
-- mac dinh se bat them LLM-as-a-judge bang provider/model rieng de cham `answer_correct`, `clarity_score_1_5`, `format_score_1_5`, `final_score_10`;
+- mac dinh se bat them LLM-as-a-judge bang provider/model rieng de cham `answer_correct`, legal reasoning, missing-information handling, groundedness va format;
 - judge co them rubric `groundedness_score_1_5` de phat manh cau tra loi vuot qua evidence va citation duoc cap;
+- judge cham them `legal_issue_classification_correct`, `legal_reasoning_score_1_5`, `missing_information_score_0_2`, `citation_supports_answer` va `hallucination_types`;
+- citation duoc tach thanh `citation_document_correct` va `citation_article_correct`; cot `citation_correct` duoc giu nhu alias cua article-level de tuong thich ket qua cu;
+- `final_score_10` duoc tinh bang cong thuc ban tu dong tu issue classification, answer correctness, citation article + support, missing-information handling hoac legal reasoning, groundedness va clarity/format;
 - neu muon chi sinh cau tra loi ma khong cham bang judge, them `--no-judge`;
 - ghi ket qua ra `eval/results/*.jsonl` va `eval/results/*.csv`, trong do ten file co kem `provider:model` da duoc slugify de de tach tung run.
 

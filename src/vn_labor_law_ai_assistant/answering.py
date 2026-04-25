@@ -16,6 +16,8 @@ from .retriever import (
     select_contexts_for_prompt,
 )
 
+PARENTHETICAL_CITATION_RE = re.compile(r"\([^)]*\)")
+
 
 SYSTEM_PROMPT = """Ban la tro ly phap ly ve cham dut hop dong lao dong theo phap luat Viet Nam.
 
@@ -23,6 +25,8 @@ Quy tac bat buoc:
 1. Chi duoc tra loi dua tren CONTEXT da cung cap.
 2. Khong duoc tu bia so Dieu, khoan, diem hoac ten van ban.
 3. Neu CONTEXT chua du de ket luan chac chan, phai noi ro la chua du can cu.
+3a. Khi thieu context, phai tra loi bang ngon ngu tu nhien, lich su va neu ro thong tin nao con thieu hoac van de nao chua duoc context giai quyet.
+3b. Tuyet doi khong duoc tra loi bang kieu thong bao loi he thong, khong duoc lap lai cau mau co dinh.
 4. Truong legal_basis chi duoc dung cac chuoi citation nam trong danh sach ALLOWED_CITATIONS.
 4a. Phai sao chep citation tu ALLOWED_CITATIONS, khong tu rut gon hoac che lai citation.
 4b. Neu co citation cu the hon (vi du co diem a/b/c) thi uu tien citation cu the do.
@@ -63,13 +67,13 @@ Vi du 2:
 }
 
 Vi du 3:
-- Cau hoi: Toi co duoc nghi ngay khong?
+- Cau hoi: Cong ty no luong 2 thang, toi tu nghi duoc khong?
 - Neu context khong xac dinh du thong tin:
 {
-  "answer": "Chua du can cu de ket luan vi context hien tai chua xac dinh ro truong hop ap dung.",
+  "answer": "Chua du can cu de ket luan. Context hien tai chua co quy dinh truc tiep cho tinh huong no luong 2 thang trong bo dieu luat duoc cung cap.",
   "legal_basis": [],
   "insufficient_context": true,
-  "notes": "Can doi chieu them dieu kien cu the trong tinh huong thuc te."
+  "notes": "Hay neu ro them can cu lien quan hoac cung cap dung dieu luat ap dung cho truong hop cu the."
 }
 """
 
@@ -111,12 +115,22 @@ def build_allowed_citations(contexts: Sequence[RetrievalContext]) -> tuple[str, 
     return dedupe_preserve_order(allowed_citations)
 
 
+def normalize_citation_surface(text: str) -> str:
+    without_parenthetical = PARENTHETICAL_CITATION_RE.sub(" ", text)
+    normalized = normalize_for_matching(without_parenthetical)
+    return re.sub(r"[^a-z0-9]+", " ", normalized).strip()
+
+
 def citation_overlap_matches(allowed_citation: str, requested_citation: str) -> bool:
     allowed_normalized = normalize_for_matching(allowed_citation)
     requested_normalized = normalize_for_matching(requested_citation)
+    allowed_surface = normalize_citation_surface(allowed_citation)
+    requested_surface = normalize_citation_surface(requested_citation)
     if not allowed_normalized or not requested_normalized:
         return False
     if allowed_normalized == requested_normalized:
+        return True
+    if allowed_surface and allowed_surface == requested_surface:
         return True
 
     allowed_tokens = set(extract_legal_hint_tokens(allowed_citation))
@@ -130,11 +144,15 @@ def citation_overlap_matches(allowed_citation: str, requested_citation: str) -> 
         return (
             allowed_normalized in requested_normalized
             or requested_normalized in allowed_normalized
+            or (allowed_surface and allowed_surface in requested_surface)
+            or (requested_surface and requested_surface in allowed_surface)
         )
 
     return (
         allowed_normalized in requested_normalized
         or requested_normalized in allowed_normalized
+        or (allowed_surface and allowed_surface in requested_surface)
+        or (requested_surface and requested_surface in allowed_surface)
     )
 
 
@@ -271,14 +289,21 @@ def parse_answer_payload(raw_content: str, contexts: Sequence[RetrievalContext])
     if not insufficient_context:
         legal_basis = sanitize_legal_basis(payload.get("legal_basis"), contexts)
         if not legal_basis:
-            insufficient_context = True
-            payload["answer"] = (
-                "He thong khong the xac nhan cau tra loi vi mo hinh khong trich dan dung nguon luat da cho."
-            )
             existing_notes = str(payload.get("notes") or "").strip()
-            payload["notes"] = (
-                f"{existing_notes} Cau tra loi da bi vo hieu hoa do thieu co so phap ly hop le.".strip()
-            )
+            payload["notes"] = " ".join(
+                part
+                for part in [
+                    existing_notes,
+                    "Khong xac nhan duoc co so phap ly vi legal_basis khong khop ALLOWED_CITATIONS.",
+                ]
+                if part
+            ).strip()
+
+            if not str(payload.get("answer") or "").strip():
+                insufficient_context = True
+                payload["answer"] = (
+                    "Chua du can cu de ket luan mot cach chac chan tu context hien tai."
+                )
 
     return ParsedAnswer(
         answer=str(payload.get("answer") or "").strip(),

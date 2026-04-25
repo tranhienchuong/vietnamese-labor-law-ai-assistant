@@ -8,7 +8,9 @@ from openpyxl import Workbook
 
 from vn_labor_law_ai_assistant.evaluation import (
     BenchmarkCase,
+    compute_final_score_10,
     citation_matches_expected,
+    score_citation_document_correctness_for_scope,
     expected_citation_scope,
     expected_citations,
     expected_citations_in_scope,
@@ -19,7 +21,9 @@ from vn_labor_law_ai_assistant.evaluation import (
     parse_judge_payload,
     parse_benchmark_rows,
     reciprocal_rank,
+    result_columns,
     retrieval_hit_at_k,
+    score_citation_article_correctness_for_scope,
     score_citation_correctness,
     score_citation_correctness_for_scope,
 )
@@ -346,15 +350,113 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(reciprocal_rank(case, observed, k=5), 0.5)
         self.assertEqual(mean_reciprocal_rank([1.0, 0.5, 0.0, None]), 0.5)
 
+    def test_citation_document_and_article_scores_are_separate(self) -> None:
+        case = BenchmarkCase(
+            id="LBR_008",
+            category="labor_discipline",
+            subtopic="dismissal",
+            difficulty="medium",
+            question_type="direct_qa",
+            question="Cau hoi?",
+            scenario="Tinh huong",
+            gold_issue="Gold issue",
+            gold_citation_primary="Điều 125 Bộ luật Lao động 2019",
+            gold_citation_secondary=None,
+            gold_answer_short="Tra loi ngan",
+            gold_answer_full="Tra loi day du",
+            abstain_required=False,
+            missing_information=None,
+            source_document="Bộ luật Lao động 2019",
+            source_url=None,
+            annotator=None,
+            review_status=None,
+            notes=None,
+        )
+        observed = ["Bộ luật số 45/2019/QH14, Điều 36"]
+
+        self.assertEqual(
+            score_citation_document_correctness_for_scope(case, observed),
+            "exact",
+        )
+        self.assertEqual(
+            score_citation_article_correctness_for_scope(case, observed),
+            "no",
+        )
+
+    def test_compute_final_score_uses_missing_information_formula(self) -> None:
+        case = BenchmarkCase(
+            id="LBR_009",
+            category="notice_period",
+            subtopic="missing contract term",
+            difficulty="medium",
+            question_type="time_limit",
+            question="Bao truoc bao lau?",
+            scenario="Tinh huong",
+            gold_issue="Gold issue",
+            gold_citation_primary="Điều 35 Bộ luật Lao động 2019",
+            gold_citation_secondary=None,
+            gold_answer_short="Tra loi ngan",
+            gold_answer_full="Tra loi day du",
+            abstain_required=False,
+            missing_information="Can biet loai hop dong.",
+            source_document="Bộ luật Lao động 2019",
+            source_url=None,
+            annotator=None,
+            review_status=None,
+            notes=None,
+        )
+
+        self.assertEqual(
+            compute_final_score_10(
+                case=case,
+                answer_correct="yes",
+                legal_issue_classification_correct="yes",
+                legal_reasoning_score_1_5=5,
+                missing_information_score_0_2=2,
+                citation_article_correct="exact",
+                citation_supports_answer="yes",
+                groundedness_score_1_5=5,
+                clarity_score_1_5=5,
+                format_score_1_5=5,
+            ),
+            10,
+        )
+        self.assertEqual(
+            compute_final_score_10(
+                case=case,
+                answer_correct="yes",
+                legal_issue_classification_correct="yes",
+                legal_reasoning_score_1_5=5,
+                missing_information_score_0_2=0,
+                citation_article_correct="exact",
+                citation_supports_answer="yes",
+                groundedness_score_1_5=5,
+                clarity_score_1_5=5,
+                format_score_1_5=5,
+            ),
+            8,
+        )
+
+    def test_result_columns_renames_retrieval_hit_column_for_top_k(self) -> None:
+        columns = result_columns("retrieval_hit_at_10")
+
+        self.assertIn("retrieval_hit_at_10", columns)
+        self.assertNotIn("retrieval_hit_at_5", columns)
+        self.assertEqual(columns[2], "retrieval_hit_at_10")
+
     def test_parse_judge_payload_reads_valid_json(self) -> None:
         score = parse_judge_payload(
             """
             {
               "answer_correct": "partial",
+              "legal_issue_classification_correct": "yes",
+              "legal_reasoning_score_1_5": 3,
+              "missing_information_score_0_2": 2,
+              "citation_supports_answer": "partial",
               "groundedness_score_1_5": 2,
               "clarity_score_1_5": 4,
               "format_score_1_5": 5,
-              "final_score_10": 7,
+              "hallucination_types": ["rule"],
               "comments": "Thiếu một ý quan trọng."
             }
             """
@@ -363,10 +465,14 @@ class EvaluationTests(unittest.TestCase):
         self.assertIsNotNone(score)
         assert score is not None
         self.assertEqual(score.answer_correct, "partial")
+        self.assertEqual(score.legal_issue_classification_correct, "yes")
+        self.assertEqual(score.legal_reasoning_score_1_5, 3)
+        self.assertEqual(score.missing_information_score_0_2, 2)
+        self.assertEqual(score.citation_supports_answer, "partial")
         self.assertEqual(score.groundedness_score_1_5, 2)
         self.assertEqual(score.clarity_score_1_5, 4)
         self.assertEqual(score.format_score_1_5, 5)
-        self.assertEqual(score.final_score_10, 7)
+        self.assertEqual(score.hallucination_types, ("rule",))
 
     def test_parse_judge_payload_rejects_invalid_json(self) -> None:
         self.assertIsNone(parse_judge_payload("khong phai json"))

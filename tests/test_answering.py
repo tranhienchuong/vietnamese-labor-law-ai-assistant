@@ -89,6 +89,14 @@ class AnsweringTests(unittest.TestCase):
             )
         )
 
+    def test_citation_overlap_matches_when_model_omits_article_title(self) -> None:
+        self.assertTrue(
+            citation_overlap_matches(
+                "Bo luat so 45/2019/QH14, Dieu 40 (Nghia vu cua nguoi lao dong khi don phuong cham dut hop dong lao dong trai phap luat), khoan 2",
+                "Bo luat so 45/2019/QH14, Dieu 40, khoan 2",
+            )
+        )
+
     def test_canonicalize_citation_prefers_closest_allowed_match(self) -> None:
         allowed_citations = (
             "Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a",
@@ -108,6 +116,19 @@ class AnsweringTests(unittest.TestCase):
                 allowed_citations,
             ),
             "Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a",
+        )
+
+    def test_canonicalize_citation_accepts_same_reference_without_article_title(self) -> None:
+        allowed_citations = (
+            "Bo luat so 45/2019/QH14, Dieu 40 (Nghia vu cua nguoi lao dong khi don phuong cham dut hop dong lao dong trai phap luat), khoan 2",
+        )
+
+        self.assertEqual(
+            canonicalize_citation(
+                "Bo luat so 45/2019/QH14, Dieu 40, khoan 2",
+                allowed_citations,
+            ),
+            "Bo luat so 45/2019/QH14, Dieu 40 (Nghia vu cua nguoi lao dong khi don phuong cham dut hop dong lao dong trai phap luat), khoan 2",
         )
 
     def test_sanitize_legal_basis_accepts_specific_child_citation_from_matched_hits(self) -> None:
@@ -133,7 +154,7 @@ class AnsweringTests(unittest.TestCase):
             ("Bo luat so 45/2019/QH 14, Dieu 35, khoan 1, diem a",),
         )
 
-    def test_parse_answer_payload_does_not_invent_citations_when_model_returns_invalid_basis(self) -> None:
+    def test_parse_answer_payload_preserves_answer_when_model_returns_invalid_basis(self) -> None:
         contexts = (
             make_context("Bo luat so 45/2019/QH 14, Dieu 46, khoan 1"),
             make_context("Bo luat so 45/2019/QH 14, Dieu 46, khoan 2"),
@@ -152,9 +173,27 @@ class AnsweringTests(unittest.TestCase):
         parsed = parse_answer_payload(raw_content, contexts)
 
         self.assertEqual(parsed.legal_basis, ())
+        self.assertFalse(parsed.insufficient_context)
+        self.assertIn("tro cap thoi viec", parsed.answer.lower())
+        self.assertIn("legal_basis", parsed.notes.lower())
+        self.assertIn("allowed_citations", parsed.notes.lower())
+
+    def test_parse_answer_payload_falls_back_naturally_when_answer_is_blank_and_basis_invalid(self) -> None:
+        contexts = (make_context("Bo luat so 45/2019/QH 14, Dieu 46, khoan 1"),)
+        raw_content = """
+        {
+          "answer": "",
+          "legal_basis": ["Dieu 99 khoan 9"],
+          "insufficient_context": false,
+          "notes": ""
+        }
+        """
+
+        parsed = parse_answer_payload(raw_content, contexts)
+
         self.assertTrue(parsed.insufficient_context)
-        self.assertIn("khong the xac nhan", parsed.answer.lower())
-        self.assertIn("vo hieu hoa", parsed.notes.lower())
+        self.assertEqual(parsed.legal_basis, ())
+        self.assertIn("chua du can cu", parsed.answer.lower())
 
     def test_parse_answer_payload_respects_insufficient_context(self) -> None:
         contexts = (
