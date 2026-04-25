@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
+  --surface: 0 0% 100%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 221 83% 53%;
+  --primary: 221 83% 53%;
+  --primary-foreground: 210 40% 98%;
+  --success: 142 72% 29%;
+  --success-foreground: 144 70% 96%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 48 96% 11%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+}
+
+.dark {
+  --background: 222 47% 5%;
+  --foreground: 210 40% 98%;
+  --surface: 222 47% 11%;
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 20% 65%;
+  --border: 217 33% 17%;
+  --input: 217 33% 17%;
+  --ring: 213 94% 68%;
+  --primary: 213 94% 68%;
+  --primary-foreground: 222 47% 11%;
+  --success: 142 69% 45%;
+  --success-foreground: 144 70% 96%;
+  --warning: 43 96% 56%;
+  --warning-foreground: 48 96% 11%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html {
+  height: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100%;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+button,
+textarea,
+input,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: hsl(var(--primary) / 0.18);
+}
+
+.message-markdown {
+  line-height: 1.65;
+}
+
+.message-markdown > * + * {
+  margin-top: 0.75rem;
+}
+
+.message-markdown ul,
+.message-markdown ol {
+  padding-left: 1.25rem;
+}
+
+.message-markdown ul {
+  list-style: disc;
+}
+
+.message-markdown ol {
+  list-style: decimal;
+}
+
+.message-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+}
+
+.message-markdown th,
+.message-markdown td {
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 0.625rem;
+  text-align: left;
+}
+
+.message-markdown th {
+  background: hsl(var(--muted));
+  font-weight: 600;
+}
+
+.message-markdown code {
+  border-radius: 4px;
+  background: hsl(var(--muted));
+  padding: 0.125rem 0.25rem;
+  font-size: 0.875em;
+}
+
+.message-markdown pre {
+  overflow-x: auto;
+  border-radius: 8px;
+  background: hsl(var(--muted));
+  padding: 1rem;
+}
+
+.message-markdown pre code {
+  background: transparent;
+  padding: 0;
+}
