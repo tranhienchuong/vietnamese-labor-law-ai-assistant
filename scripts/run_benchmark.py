@@ -201,6 +201,7 @@ def build_result_row(
         ),
         "citation_correct": "",
         "citation_document_correct": "",
+        "citation_provision_correct": "",
         "citation_article_correct": "",
         "citation_supports_answer": "",
         "answer_correct": "",
@@ -216,6 +217,7 @@ def build_result_row(
         "final_score_10": "",
         "evaluator": evaluator,
         "comments": "",
+        "skill_tag": case.skill_tag or "",
         "question": case.question,
         "expected_citations": " | ".join(expected_citations_all),
         "expected_citations_in_scope": " | ".join(expected_citations_scoped),
@@ -362,6 +364,7 @@ def main() -> None:
             insufficient_context = ""
             citation_correct = ""
             citation_document_correct = ""
+            citation_provision_correct = ""
             citation_article_correct = ""
             citation_supports_answer = ""
             abstention_correct = ""
@@ -405,15 +408,17 @@ def main() -> None:
                     parsed.legal_basis,
                     allowed_document_families=allowed_document_families,
                 )
+                citation_provision_correct = citation_article_correct
                 citation_document_correct = score_citation_document_correctness_for_scope(
                     case,
                     parsed.legal_basis,
                     allowed_document_families=allowed_document_families,
                 )
                 citation_correct = citation_article_correct
-                abstention_correct = "yes" if case.abstain_required and parsed.insufficient_context else "n/a"
-                if case.abstain_required and not parsed.insufficient_context:
-                    abstention_correct = "no"
+                if case.abstain_required:
+                    abstention_correct = "yes" if parsed.insufficient_context else "no"
+                else:
+                    abstention_correct = "no" if parsed.insufficient_context else "n/a"
 
                 if judge_enabled:
                     judge_response = chat_completion(
@@ -451,7 +456,7 @@ def main() -> None:
                             legal_issue_classification_correct=legal_issue_classification_correct,
                             legal_reasoning_score_1_5=legal_reasoning_score,
                             missing_information_score_0_2=missing_information_score,
-                            citation_article_correct=citation_article_correct,
+                            citation_article_correct=citation_provision_correct,
                             citation_supports_answer=citation_supports_answer,
                             groundedness_score_1_5=groundedness_score,
                             clarity_score_1_5=clarity_score,
@@ -470,6 +475,17 @@ def main() -> None:
                         and groundedness_score != ""
                         and not parsed.insufficient_context
                         and int(groundedness_score) <= 2
+                    ):
+                        likely_hallucinated = True
+                    if (
+                        citation_provision_correct == "no"
+                        and citation_supports_answer == "no"
+                    ):
+                        likely_hallucinated = True
+                    if (
+                        answer_correct == "no"
+                        and legal_reasoning_score != ""
+                        and int(legal_reasoning_score) <= 2
                     ):
                         likely_hallucinated = True
                     if hallucination_types not in {"", "none"}:
@@ -496,6 +512,7 @@ def main() -> None:
             if args.model:
                 row["citation_correct"] = citation_correct
                 row["citation_document_correct"] = citation_document_correct
+                row["citation_provision_correct"] = citation_provision_correct
                 row["citation_article_correct"] = citation_article_correct
                 row["citation_supports_answer"] = citation_supports_answer
                 row["answer_correct"] = answer_correct

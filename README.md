@@ -143,8 +143,10 @@ Lenh `scripts/run_benchmark.py` se:
 - mac dinh se bat them LLM-as-a-judge bang provider/model rieng de cham `answer_correct`, legal reasoning, missing-information handling, groundedness va format;
 - judge co them rubric `groundedness_score_1_5` de phat manh cau tra loi vuot qua evidence va citation duoc cap;
 - judge cham them `legal_issue_classification_correct`, `legal_reasoning_score_1_5`, `missing_information_score_0_2`, `citation_supports_answer` va `hallucination_types`;
-- citation duoc tach thanh `citation_document_correct` va `citation_article_correct`; cot `citation_correct` duoc giu nhu alias cua article-level de tuong thich ket qua cu;
-- `final_score_10` duoc tinh bang cong thuc ban tu dong tu issue classification, answer correctness, citation article + support, missing-information handling hoac legal reasoning, groundedness va clarity/format;
+- citation duoc tach thanh `citation_document_correct` va `citation_provision_correct`; cot `citation_article_correct` va `citation_correct` duoc giu nhu alias tuong thich;
+- `abstention_correct` se phat ca under-abstention va over-abstention: case can thieu du kien ma model khong abstain la `no`, case khong can abstain ma model lai tu choi cung la `no`;
+- `skill_tag` duoc gan tu dong de nhom loi theo ky nang nhu `legal_classification`, `missing_fact_handling`, `procedure_checking`, `remedy_calculation`, `rule_lookup`;
+- `final_score_10` duoc tinh bang cong thuc ban tu dong tu issue classification, answer correctness, citation provision + support, missing-information handling hoac legal reasoning, groundedness va clarity/format;
 - neu muon chi sinh cau tra loi ma khong cham bang judge, them `--no-judge`;
 - ghi ket qua ra `eval/results/*.jsonl` va `eval/results/*.csv`, trong do ten file co kem `provider:model` da duoc slugify de de tach tung run.
 

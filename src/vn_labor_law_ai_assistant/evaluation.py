@@ -22,6 +22,7 @@ RESULTS_COLUMNS = (
     "retrieval_reciprocal_rank",
     "citation_correct",
     "citation_document_correct",
+    "citation_provision_correct",
     "citation_article_correct",
     "citation_supports_answer",
     "answer_correct",
@@ -37,6 +38,7 @@ RESULTS_COLUMNS = (
     "final_score_10",
     "evaluator",
     "comments",
+    "skill_tag",
     "question",
     "expected_citations",
     "expected_citations_in_scope",
@@ -266,6 +268,7 @@ class BenchmarkCase:
     annotator: str | None
     review_status: str | None
     notes: str | None
+    skill_tag: str | None = None
     gold_citations: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
@@ -281,6 +284,11 @@ class BenchmarkCase:
             self,
             "gold_citations",
             expand_expected_citations(raw_citations),
+        )
+        object.__setattr__(
+            self,
+            "skill_tag",
+            self.skill_tag or infer_skill_tag(self),
         )
 
 
@@ -316,6 +324,56 @@ def coerce_required_text(value: object, field_name: str) -> str:
 def parse_yes_no_flag(value: object) -> bool:
     text = normalize_for_matching(str(value or ""))
     return text in {"yes", "y", "true", "1"}
+
+
+def contains_placeholder_text(value: object) -> bool:
+    text = str(value or "").strip().lower()
+    if not text:
+        return False
+    return (
+        "[article]" in text
+        or "[clause]" in text
+        or "example.com" in text
+        or "replace the placeholder" in text
+    )
+
+
+def is_placeholder_benchmark_row(row_values: Sequence[object]) -> bool:
+    return any(contains_placeholder_text(value) for value in row_values)
+
+
+def infer_skill_tag(case: BenchmarkCase) -> str:
+    text = normalize_for_matching(
+        " ".join(
+            (
+                case.category,
+                case.subtopic,
+                case.question_type,
+                case.question,
+                case.gold_issue,
+            )
+        )
+    )
+    if case.missing_information or case.abstain_required:
+        return "missing_fact_handling"
+    if any(
+        token in text
+        for token in (
+            "sa thai",
+            "don phuong",
+            "thoa thuan cham dut",
+            "unilateral termination",
+            "resignation",
+            "dismissal",
+            "mutual termination",
+        )
+    ):
+        return "legal_classification"
+    if any(token in text for token in ("thu tuc", "quy trinh", "ho so", "thoi han", "bao truoc")):
+        return "procedure_checking"
+    if any(token in text for token in ("tro cap", "boi thuong", "tien luong", "thanh toan", "bao hiem")):
+        return "remedy_calculation"
+    return "rule_lookup"
 
 
 def unique_preserve_order(values: Iterable[str]) -> tuple[str, ...]:
@@ -473,11 +531,18 @@ def parse_benchmark_rows(rows: Sequence[Sequence[object]]) -> list[BenchmarkCase
 
     for row in rows[header_index + 1 :]:
         padded_row = list(row) + [None] * max(0, len(headers) - len(row))
+        if is_placeholder_benchmark_row(padded_row):
+            continue
         row_id = coerce_optional_text(padded_row[header_map["id"]])
         if row_id is None:
             continue
 
         def value_for(header: str) -> object:
+            return padded_row[header_map[header]]
+
+        def optional_value_for(header: str) -> object:
+            if header not in header_map:
+                return None
             return padded_row[header_map[header]]
 
         cases.append(
@@ -501,6 +566,7 @@ def parse_benchmark_rows(rows: Sequence[Sequence[object]]) -> list[BenchmarkCase
                 annotator=coerce_optional_text(value_for("annotator")),
                 review_status=coerce_optional_text(value_for("review_status")),
                 notes=coerce_optional_text(value_for("notes")),
+                skill_tag=coerce_optional_text(optional_value_for("skill_tag")),
                 gold_citations=expand_expected_citations(
                     (
                         coerce_optional_text(value_for("gold_citation_primary")),
@@ -926,7 +992,7 @@ def build_judge_messages(
             f"GOLD_ANSWER:\n{case.gold_answer_full.strip()}",
             f"GOLD_ANSWER_SHORT:\n{case.gold_answer_short.strip()}",
             f"ABSTAIN_REQUIRED:\n{case.abstain_required}",
-            f"MISSING_INFORMATION:\n{(case.missing_information or '').strip()}",
+            f"GOLD_MISSING_INFORMATION:\n{(case.missing_information or '').strip()}",
             f"CASE_SCOPE:\n{case_scope}",
             "EXPECTED_CITATIONS_IN_SCOPE:",
             "\n".join(f"- {citation}" for citation in expected_citations_scoped) or "-",

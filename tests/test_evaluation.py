@@ -88,6 +88,79 @@ class EvaluationTests(unittest.TestCase):
             expected_citations(cases[0]),
             ("Điều 35 khoản 1 điểm a Bộ luật Lao động 2019",),
         )
+        self.assertEqual(cases[0].skill_tag, "legal_classification")
+
+    def test_parse_benchmark_rows_skips_placeholder_cases(self) -> None:
+        rows = [
+            ("Golden Benchmark Template", None, None),
+            (
+                "id",
+                "category",
+                "subtopic",
+                "difficulty",
+                "question_type",
+                "question",
+                "scenario",
+                "gold_issue",
+                "gold_citation_primary",
+                "gold_citation_secondary",
+                "gold_answer_short",
+                "gold_answer_full",
+                "abstain_required",
+                "missing_information",
+                "source_document",
+                "source_url",
+                "annotator",
+                "review_status",
+                "notes",
+            ),
+            (
+                "LBR_001",
+                "notice_period",
+                "employee resignation",
+                "easy",
+                "direct_qa",
+                "Can an employee resign without prior notice?",
+                "Placeholder scenario",
+                "Placeholder issue",
+                "Labor Code 2019 - [Article], [Clause]",
+                None,
+                "Placeholder short answer",
+                "Placeholder full answer",
+                "No",
+                None,
+                "Labor Code 2019",
+                "https://example.com/source",
+                "initials",
+                "draft",
+                "Replace the placeholder citation with the exact article/clause.",
+            ),
+            (
+                "LBR_002",
+                "labor_contract",
+                "contract types",
+                "easy",
+                "direct_qa",
+                "Co may loai hop dong?",
+                "Tinh huong",
+                "Gold issue",
+                "Điều 20 khoản 1 Bộ luật Lao động 2019",
+                None,
+                "Tra loi ngan",
+                "Tra loi day du",
+                "No",
+                None,
+                "Bộ luật Lao động 2019",
+                None,
+                None,
+                None,
+                None,
+            ),
+        ]
+
+        cases = parse_benchmark_rows(rows)
+
+        self.assertEqual([case.id for case in cases], ["LBR_002"])
 
     def test_load_benchmark_workbook_reads_real_xlsx(self) -> None:
         workbook = Workbook()
@@ -442,6 +515,8 @@ class EvaluationTests(unittest.TestCase):
 
         self.assertIn("retrieval_hit_at_10", columns)
         self.assertNotIn("retrieval_hit_at_5", columns)
+        self.assertIn("citation_provision_correct", columns)
+        self.assertIn("skill_tag", columns)
         self.assertEqual(columns[2], "retrieval_hit_at_10")
 
     def test_parse_judge_payload_reads_valid_json(self) -> None:
