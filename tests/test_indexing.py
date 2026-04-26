@@ -12,6 +12,7 @@ from src.vn_labor_law_ai_assistant.indexing import (
     build_index_records,
     build_qdrant_client,
     build_qdrant_payload,
+    ensure_qdrant_payload_indexes,
     extract_legal_hint_tokens,
     is_sparse_stopword,
     make_qdrant_point_id,
@@ -52,6 +53,48 @@ class IndexingTests(unittest.TestCase):
             client = build_qdrant_client(FakeQdrantClient, Path("artifacts/index/qdrant"))
 
         self.assertEqual(client.kwargs, {"path": str(Path("artifacts/index/qdrant"))})
+
+    def test_ensure_qdrant_payload_indexes_creates_keyword_indexes(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, str, str, bool]] = []
+
+            def create_payload_index(
+                self,
+                *,
+                collection_name: str,
+                field_name: str,
+                field_schema: str,
+                wait: bool,
+            ) -> None:
+                self.calls.append((collection_name, field_name, field_schema, wait))
+
+        class FakeModels:
+            class PayloadSchemaType:
+                KEYWORD = "keyword"
+
+        client = FakeClient()
+
+        ensure_qdrant_payload_indexes(
+            client,
+            FakeModels,
+            collection_name="labor_law_hybrid",
+        )
+
+        indexed_fields = {call[1] for call in client.calls}
+        self.assertTrue(
+            {
+                "chunk_id",
+                "document_id",
+                "article_number",
+                "clause_ref",
+                "point_ref",
+                "issue_type",
+                "topic",
+                "actor",
+            }.issubset(indexed_fields)
+        )
+        self.assertTrue(all(call[2] == "keyword" and call[3] for call in client.calls))
 
     def test_extract_legal_hint_tokens_captures_article_clause_point(self) -> None:
         text = "Trợ cấp thôi việc được tính theo Điều 46 khoản 1 điểm c.2 của Bộ luật Lao động."

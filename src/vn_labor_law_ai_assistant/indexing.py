@@ -94,6 +94,16 @@ SPARSE_STOPWORD_NORMALIZED = {
     normalize_for_matching(word).replace(" ", "")
     for word in SPARSE_STOPWORDS
 }
+QDRANT_KEYWORD_PAYLOAD_INDEX_FIELDS = (
+    "chunk_id",
+    "document_id",
+    "article_number",
+    "clause_ref",
+    "point_ref",
+    "issue_type",
+    "topic",
+    "actor",
+)
 ARTICLE_SPARSE_HINT_TOKENS = {
     "29": ("issue_transfer_work", "temporary_transfer", "different_work_than_contract"),
     "35": ("issue_employee_unilateral", "notice_period", "no_notice_termination"),
@@ -346,6 +356,21 @@ def build_qdrant_payload(record: IndexRecord) -> dict[str, object]:
         "citation_text": record.citation_text,
         "parent_chunk_id": record.parent_chunk_id,
     }
+
+
+def ensure_qdrant_payload_indexes(
+    client,
+    models,
+    *,
+    collection_name: str,
+) -> None:
+    for field_name in QDRANT_KEYWORD_PAYLOAD_INDEX_FIELDS:
+        client.create_payload_index(
+            collection_name=collection_name,
+            field_name=field_name,
+            field_schema=models.PayloadSchemaType.KEYWORD,
+            wait=True,
+        )
 
 
 @dataclass
@@ -664,6 +689,11 @@ def build_qdrant_collection(
                 )
             },
         )
+        ensure_qdrant_payload_indexes(
+            client,
+            models,
+            collection_name=collection_name,
+        )
 
         for start in range(0, len(records), batch_size):
             end = start + batch_size
@@ -796,6 +826,7 @@ __all__ = [
     "build_qdrant_payload",
     "build_sparse_text",
     "build_sparse_tokens",
+    "ensure_qdrant_payload_indexes",
     "extract_legal_hint_tokens",
     "is_sparse_stopword",
     "load_sparse_encoder",
