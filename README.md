@@ -89,6 +89,11 @@ Bien moi truong:
 - `BENCHMARK_JUDGE_MODEL`: model mac dinh cho LLM judge. Neu de trong, script se lay model mac dinh cua `BENCHMARK_JUDGE_PROVIDER`.
 - `RERANKER_MODEL`: model cross-encoder reranker tuy chon, vi du `BAAI/bge-reranker-v2-m3`. De trong neu muon tat semantic reranking.
 - `RERANKER_TOP_N`: so candidate top dau duoc dua qua reranker. Mac dinh la `24`.
+- `QDRANT_URL`: URL Qdrant server/cloud. Neu de trong, he thong fallback ve Qdrant embedded local.
+- `QDRANT_API_KEY`: API key cho Qdrant Cloud.
+- `QDRANT_COLLECTION`: ten collection Qdrant dung khi build/query.
+- `RETRIEVER_RECORD_SOURCE`: `sqlite` cho mode local cu, hoac `qdrant_payload` de runtime doc full text truc tiep tu Qdrant payload.
+- `INDEX_PATH`: duong dan manifest index cho backend API. Mac dinh la `artifacts/index`.
 
 ## Dau ra cua pipeline
 
@@ -110,9 +115,16 @@ Lenh build hybrid index se:
 - tao `dense_text` va `sparse_text` cho tung chunk;
 - sinh dense embedding bang sentence-transformers;
 - word-segment tieng Viet bang PyVi va tao sparse vector co trong so BM25;
-- luu dense + sparse vectors trong cung mot Qdrant collection local;
+- luu dense + sparse vectors trong cung mot Qdrant collection local hoac Qdrant server/cloud neu co `QDRANT_URL`;
+- luu full text, dense_text, sparse_text va citation_text vao Qdrant payload de backend co the dung `RETRIEVER_RECORD_SOURCE=qdrant_payload`;
 - luu canonical records vao `artifacts/index/builds/build_<timestamp>/records.db`;
 - cap nhat con tro `artifacts/index/current.json` sau khi build thanh cong.
+
+Backend API FastAPI:
+
+```powershell
+.venv\Scripts\python.exe -m uvicorn vn_labor_law_ai_assistant.api:app --host 0.0.0.0 --port 8000
+```
 
 Lenh `scripts/ask.py` se:
 
