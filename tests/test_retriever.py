@@ -9,6 +9,7 @@ from vn_labor_law_ai_assistant.retriever import (
     DEFAULT_MAX_CONTEXT_CHARS,
     DEFAULT_RERANKER_TOP_N,
     HybridRetriever,
+    RECORD_SOURCE_QDRANT_PAYLOAD,
     RetrievedRecord,
     RetrievalContext,
     SearchHit,
@@ -17,6 +18,7 @@ from vn_labor_law_ai_assistant.retriever import (
     format_context_for_prompt,
     parse_reference_values,
     prioritize_issue_filters,
+    record_from_qdrant_payload,
     route_query,
     select_contexts_for_prompt,
 )
@@ -109,6 +111,51 @@ class RetrievalAssemblyTests(unittest.TestCase):
             dedupe_preserve_order(("a", "b", "a", "c", "b")),
             ("a", "b", "c"),
         )
+
+    def test_record_from_qdrant_payload_builds_runtime_record(self) -> None:
+        payload = {
+            "chunk_id": "chunk-1",
+            "parent_chunk_id": "parent-1",
+            "citation_text": "Dieu 46",
+            "text": "Noi dung chunk",
+            "dense_text": "dense",
+            "sparse_text": "sparse",
+            "article_number": "46",
+        }
+
+        record = record_from_qdrant_payload(payload)
+
+        self.assertEqual(record.chunk_id, "chunk-1")
+        self.assertEqual(record.parent_chunk_id, "parent-1")
+        self.assertEqual(record.citation_text, "Dieu 46")
+        self.assertEqual(record.text, "Noi dung chunk")
+        self.assertEqual(record.payload["article_number"], "46")
+
+    def test_assemble_contexts_can_read_directly_from_qdrant_payload(self) -> None:
+        retriever = HybridRetriever.__new__(HybridRetriever)
+        retriever._record_source = RECORD_SOURCE_QDRANT_PAYLOAD
+
+        hit = SearchHit(
+            chunk_id="chunk-1",
+            qdrant_point_id="point-1",
+            score=0.9,
+            citation_text="Dieu 46",
+            payload={
+                "chunk_id": "chunk-1",
+                "qdrant_point_id": "point-1",
+                "parent_chunk_id": None,
+                "citation_text": "Dieu 46",
+                "text": "Noi dung tu Qdrant payload",
+                "dense_text": "dense",
+                "sparse_text": "sparse",
+            },
+        )
+
+        contexts = HybridRetriever._assemble_contexts(retriever, (hit,))
+
+        self.assertEqual(len(contexts), 1)
+        self.assertEqual(contexts[0].chunk_id, "chunk-1")
+        self.assertEqual(contexts[0].text, "Noi dung tu Qdrant payload")
 
     def test_format_context_for_prompt_includes_context_blocks(self) -> None:
         context = RetrievalContext(

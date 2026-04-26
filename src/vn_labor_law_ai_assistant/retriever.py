@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
 import sqlite3
 import re
@@ -11,8 +12,10 @@ from .corpus_pipeline import normalize_for_matching
 from .indexing import (
     PyViWordSegmenter,
     SparseBM25Encoder,
+    build_qdrant_client,
     extract_legal_hint_tokens,
     load_sparse_encoder,
+    make_qdrant_point_id,
     require_cross_encoder,
     require_qdrant,
     require_sentence_transformers,
@@ -252,6 +255,9 @@ RETIREMENT_CONTEXT_HINTS = (
 )
 TOKEN_ESTIMATE_RE = re.compile(r"\S+")
 DEFAULT_RERANKER_TOP_N = 24
+RECORD_SOURCE_SQLITE = "sqlite"
+RECORD_SOURCE_QDRANT_PAYLOAD = "qdrant_payload"
+SUPPORTED_RECORD_SOURCES = {RECORD_SOURCE_SQLITE, RECORD_SOURCE_QDRANT_PAYLOAD}
 RRF_K = 60.0
 
 
@@ -328,6 +334,40 @@ class RetrievalResult:
     intent: QueryIntent
     hits: tuple[SearchHit, ...]
     contexts: tuple[RetrievalContext, ...]
+
+
+def resolve_record_source(manifest: dict[str, object]) -> str:
+    configured = (
+        os.getenv("RETRIEVER_RECORD_SOURCE", "").strip()
+        or str(manifest.get("record_source") or "").strip()
+        or RECORD_SOURCE_SQLITE
+    )
+    if configured not in SUPPORTED_RECORD_SOURCES:
+        raise ValueError(
+            "RETRIEVER_RECORD_SOURCE must be one of: "
+            + ", ".join(sorted(SUPPORTED_RECORD_SOURCES))
+        )
+    return configured
+
+
+def record_from_qdrant_payload(payload: dict[str, object]) -> RetrievedRecord:
+    chunk_id = str(payload.get("chunk_id") or "").strip()
+    if not chunk_id:
+        raise ValueError("Qdrant payload is missing chunk_id.")
+
+    return RetrievedRecord(
+        chunk_id=chunk_id,
+        parent_chunk_id=(
+            str(payload.get("parent_chunk_id"))
+            if payload.get("parent_chunk_id")
+            else None
+        ),
+        citation_text=str(payload.get("citation_text") or ""),
+        text=str(payload.get("text") or ""),
+        dense_text=str(payload.get("dense_text") or ""),
+        sparse_text=str(payload.get("sparse_text") or ""),
+        payload=dict(payload),
+    )
 
 
 def dedupe_preserve_order(values: Sequence[str]) -> tuple[str, ...]:
@@ -507,18 +547,28 @@ class HybridRetriever:
     ) -> None:
         self._manifest = load_manifest(index_path)
         self._device = device or str(self._manifest.get("device") or "cpu")
-        self._records_db_path = Path(str(self._manifest["records_db_path"]))
-        self._qdrant_path = Path(str(self._manifest["qdrant_path"]))
-        self._collection_name = str(self._manifest["collection_name"])
+        self._record_source = resolve_record_source(self._manifest)
+        records_db_path = str(self._manifest.get("records_db_path") or "").strip()
+        qdrant_path = str(self._manifest.get("qdrant_path") or "").strip()
+        self._records_db_path = Path(records_db_path) if records_db_path else None
+        self._qdrant_path = Path(qdrant_path) if qdrant_path else None
+        self._collection_name = (
+            os.getenv("QDRANT_COLLECTION", "").strip()
+            or str(self._manifest["collection_name"])
+        )
         self._dense_model_name = str(self._manifest["dense_model_name"])
         self._dense_vector_name = str(self._manifest["dense_vector_name"])
         self._sparse_vector_name = str(self._manifest["sparse_vector_name"])
         self._segmenter = PyViWordSegmenter()
         self._sparse_encoder = load_sparse_encoder(Path(str(self._manifest["sparse_encoder_path"])))
-        self._sqlite = sqlite3.connect(self._records_db_path)
-        self._sqlite.row_factory = sqlite3.Row
+        self._sqlite: sqlite3.Connection | None = None
+        if self._record_source == RECORD_SOURCE_SQLITE:
+            if self._records_db_path is None:
+                raise ValueError("records_db_path is required when record_source is sqlite.")
+            self._sqlite = sqlite3.connect(self._records_db_path)
+            self._sqlite.row_factory = sqlite3.Row
         qdrant_client_cls, self._qdrant_models = require_qdrant()
-        self._qdrant = qdrant_client_cls(path=str(self._qdrant_path))
+        self._qdrant = build_qdrant_client(qdrant_client_cls, self._qdrant_path)
         self._dense_model = None
         self._reranker_model_name = str(reranker_model or "").strip()
         self._reranker_top_n = max(1, int(reranker_top_n))
@@ -538,7 +588,8 @@ class HybridRetriever:
 
     def close(self) -> None:
         self._qdrant.close()
-        self._sqlite.close()
+        if self._sqlite is not None:
+            self._sqlite.close()
 
     def _get_dense_model(self):
         if self._dense_model is None:
@@ -674,21 +725,7 @@ class HybridRetriever:
         )
         return models.Filter(must=must_conditions)
 
-    def _fetch_records(self, chunk_ids: Sequence[str]) -> dict[str, RetrievedRecord]:
-        ordered_ids = dedupe_preserve_order(chunk_ids)
-        if not ordered_ids:
-            return {}
-
-        placeholders = ", ".join("?" for _ in ordered_ids)
-        rows = self._sqlite.execute(
-            f"""
-            SELECT chunk_id, parent_chunk_id, citation_text, text, dense_text, sparse_text, payload_json
-            FROM records
-            WHERE chunk_id IN ({placeholders})
-            """,
-            ordered_ids,
-        ).fetchall()
-
+    def _records_from_rows(self, rows: Sequence[sqlite3.Row]) -> dict[str, RetrievedRecord]:
         records: dict[str, RetrievedRecord] = {}
         for row in rows:
             payload = json.loads(row["payload_json"])
@@ -702,6 +739,79 @@ class HybridRetriever:
                 payload=payload,
             )
         return records
+
+    def _uses_qdrant_payload_records(self) -> bool:
+        return (
+            getattr(self, "_record_source", RECORD_SOURCE_SQLITE)
+            == RECORD_SOURCE_QDRANT_PAYLOAD
+        )
+
+    def _records_from_qdrant_points(self, points: Sequence[object]) -> dict[str, RetrievedRecord]:
+        records: dict[str, RetrievedRecord] = {}
+        for point in points:
+            payload = getattr(point, "payload", None)
+            if not isinstance(payload, dict):
+                continue
+            try:
+                record = record_from_qdrant_payload(payload)
+            except ValueError:
+                continue
+            records[record.chunk_id] = record
+        return records
+
+    def _fetch_records_from_qdrant_ids(self, chunk_ids: Sequence[str]) -> dict[str, RetrievedRecord]:
+        ordered_ids = dedupe_preserve_order(chunk_ids)
+        if not ordered_ids:
+            return {}
+
+        points = self._qdrant.retrieve(
+            collection_name=self._collection_name,
+            ids=[make_qdrant_point_id(chunk_id) for chunk_id in ordered_ids],
+            with_payload=True,
+            with_vectors=False,
+        )
+        return self._records_from_qdrant_points(points)
+
+    def _fetch_records_from_hits(self, hits: Sequence[SearchHit]) -> dict[str, RetrievedRecord]:
+        if not self._uses_qdrant_payload_records():
+            return self._fetch_records([hit.chunk_id for hit in hits])
+
+        records: dict[str, RetrievedRecord] = {}
+        missing_chunk_ids: list[str] = []
+        for hit in hits:
+            try:
+                record = record_from_qdrant_payload(hit.payload)
+            except ValueError:
+                missing_chunk_ids.append(hit.chunk_id)
+                continue
+            records[record.chunk_id] = record
+
+        if missing_chunk_ids:
+            records.update(self._fetch_records_from_qdrant_ids(missing_chunk_ids))
+        return records
+
+    def _fetch_records(self, chunk_ids: Sequence[str]) -> dict[str, RetrievedRecord]:
+        ordered_ids = dedupe_preserve_order(chunk_ids)
+        if not ordered_ids:
+            return {}
+
+        if self._uses_qdrant_payload_records():
+            return self._fetch_records_from_qdrant_ids(ordered_ids)
+
+        if self._sqlite is None:
+            raise RuntimeError("SQLite record store is not open.")
+
+        placeholders = ", ".join("?" for _ in ordered_ids)
+        rows = self._sqlite.execute(
+            f"""
+            SELECT chunk_id, parent_chunk_id, citation_text, text, dense_text, sparse_text, payload_json
+            FROM records
+            WHERE chunk_id IN ({placeholders})
+            """,
+            ordered_ids,
+        ).fetchall()
+
+        return self._records_from_rows(rows)
 
     def _score_hit_relevance(
         self,
@@ -968,8 +1078,7 @@ class HybridRetriever:
         return reranked_candidates + remainder
 
     def _assemble_contexts(self, hits: Sequence[SearchHit]) -> tuple[RetrievalContext, ...]:
-        direct_ids = [hit.chunk_id for hit in hits]
-        direct_records = self._fetch_records(direct_ids)
+        direct_records = self._fetch_records_from_hits(hits)
         parent_ids = [
             record.parent_chunk_id
             for record in direct_records.values()
@@ -1087,14 +1196,17 @@ class HybridRetriever:
         hits = tuple(
             SearchHit(
                 chunk_id=str(point.payload["chunk_id"]),
-                qdrant_point_id=str(point.payload["qdrant_point_id"]),
+                qdrant_point_id=str(
+                    point.payload.get("qdrant_point_id")
+                    or make_qdrant_point_id(str(point.payload["chunk_id"]))
+                ),
                 score=float(point.score),
                 citation_text=str(point.payload.get("citation_text") or ""),
                 payload=dict(point.payload),
             )
             for point in response.points
         )
-        direct_records = self._fetch_records([hit.chunk_id for hit in hits])
+        direct_records = self._fetch_records_from_hits(hits)
         hits = self._rerank_hits(hits, intent, direct_records)
         hits = self._semantic_rerank_hits(query, hits, direct_records)[:top_k]
         contexts = self._assemble_contexts(hits)
@@ -1118,11 +1230,15 @@ __all__ = [
     "DEFAULT_MAX_CONTEXT_CHARS",
     "DEFAULT_MAX_CONTEXT_TOKENS",
     "DEFAULT_RERANKER_TOP_N",
+    "RECORD_SOURCE_QDRANT_PAYLOAD",
+    "RECORD_SOURCE_SQLITE",
     "estimate_token_count",
     "format_context_for_prompt",
     "format_intent_summary",
     "load_manifest",
     "parse_reference_values",
+    "record_from_qdrant_payload",
+    "resolve_record_source",
     "route_query",
     "select_contexts_for_prompt",
 ]
