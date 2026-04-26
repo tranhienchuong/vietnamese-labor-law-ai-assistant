@@ -1,6 +1,6 @@
 ---
 title: Free Embedding API
-emoji: E
+emoji: 🔎
 colorFrom: blue
 colorTo: green
 sdk: docker
