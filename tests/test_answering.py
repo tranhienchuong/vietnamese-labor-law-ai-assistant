@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from vn_labor_law_ai_assistant.answering import (
+    EvidenceQuote,
     build_allowed_citations,
     build_messages,
     canonicalize_citation,
@@ -27,6 +28,85 @@ def make_context(citation_text: str) -> RetrievalContext:
 
 
 class AnsweringTests(unittest.TestCase):
+    def test_parse_answer_payload_accepts_valid_evidence_quotes(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="ctx-20",
+                citation_text="Bo luat so 45/2019/QH14, Dieu 20, khoan 1",
+                text=(
+                    "Hop dong lao dong phai duoc giao ket theo mot trong cac loai sau day: "
+                    "hop dong lao dong khong xac dinh thoi han va hop dong lao dong xac dinh thoi han."
+                ),
+                payload={},
+                score=1.0,
+                matched_chunk_ids=("ctx-20",),
+                matched_citations=("Bo luat so 45/2019/QH14, Dieu 20, khoan 1",),
+            ),
+        )
+        raw_content = """
+        {
+          "answer": "Co 2 loai hop dong lao dong.",
+          "legal_basis": ["Bo luat so 45/2019/QH14, Dieu 20, khoan 1"],
+          "evidence_quotes": [
+            {
+              "citation": "Bo luat so 45/2019/QH14, Dieu 20, khoan 1",
+              "quote": "hop dong lao dong khong xac dinh thoi han va hop dong lao dong xac dinh thoi han"
+            }
+          ],
+          "insufficient_context": false,
+          "notes": ""
+        }
+        """
+
+        parsed = parse_answer_payload(raw_content, contexts)
+
+        self.assertEqual(
+            parsed.evidence_quotes,
+            (
+                EvidenceQuote(
+                    citation="Bo luat so 45/2019/QH14, Dieu 20, khoan 1",
+                    quote="hop dong lao dong khong xac dinh thoi han va hop dong lao dong xac dinh thoi han",
+                ),
+            ),
+        )
+
+    def test_parse_answer_payload_applies_direct_numeric_context_guardrail(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="ctx-20",
+                citation_text="Bo luat so 45/2019/QH14, Dieu 20, khoan 1",
+                text=(
+                    "Hop dong lao dong phai duoc giao ket theo mot trong cac loai sau day: "
+                    "hop dong lao dong khong xac dinh thoi han va hop dong lao dong xac dinh thoi han."
+                ),
+                payload={},
+                score=1.0,
+                matched_chunk_ids=("ctx-20",),
+                matched_citations=("Bo luat so 45/2019/QH14, Dieu 20, khoan 1",),
+            ),
+        )
+        raw_content = """
+        {
+          "answer": "Co 3 loai hop dong lao dong, gom ca hop dong mua vu.",
+          "legal_basis": ["Bo luat so 45/2019/QH14, Dieu 20, khoan 1"],
+          "evidence_quotes": [],
+          "insufficient_context": false,
+          "notes": ""
+        }
+        """
+
+        parsed = parse_answer_payload(
+            raw_content,
+            contexts,
+            question="Hien nay Bo luat Lao dong 2019 quy dinh co bao nhieu loai hop dong lao dong?",
+        )
+
+        self.assertIn("2 loai", parsed.answer.lower())
+        self.assertNotIn("3 loai", parsed.answer.lower())
+        self.assertFalse(parsed.insufficient_context)
+        self.assertEqual(parsed.legal_basis, ("Bo luat so 45/2019/QH14, Dieu 20, khoan 1",))
+        self.assertTrue(parsed.evidence_quotes)
+
     def test_sanitize_legal_basis_keeps_only_allowed_citations(self) -> None:
         contexts = (
             make_context("Bo luat so 45/2019/QH 14, Dieu 46, khoan 1"),

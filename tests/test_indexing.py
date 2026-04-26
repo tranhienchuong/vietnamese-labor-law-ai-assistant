@@ -94,6 +94,11 @@ class IndexingTests(unittest.TestCase):
         self.assertIn("dieu_46", record.sparse_tokens)
         self.assertIn("khoan_1", record.sparse_tokens)
         self.assertIn("diem_c.2", record.sparse_tokens)
+        self.assertIn("issue_tro_cap_thoi_viec", record.sparse_tokens)
+        self.assertIn("topic_tro_cap", record.sparse_tokens)
+        self.assertIn("actor_nguoi_lao_dong", record.sparse_tokens)
+        self.assertIn("issue_severance", record.sparse_tokens)
+        self.assertIn("formula_half_month_salary", record.sparse_tokens)
         self.assertIn("người", record.dense_text.lower())
 
     def test_build_qdrant_payload_contains_runtime_text_fields(self) -> None:

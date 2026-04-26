@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 from vn_labor_law_ai_assistant.llm import (
     chat_completion,
     create_groq_chat_completion_with_retries,
+    DEFAULT_GROQ_BENCHMARK_JUDGE_MODEL,
     default_benchmark_judge_model,
     default_benchmark_judge_provider,
     default_model_for_provider,
@@ -55,11 +56,11 @@ class LLMTests(unittest.TestCase):
         with patch.dict("os.environ", {"BENCHMARK_JUDGE_PROVIDER": "ollama"}, clear=True):
             self.assertEqual(default_benchmark_judge_provider(), "ollama")
 
-    def test_default_benchmark_judge_model_defaults_to_provider_default(self) -> None:
+    def test_default_benchmark_judge_model_defaults_to_groq_judge_model(self) -> None:
         with patch.dict("os.environ", {"BENCHMARK_JUDGE_MODEL": ""}, clear=True):
             self.assertEqual(
                 default_benchmark_judge_model("groq"),
-                default_model_for_provider("groq"),
+                DEFAULT_GROQ_BENCHMARK_JUDGE_MODEL,
             )
             self.assertEqual(
                 default_benchmark_judge_model("ollama"),

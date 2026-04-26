@@ -86,7 +86,7 @@ Bien moi truong:
 - `GROQ_API_KEY`: API key de goi Groq.
 - `LLM_PROVIDER`: provider mac dinh cho `scripts/ask.py` va `scripts/run_benchmark.py`.
 - `BENCHMARK_JUDGE_PROVIDER`: provider mac dinh cho LLM judge trong `scripts/run_benchmark.py` khi co `--model` va khong dung `--no-judge`. Mac dinh la `groq`.
-- `BENCHMARK_JUDGE_MODEL`: model mac dinh cho LLM judge. Neu de trong, script se lay model mac dinh cua `BENCHMARK_JUDGE_PROVIDER`.
+- `BENCHMARK_JUDGE_MODEL`: model mac dinh cho LLM judge. Neu de trong va judge provider la `groq`, script se dung `openai/gpt-oss-120b`.
 - `RERANKER_MODEL`: model cross-encoder reranker tuy chon, vi du `BAAI/bge-reranker-v2-m3`. De trong neu muon tat semantic reranking.
 - `RERANKER_TOP_N`: so candidate top dau duoc dua qua reranker. Mac dinh la `24`.
 - `QDRANT_URL`: URL Qdrant server/cloud. Neu de trong, he thong fallback ve Qdrant embedded local.

@@ -16,6 +16,7 @@ SUPPORTED_PROVIDERS = ("ollama", "groq")
 DEFAULT_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:4b")
 DEFAULT_GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3-32b")
+DEFAULT_GROQ_BENCHMARK_JUDGE_MODEL = "openai/gpt-oss-120b"
 GROQ_STRICT_JSON_MODELS = frozenset(
     {
         "openai/gpt-oss-20b",
@@ -85,6 +86,8 @@ def default_benchmark_judge_model(provider: str | None = None) -> str:
     effective_provider = normalize_provider(provider or default_benchmark_judge_provider())
     if configured:
         return configured
+    if effective_provider == "groq":
+        return DEFAULT_GROQ_BENCHMARK_JUDGE_MODEL
     return default_model_for_provider(effective_provider)
 
 
@@ -259,6 +262,7 @@ def chat_completion(
 
 __all__ = [
     "DEFAULT_GROQ_MODEL",
+    "DEFAULT_GROQ_BENCHMARK_JUDGE_MODEL",
     "DEFAULT_GROQ_RATE_LIMIT_BACKOFF_SECONDS",
     "DEFAULT_GROQ_RATE_LIMIT_MAX_SLEEP_SECONDS",
     "DEFAULT_GROQ_RATE_LIMIT_RETRIES",

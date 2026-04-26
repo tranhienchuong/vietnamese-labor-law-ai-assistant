@@ -292,6 +292,39 @@ class EvaluationTests(unittest.TestCase):
             ),
         )
 
+    def test_expected_citations_preserve_e_transaction_law_family(self) -> None:
+        law = "Lu\u1eadt Giao d\u1ecbch \u0111i\u1ec7n t\u1eed 2023"
+        case = BenchmarkCase(
+            id="LBR_050",
+            category="out_of_scope",
+            subtopic="electronic transaction law",
+            difficulty="medium",
+            question_type="direct_qa",
+            question="Cau hoi?",
+            scenario="Tinh huong",
+            gold_issue="Gold issue",
+            gold_citation_primary=f"\u0110i\u1ec1u 9 {law}",
+            gold_citation_secondary=f"\u0110i\u1ec1u 11 {law}; \u0110i\u1ec1u 16 {law}",
+            gold_answer_short="Tra loi ngan",
+            gold_answer_full="Tra loi day du",
+            abstain_required=True,
+            missing_information=None,
+            source_document=law,
+            source_url=None,
+            annotator=None,
+            review_status=None,
+            notes=None,
+        )
+
+        self.assertEqual(
+            expected_citations(case),
+            (
+                f"\u0110i\u1ec1u 9 {law}",
+                f"\u0110i\u1ec1u 11 {law}",
+                f"\u0110i\u1ec1u 16 {law}",
+            ),
+        )
+
     def test_scope_partition_keeps_in_scope_and_excludes_out_of_scope(self) -> None:
         case = BenchmarkCase(
             id="LBR_005",

@@ -190,7 +190,7 @@ def main() -> None:
             ),
             temperature=0,
         )
-        parsed = parse_answer_payload(response.content, contexts)
+        parsed = parse_answer_payload(response.content, contexts, question=args.question)
         print_answer_block(provider_model_label(response.provider, response.model), parsed)
     finally:
         retriever.close()

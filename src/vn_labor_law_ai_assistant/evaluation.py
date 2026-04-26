@@ -47,6 +47,7 @@ RESULTS_COLUMNS = (
     "retrieved_citations",
     "generated_answer",
     "generated_legal_basis",
+    "generated_evidence_quotes",
     "insufficient_context",
 )
 
@@ -162,6 +163,7 @@ DOCUMENT_FAMILY_LABELS = {
     "luat_bhxh_2014": "Luật Bảo hiểm xã hội 2014",
     "luat_bhxh_2024": "Luật Bảo hiểm xã hội 2024",
     "luat_cong_doan_2024": "Luật Công đoàn 2024",
+    "luat_giao_dich_dien_tu_2023": "Lu\u1eadt Giao d\u1ecbch \u0111i\u1ec7n t\u1eed 2023",
     "bo_luat_dan_su_2015": "Bộ luật Dân sự 2015",
     "bo_luat_to_tung_dan_su_2015": "Bộ luật Tố tụng dân sự 2015",
     "luat_kinh_doanh_bao_hiem_2022": "Luật Kinh doanh bảo hiểm 2022",
@@ -219,6 +221,10 @@ DOCUMENT_FAMILY_SIGNATURES = {
         "luat bhxh 2024",
     ),
     "luat_cong_doan_2024": ("luat cong doan 2024",),
+    "luat_giao_dich_dien_tu_2023": (
+        "luat giao dich dien tu 2023",
+        "luat giao dich dien tu",
+    ),
     "bo_luat_dan_su_2015": (
         "bo luat dan su 2015",
         "blds 2015",

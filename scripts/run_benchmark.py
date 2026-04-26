@@ -7,7 +7,11 @@ from pathlib import Path
 import re
 import sys
 
-from vn_labor_law_ai_assistant.answering import build_messages, parse_answer_payload
+from vn_labor_law_ai_assistant.answering import (
+    EvidenceQuote,
+    build_messages,
+    parse_answer_payload,
+)
 from vn_labor_law_ai_assistant.evaluation import (
     BENCHMARK_JSONL_NAME,
     BenchmarkCase,
@@ -182,6 +186,7 @@ def build_result_row(
     case_scope: str,
     generated_answer: str = "",
     generated_legal_basis: tuple[str, ...] = (),
+    generated_evidence_quotes: tuple[EvidenceQuote, ...] = (),
     insufficient_context: str = "",
 ) -> dict[str, object]:
     if retrieval_hit is None:
@@ -226,8 +231,16 @@ def build_result_row(
         "retrieved_citations": " | ".join(top_hit_citations),
         "generated_answer": generated_answer,
         "generated_legal_basis": " | ".join(generated_legal_basis),
+        "generated_evidence_quotes": format_evidence_quotes(generated_evidence_quotes),
         "insufficient_context": insufficient_context,
     }
+
+
+def format_evidence_quotes(evidence_quotes: tuple[EvidenceQuote, ...]) -> str:
+    return " | ".join(
+        f"{evidence_quote.citation}: {evidence_quote.quote}"
+        for evidence_quote in evidence_quotes
+    )
 
 
 def slugify_model_version(text: str) -> str:
@@ -361,6 +374,7 @@ def main() -> None:
 
             generated_answer = ""
             generated_legal_basis: tuple[str, ...] = ()
+            generated_evidence_quotes: tuple[EvidenceQuote, ...] = ()
             insufficient_context = ""
             citation_correct = ""
             citation_document_correct = ""
@@ -399,9 +413,14 @@ def main() -> None:
                     temperature=0,
                     json_schema_name="legal_answer",
                 )
-                parsed = parse_answer_payload(response.content, contexts)
+                parsed = parse_answer_payload(
+                    response.content,
+                    contexts,
+                    question=case.question,
+                )
                 generated_answer = parsed.answer
                 generated_legal_basis = parsed.legal_basis
+                generated_evidence_quotes = parsed.evidence_quotes
                 insufficient_context = "Yes" if parsed.insufficient_context else "No"
                 citation_article_correct = score_citation_article_correctness_for_scope(
                     case,
@@ -507,6 +526,7 @@ def main() -> None:
                 case_scope=case_scope,
                 generated_answer=generated_answer,
                 generated_legal_basis=generated_legal_basis,
+                generated_evidence_quotes=generated_evidence_quotes,
                 insufficient_context=insufficient_context,
             )
             if args.model:

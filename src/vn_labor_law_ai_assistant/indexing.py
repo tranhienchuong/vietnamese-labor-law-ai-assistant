@@ -94,6 +94,42 @@ SPARSE_STOPWORD_NORMALIZED = {
     normalize_for_matching(word).replace(" ", "")
     for word in SPARSE_STOPWORDS
 }
+ARTICLE_SPARSE_HINT_TOKENS = {
+    "29": ("issue_transfer_work", "temporary_transfer", "different_work_than_contract"),
+    "35": ("issue_employee_unilateral", "notice_period", "no_notice_termination"),
+    "36": ("issue_employer_unilateral", "poor_performance", "absent_without_reason"),
+    "37": ("issue_no_employer_unilateral", "protected_leave", "maternity_protection"),
+    "39": ("issue_unlawful_unilateral", "unlawful_termination"),
+    "40": ("issue_employee_unlawful_termination", "training_cost_reimbursement"),
+    "41": ("issue_unlawful_termination", "issue_compensation", "issue_reinstatement", "remedy_2_month_salary"),
+    "46": (
+        "issue_severance",
+        "formula_half_month_salary",
+        "condition_12_months",
+        "exclude_unemployment_insurance_time",
+    ),
+    "47": ("issue_job_loss_allowance", "minimum_2_month_salary", "structural_change", "economic_reason"),
+    "48": ("issue_post_termination", "return_social_insurance_book", "final_payment"),
+    "97": ("issue_late_wage", "late_payment_interest", "wage_payment_deadline"),
+    "98": ("issue_overtime_pay", "overtime_percentage", "night_work_pay"),
+    "99": ("issue_work_stoppage_wage", "work_stoppage", "salary_during_stoppage"),
+    "104": ("issue_bonus", "thirteenth_month_salary", "bonus_policy"),
+    "113": ("issue_annual_leave", "unused_annual_leave_payment", "annual_leave_days"),
+    "114": ("issue_travel_annual_leave", "annual_leave_travel_time"),
+    "115": ("issue_personal_leave", "paid_personal_leave", "unpaid_leave"),
+    "122": ("issue_discipline_procedure", "discipline_principles", "disciplinary_meeting"),
+    "124": ("issue_discipline_forms", "dismissal_discipline_form"),
+    "125": ("issue_dismissal", "dismissal_discipline", "absent_5_days"),
+    "128": ("issue_temporary_suspension", "suspension_salary_advance"),
+    "129": ("issue_material_liability", "damage_compensation", "salary_deduction"),
+    "137": ("issue_maternity_protection", "pregnant_worker_protection"),
+}
+
+
+def normalize_metadata_token(prefix: str, value: object) -> str | None:
+    cleaned = normalize_for_matching(str(value or "")).strip().replace(" ", "_")
+    cleaned = re.sub(r"[^a-z0-9_.]+", "_", cleaned).strip("_")
+    return f"{prefix}_{cleaned}" if cleaned else None
 
 
 def require_sentence_transformers():
@@ -222,14 +258,20 @@ def is_sparse_stopword(token: str) -> bool:
 
 def build_dense_text(chunk: dict[str, object]) -> str:
     retrieval_text = str(chunk.get("retrieval_text") or "").strip()
-    if retrieval_text:
-        return retrieval_text
-
     heading = str(chunk.get("heading") or "").strip()
     text = str(chunk.get("text") or "").strip()
     body_text = extract_chunk_body(text, heading)
     citation_text = str(chunk.get("citation_text") or "").strip()
-    parts = [part for part in [citation_text, body_text] if part]
+    document_title = str(chunk.get("document_title") or "").strip()
+    article_title = str(chunk.get("article_title") or "").strip()
+    issue_terms = " ".join(str(value) for value in (chunk.get("issue_type") or []))
+    topic_terms = " ".join(str(value) for value in (chunk.get("topic") or []))
+    metadata_text = " ".join(
+        part
+        for part in [document_title, citation_text, article_title, issue_terms, topic_terms]
+        if part
+    )
+    parts = [part for part in [metadata_text, retrieval_text, body_text] if part]
     return "\n".join(parts).strip()
 
 
@@ -252,6 +294,18 @@ def build_sparse_tokens(
 
     tokens.extend(token for token in explicit_tokens if token)
     tokens.extend(extract_legal_hint_tokens(text_for_sparse))
+    tokens.extend(
+        token
+        for prefix, values in (
+            ("topic", chunk.get("topic") or []),
+            ("issue", chunk.get("issue_type") or []),
+            ("actor", chunk.get("actor") or []),
+        )
+        for value in values
+        if (token := normalize_metadata_token(prefix, value))
+    )
+    article_number = str(chunk.get("article_number") or "").strip()
+    tokens.extend(ARTICLE_SPARSE_HINT_TOKENS.get(article_number, ()))
     return tokens
 
 

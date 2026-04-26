@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 import unittest
 
 from qdrant_client import models
@@ -13,7 +14,9 @@ from vn_labor_law_ai_assistant.retriever import (
     RetrievedRecord,
     RetrievalContext,
     SearchHit,
+    TERMINATION_ARTICLE_MAP,
     build_context_block,
+    build_query_variants,
     dedupe_preserve_order,
     format_context_for_prompt,
     parse_reference_values,
@@ -25,6 +28,29 @@ from vn_labor_law_ai_assistant.retriever import (
 
 
 class QueryRoutingTests(unittest.TestCase):
+    def test_termination_article_map_covers_required_articles(self) -> None:
+        self.assertEqual(
+            set(TERMINATION_ARTICLE_MAP),
+            {
+                "34",
+                "35",
+                "36",
+                "37",
+                "38",
+                "39",
+                "40",
+                "41",
+                "46",
+                "47",
+                "48",
+                "122",
+                "124",
+                "125",
+                "128",
+                "129",
+            },
+        )
+
     def test_route_query_extracts_filters_and_legal_refs(self) -> None:
         intent = route_query(
             "Toi bi cong ty duoi viec trai luat, muon doi boi thuong theo Dieu 41 thi lam the nao?"
@@ -37,6 +63,62 @@ class QueryRoutingTests(unittest.TestCase):
         self.assertIn("boi_thuong", intent.issue_filters)
         self.assertEqual(intent.article_number, "41")
         self.assertEqual(intent.article_numbers, ("41",))
+
+    def test_route_query_adds_query_expansion_for_retrieval_miss_phrases(self) -> None:
+        cases = {
+            "Cong ty tra luong cham thi co bi gi khong?": {"97", "35"},
+            "Cong ty tra l\u01b0\u01a1ng ch\u1eadm thi co bi gi khong?": {"97", "35"},
+            "Nghi phep nam chua dung thi thanh toan the nao?": {"113", "114", "37"},
+            "Nghi ph\u00e9p n\u0103m chua dung thi thanh toan the nao?": {"113", "114", "37"},
+            "Toi xin nghi viec rieng co huong luong khong?": {"115", "37"},
+            "Cong ty giam so BHXH khong tra thi lam sao?": {"48", "17"},
+            "Khong co giay uy quyen thi giam doc nhan su co duoc ky cham dut khong?": {"18", "45"},
+            "Khong co gi\u1ea5y \u1ee7y quy\u1ec1n thi giam doc nhan su co duoc ky cham dut khong?": {"18", "45"},
+            "Toi muon khoi kien cong ty thi thu tuc the nao?": {"188", "190"},
+            "Toi muon kh\u1edfi ki\u1ec7n cong ty thi thu tuc the nao?": {"188", "190"},
+        }
+
+        for query, expected_articles in cases.items():
+            with self.subTest(query=query):
+                intent = route_query(query)
+                self.assertTrue(expected_articles.issubset(set(intent.inferred_article_numbers)))
+                self.assertTrue(intent.query_expansions)
+
+        private_leave_intent = route_query("Toi xin nghi viec rieng co huong luong khong?")
+        self.assertNotIn("35", private_leave_intent.inferred_article_numbers)
+
+    def test_route_query_uses_rule_based_article_map_for_termination_questions(self) -> None:
+        intent = route_query("Nhan vien tu y bo viec 5 ngay co bi sa thai khong?")
+
+        self.assertIn("125", intent.inferred_article_numbers)
+        self.assertIn("36", intent.inferred_article_numbers)
+        self.assertIn("ky_luat_sa_thai", intent.topic_filters)
+        self.assertIn("sa_thai", intent.issue_filters)
+
+    def test_route_query_expands_common_plain_vietnamese_terms(self) -> None:
+        cases = {
+            "Cong ty ep viet don nghi thi toi doi boi thuong duoc khong?": {"34", "35", "36", "41"},
+            "Luong thang 13 co bat buoc khong?": {"104"},
+            "Cong ty can tru phep nam cua toi co dung khong?": {"113", "114", "48"},
+            "Cong ty chuyen toi lam viec khac so voi hop dong duoc khong?": {"29"},
+            "Khong dat KPI co bi cong ty don phuong cho nghi viec khong?": {"36"},
+        }
+
+        for query, expected_articles in cases.items():
+            with self.subTest(query=query):
+                intent = route_query(query)
+                self.assertTrue(expected_articles.issubset(set(intent.inferred_article_numbers)))
+                self.assertTrue(intent.query_expansions)
+
+    def test_build_query_variants_includes_expanded_issue_and_citation_queries(self) -> None:
+        intent = route_query("Cong ty no luong 1 thang toi nghi luon duoc khong?")
+
+        variants = build_query_variants(intent)
+
+        self.assertGreaterEqual(len(variants), 3)
+        self.assertEqual(variants[0], "Cong ty no luong 1 thang toi nghi luon duoc khong?")
+        self.assertTrue(any("khong duoc tra du luong" in variant for variant in variants))
+        self.assertTrue(any("Dieu 97" in variant and "Dieu 35" in variant for variant in variants))
 
     def test_parse_reference_values_collects_all_matches(self) -> None:
         values = parse_reference_values(
@@ -68,7 +150,7 @@ class QueryRoutingTests(unittest.TestCase):
         self.assertIn("tro_cap_thoi_viec", intent.issue_filters)
         self.assertIn("nghia_vu_khi_cham_dut", intent.issue_filters)
 
-    def test_build_query_filter_does_not_hard_require_legal_reference(self) -> None:
+    def test_build_query_filter_uses_only_document_and_explicit_refs_as_hard_filters(self) -> None:
         retriever = HybridRetriever.__new__(HybridRetriever)
         retriever._qdrant_models = models
         intent = route_query("Toi tu y nghi viec 5 ngay co bi sa thai theo Dieu 35 khong?")
@@ -79,12 +161,16 @@ class QueryRoutingTests(unittest.TestCase):
         must_keys = [condition.key for condition in (query_filter.must or [])]
         boost_keys = [condition.key for condition in (boost_filter.must or [])]
 
-        self.assertNotIn("article_number", must_keys)
+        self.assertEqual(must_keys, ["article_number"])
         self.assertIn("article_number", boost_keys)
+        hard_article_condition = next(
+            condition for condition in query_filter.must if condition.key == "article_number"
+        )
+        self.assertEqual(hard_article_condition.match.any, ["35"])
         article_condition = next(condition for condition in boost_filter.must if condition.key == "article_number")
-        self.assertEqual(article_condition.match.any, ["35"])
+        self.assertTrue({"35", "36", "125"}.issubset(set(article_condition.match.any)))
 
-    def test_build_query_filter_ignores_generic_actor_filters(self) -> None:
+    def test_build_query_filter_does_not_hard_filter_inferred_articles_or_taxonomy(self) -> None:
         retriever = HybridRetriever.__new__(HybridRetriever)
         retriever._qdrant_models = models
         intent = route_query(
@@ -93,16 +179,39 @@ class QueryRoutingTests(unittest.TestCase):
 
         query_filter = HybridRetriever._build_query_filter(retriever, intent)
 
-        should_keys = [condition.key for condition in (query_filter.min_should.conditions if query_filter and query_filter.min_should else [])]
-
-        self.assertNotIn("actor", should_keys)
-        self.assertIn("topic", should_keys)
-        self.assertIn("issue_type", should_keys)
+        self.assertIsNone(query_filter)
+        self.assertIn("46", intent.inferred_article_numbers)
 
     def test_prioritize_issue_filters_drops_generic_termination_obligation_when_specific_benefit_issue_exists(self) -> None:
         prioritized = prioritize_issue_filters(("tro_cap_thoi_viec", "nghia_vu_khi_cham_dut"))
 
         self.assertEqual(prioritized, ("tro_cap_thoi_viec",))
+
+    def test_sparse_query_uses_query_expansion_and_inferred_article_tokens(self) -> None:
+        class FakeSegmenter:
+            def segment(self, text: str) -> list[str]:
+                return text.lower().split()
+
+        class FakeSparseEncoder:
+            def __init__(self) -> None:
+                self.tokens: list[str] = []
+
+            def encode_query(self, tokens: list[str]) -> SimpleNamespace:
+                self.tokens = tokens
+                return SimpleNamespace(indices=[1], values=[1.0])
+
+        retriever = HybridRetriever.__new__(HybridRetriever)
+        retriever._segmenter = FakeSegmenter()
+        retriever._sparse_encoder = FakeSparseEncoder()
+        retriever._qdrant_models = models
+        intent = route_query("Cong ty giam so BHXH khong tra thi lam sao?")
+
+        tokens, _ = HybridRetriever._encode_sparse_query(retriever, intent)
+
+        self.assertIn("dieu_48", tokens)
+        self.assertIn("dieu_17", tokens)
+        self.assertIn("bao", tokens)
+        self.assertIn("hiem", tokens)
 
 
 class RetrievalAssemblyTests(unittest.TestCase):
@@ -228,6 +337,41 @@ class RetrievalAssemblyTests(unittest.TestCase):
         self.assertEqual(len(selected), 1)
         self.assertEqual(selected[0].chunk_id, "chunk-1")
 
+    def test_select_contexts_for_prompt_diversifies_articles_before_fill(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="dieu-41-k1",
+                citation_text="Dieu 41 khoan 1",
+                text="Noi dung 41.1",
+                payload={"document_id": "45-2019-qh14", "article_number": "41"},
+                score=1.0,
+                matched_chunk_ids=("dieu-41-k1",),
+                matched_citations=("Dieu 41 khoan 1",),
+            ),
+            RetrievalContext(
+                chunk_id="dieu-41-k2",
+                citation_text="Dieu 41 khoan 2",
+                text="Noi dung 41.2",
+                payload={"document_id": "45-2019-qh14", "article_number": "41"},
+                score=0.9,
+                matched_chunk_ids=("dieu-41-k2",),
+                matched_citations=("Dieu 41 khoan 2",),
+            ),
+            RetrievalContext(
+                chunk_id="dieu-48-k1",
+                citation_text="Dieu 48 khoan 1",
+                text="Noi dung 48.1",
+                payload={"document_id": "45-2019-qh14", "article_number": "48"},
+                score=0.8,
+                matched_chunk_ids=("dieu-48-k1",),
+                matched_citations=("Dieu 48 khoan 1",),
+            ),
+        )
+
+        selected = select_contexts_for_prompt(contexts, max_contexts=2, max_chars=1000)
+
+        self.assertEqual([context.chunk_id for context in selected], ["dieu-41-k1", "dieu-48-k1"])
+
     def test_format_context_for_prompt_preserves_first_oversized_block_without_ellipsis(self) -> None:
         context = RetrievalContext(
             chunk_id="chunk-1",
@@ -326,6 +470,112 @@ class RetrievalAssemblyTests(unittest.TestCase):
             contexts[0].matched_citations,
             (child_a.citation_text, child_b.citation_text),
         )
+
+    def test_assemble_contexts_adds_article_siblings_for_remedy_queries(self) -> None:
+        parent = RetrievedRecord(
+            chunk_id="dieu-41-k1",
+            parent_chunk_id=None,
+            citation_text="Bo luat so 45/2019/QH14, Dieu 41, khoan 1",
+            text="Nhan lai nguoi lao dong tro lai lam viec va boi thuong.",
+            dense_text="",
+            sparse_text="",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "41",
+                "level": "clause",
+            },
+        )
+        child = RetrievedRecord(
+            chunk_id="dieu-41-k1-a",
+            parent_chunk_id="dieu-41-k1",
+            citation_text="Bo luat so 45/2019/QH14, Dieu 41, khoan 1, diem a",
+            text="Noi dung diem a.",
+            dense_text="",
+            sparse_text="",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "41",
+                "level": "point",
+            },
+        )
+        sibling = RetrievedRecord(
+            chunk_id="dieu-41-k2",
+            parent_chunk_id=None,
+            citation_text="Bo luat so 45/2019/QH14, Dieu 41, khoan 2",
+            text="Nguoi lao dong khong muon tiep tuc lam viec.",
+            dense_text="",
+            sparse_text="",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "41",
+                "level": "clause",
+            },
+        )
+        retriever = HybridRetriever.__new__(HybridRetriever)
+        records = {parent.chunk_id: parent, child.chunk_id: child}
+        retriever._fetch_records = lambda chunk_ids: {
+            chunk_id: records[chunk_id] for chunk_id in chunk_ids if chunk_id in records
+        }
+        retriever._fetch_article_siblings = lambda **kwargs: (sibling,)
+        intent = route_query("Cong ty cham dut trai luat phai boi thuong the nao?")
+
+        contexts = HybridRetriever._assemble_contexts(
+            retriever,
+            (
+                SearchHit(
+                    chunk_id=child.chunk_id,
+                    qdrant_point_id="point-a",
+                    score=0.9,
+                    citation_text=child.citation_text,
+                    payload={"chunk_id": child.chunk_id},
+                ),
+            ),
+            intent=intent,
+        )
+
+        self.assertEqual([context.chunk_id for context in contexts], ["dieu-41-k1", "dieu-41-k2"])
+
+    def test_reference_fallback_fetches_explicit_clause_even_when_article_is_present(self) -> None:
+        existing = RetrievedRecord(
+            chunk_id="dieu-35-k1",
+            parent_chunk_id=None,
+            citation_text="Bo luat so 45/2019/QH14, Dieu 35, khoan 1",
+            text="Khoan 1",
+            dense_text="",
+            sparse_text="",
+            payload={"article_number": "35", "clause_ref": "1"},
+        )
+        fallback = RetrievedRecord(
+            chunk_id="dieu-35-k2",
+            parent_chunk_id=None,
+            citation_text="Bo luat so 45/2019/QH14, Dieu 35, khoan 2",
+            text="Khoan 2",
+            dense_text="",
+            sparse_text="",
+            payload={"article_number": "35", "clause_ref": "2"},
+        )
+        retriever = HybridRetriever.__new__(HybridRetriever)
+        retriever._fetch_records = lambda chunk_ids: {existing.chunk_id: existing}
+        retriever._fetch_records_by_reference = lambda **kwargs: (fallback,)
+        intent = route_query("Dieu 35 khoan 2 quy dinh gi?")
+        hits = (
+            SearchHit(
+                chunk_id=existing.chunk_id,
+                qdrant_point_id="point-1",
+                score=0.9,
+                citation_text=existing.citation_text,
+                payload={"chunk_id": existing.chunk_id},
+            ),
+        )
+
+        expanded_hits = HybridRetriever._append_reference_fallback_hits(
+            retriever,
+            hits,
+            intent,
+            limit=4,
+        )
+
+        self.assertEqual([hit.chunk_id for hit in expanded_hits], ["dieu-35-k1", "dieu-35-k2"])
 
     def test_rerank_hits_demotes_delegation_clause_for_calculation_query(self) -> None:
         retriever = HybridRetriever.__new__(HybridRetriever)

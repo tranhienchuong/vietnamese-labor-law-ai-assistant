@@ -262,6 +262,379 @@ RRF_K = 60.0
 
 
 @dataclass(frozen=True)
+class RuleBasedQueryExpansion:
+    phrases: tuple[str, ...]
+    articles: tuple[str, ...]
+    topics: tuple[str, ...] = ()
+    issues: tuple[str, ...] = ()
+    expansions: tuple[str, ...] = ()
+    excluded_phrases: tuple[str, ...] = ()
+
+
+TERMINATION_ARTICLE_MAP = {
+    "34": (
+        "can cu cham dut hop dong",
+        "cac truong hop cham dut hop dong",
+        "het han hop dong",
+        "thoa thuan cham dut",
+        "giay phep lao dong het hieu luc",
+    ),
+    "35": (
+        "nguoi lao dong don phuong",
+        "xin nghi",
+        "bao truoc khi nghi viec",
+        "nghi viec khong can bao truoc",
+        "nghi ngang",
+        "bi no luong",
+        "cham luong",
+    ),
+    "36": (
+        "cong ty don phuong",
+        "nguoi su dung lao dong don phuong",
+        "thuong xuyen khong hoan thanh cong viec",
+        "om dau keo dai",
+        "hoa hoan",
+        "thien tai",
+        "tu y bo viec",
+        "tu y nghi viec",
+        "cung cap thong tin khong trung thuc",
+    ),
+    "37": (
+        "khong duoc don phuong cham dut",
+        "dang nghi om",
+        "nghi hang nam",
+        "nghi phep nam",
+        "nghi viec rieng",
+        "dang mang thai",
+        "nghi thai san",
+    ),
+    "38": (
+        "rut don nghi viec",
+        "doi y nghi viec",
+        "huy bo viec don phuong",
+        "huy quyet dinh don phuong",
+    ),
+    "39": (
+        "don phuong cham dut trai phap luat la gi",
+        "the nao la don phuong cham dut trai phap luat",
+        "nghi ngang trai luat",
+    ),
+    "40": (
+        "nghia vu cua nguoi lao dong khi don phuong trai phap luat",
+        "nghi ngang phai boi thuong",
+        "khong bao truoc phai boi thuong",
+        "hoan tra chi phi dao tao",
+    ),
+    "41": (
+        "nghia vu cua nguoi su dung lao dong khi don phuong trai phap luat",
+        "cong ty cham dut trai luat",
+        "sa thai trai luat",
+        "boi thuong it nhat 02 thang tien luong",
+        "nhan nguoi lao dong tro lai lam viec",
+    ),
+    "46": (
+        "tro cap thoi viec",
+        "tinh tro cap thoi viec",
+        "thoi gian lam viec de tinh tro cap",
+        "tien luong tinh tro cap thoi viec",
+    ),
+    "47": (
+        "tro cap mat viec",
+        "mat viec lam",
+        "thay doi co cau",
+        "thay doi cong nghe",
+        "ly do kinh te",
+    ),
+    "48": (
+        "trach nhiem khi cham dut hop dong",
+        "thanh toan khi nghi viec",
+        "thanh toan tien luong",
+        "chot so bhxh",
+        "tra so bhxh",
+        "giam so bhxh",
+        "tra lai giay to",
+        "14 ngay",
+        "30 ngay",
+    ),
+    "122": (
+        "xu ly ky luat lao dong",
+        "hop xu ly ky luat",
+        "nguyen tac xu ly ky luat",
+        "khong duoc xu ly ky luat",
+        "mang thai xu ly ky luat",
+    ),
+    "124": (
+        "hinh thuc xu ly ky luat",
+        "khien trach",
+        "keo dai thoi han nang luong",
+        "cach chuc",
+        "sa thai la hinh thuc ky luat",
+    ),
+    "125": (
+        "ap dung hinh thuc sa thai",
+        "ky luat sa thai",
+        "bi sa thai",
+        "tu y bo viec",
+        "tu y nghi viec",
+        "trom cap",
+        "tham o",
+        "danh bac",
+        "su dung ma tuy",
+    ),
+    "128": (
+        "tam dinh chi cong viec",
+        "tam ung tien luong khi bi tam dinh chi",
+        "xac minh vu viec vi pham ky luat",
+    ),
+    "129": (
+        "boi thuong thiet hai",
+        "lam hu hong dung cu thiet bi",
+        "lam xuoc laptop",
+        "lam mat tai san",
+        "khau tru luong de boi thuong",
+    ),
+}
+
+TERMINATION_ARTICLE_TOPIC_HINTS = {
+    **{
+        article: ("cham_dut_hop_dong_lao_dong",)
+        for article in ("34", "35", "36", "37", "38", "39", "40", "41", "46", "47", "48")
+    },
+    **{article: ("ky_luat_sa_thai",) for article in ("122", "124", "125", "128")},
+}
+TERMINATION_ARTICLE_ISSUE_HINTS = {
+    "35": ("quyen_don_phuong_cham_dut",),
+    "41": ("boi_thuong",),
+    "46": ("tro_cap_thoi_viec",),
+    "47": ("tro_cap_mat_viec",),
+    "48": ("nghia_vu_khi_cham_dut",),
+    "125": ("sa_thai",),
+    "129": ("boi_thuong",),
+}
+TERMINATION_ARTICLE_EXCLUDED_HINTS = {
+    "35": ("nghi viec rieng",),
+}
+
+TERMINATION_ARTICLE_QUERY_RULES = tuple(
+    RuleBasedQueryExpansion(
+        phrases=phrases,
+        articles=(article,),
+        topics=TERMINATION_ARTICLE_TOPIC_HINTS.get(article, ()),
+        issues=TERMINATION_ARTICLE_ISSUE_HINTS.get(article, ()),
+        expansions=(f"Dieu {article}",),
+        excluded_phrases=TERMINATION_ARTICLE_EXCLUDED_HINTS.get(article, ()),
+    )
+    for article, phrases in TERMINATION_ARTICLE_MAP.items()
+)
+
+RETRIEVAL_MISS_QUERY_RULES = (
+    RuleBasedQueryExpansion(
+        phrases=("luong cham", "cham luong", "no luong", "tra luong tre", "tra luong khong dung han"),
+        articles=("97", "35"),
+        topics=("don_phuong_cham_dut",),
+        issues=("quyen_don_phuong_cham_dut",),
+        expansions=(
+            "khong duoc tra du luong hoac tra luong khong dung thoi han",
+            "khoan 4 Dieu 97 tra luong cham",
+            "diem b khoan 2 Dieu 35 khong can bao truoc",
+        ),
+    ),
+    RuleBasedQueryExpansion(
+        phrases=("nghi phep nam", "phep nam", "nghi hang nam", "ngay phep chua nghi"),
+        articles=("113", "114", "37"),
+        issues=("nghia_vu_khi_cham_dut",),
+        expansions=(
+            "nghi hang nam",
+            "thanh toan tien luong nhung ngay chua nghi",
+            "nguoi lao dong dang nghi hang nam",
+        ),
+    ),
+    RuleBasedQueryExpansion(
+        phrases=("nghi viec rieng", "viec rieng", "nghi rieng"),
+        articles=("115", "37"),
+        expansions=(
+            "nghi viec rieng ma van huong nguyen luong",
+            "nguoi lao dong dang nghi viec rieng",
+        ),
+    ),
+    RuleBasedQueryExpansion(
+        phrases=("giam so bhxh", "giu so bhxh", "khong tra so bhxh", "chot so bhxh", "so bao hiem xa hoi"),
+        articles=("48", "17"),
+        topics=("cham_dut_hop_dong_lao_dong",),
+        issues=("nghia_vu_khi_cham_dut",),
+        expansions=(
+            "hoan thanh thu tuc xac nhan thoi gian dong bao hiem xa hoi",
+            "tra lai ban chinh giay to neu da giu cua nguoi lao dong",
+            "giu ban chinh giay to cua nguoi lao dong",
+        ),
+    ),
+    RuleBasedQueryExpansion(
+        phrases=("giay uy quyen", "uy quyen ky", "uy quyen cham dut", "tham quyen ky"),
+        articles=("18", "45"),
+        topics=("hop_dong_lao_dong",),
+        issues=("giao_ket_hop_dong", "thong_bao_cham_dut"),
+        expansions=(
+            "nguoi dai dien theo phap luat hoac nguoi duoc uy quyen",
+            "tham quyen giao ket hop dong lao dong",
+            "thong bao bang van ban ve viec cham dut hop dong lao dong",
+        ),
+    ),
+    RuleBasedQueryExpansion(
+        phrases=("khoi kien", "toa an", "toa an nhan dan", "thoi hieu yeu cau toa an"),
+        articles=("188", "190"),
+        expansions=(
+            "tranh chap lao dong ca nhan",
+            "hoa giai vien lao dong",
+            "thoi hieu yeu cau toa an giai quyet tranh chap lao dong ca nhan",
+        ),
+    ),
+    RuleBasedQueryExpansion(
+        phrases=("duoi viec", "cho nghi viec", "cho thoi viec"),
+        articles=("36", "41", "124", "125"),
+        topics=("cham_dut_hop_dong_lao_dong", "ky_luat_sa_thai"),
+        issues=("can_cu_cham_dut", "boi_thuong", "sa_thai"),
+        expansions=(
+            "nguoi su dung lao dong don phuong cham dut hop dong lao dong",
+            "nghia vu cua nguoi su dung lao dong khi don phuong cham dut trai phap luat",
+            "ap dung hinh thuc xu ly ky luat sa thai",
+        ),
+    ),
+    RuleBasedQueryExpansion(
+        phrases=("nghi ngang", "bo viec", "tu y nghi viec", "tu y bo viec"),
+        articles=("35", "36", "39", "40", "125"),
+        topics=("don_phuong_cham_dut", "ky_luat_sa_thai"),
+        issues=("quyen_don_phuong_cham_dut", "trai_phap_luat", "sa_thai"),
+        expansions=(
+            "nguoi lao dong don phuong cham dut hop dong lao dong trai phap luat",
+            "khong bao truoc",
+            "tu y bo viec 05 ngay cong don trong thoi han 30 ngay",
+        ),
+    ),
+    RuleBasedQueryExpansion(
+        phrases=("ep viet don nghi", "ep viet don xin nghi", "buoc viet don nghi", "bat viet don nghi"),
+        articles=("34", "35", "36", "41"),
+        topics=("cham_dut_hop_dong_lao_dong",),
+        issues=("trai_phap_luat", "boi_thuong"),
+        expansions=(
+            "thoa thuan cham dut hop dong lao dong",
+            "don phuong cham dut hop dong lao dong trai phap luat",
+            "nguoi su dung lao dong cham dut hop dong lao dong trai phap luat",
+        ),
+    ),
+    RuleBasedQueryExpansion(
+        phrases=("luong thang 13", "thang luong 13", "thuong tet", "tien thuong"),
+        articles=("104",),
+        expansions=(
+            "thuong",
+            "tien thuong",
+            "quy che thuong do nguoi su dung lao dong quyet dinh",
+        ),
+    ),
+    RuleBasedQueryExpansion(
+        phrases=("can tru phep", "tru phep nam", "khong thanh toan phep", "ngay phep chua nghi"),
+        articles=("113", "114", "48"),
+        issues=("nghia_vu_khi_cham_dut",),
+        expansions=(
+            "nghi hang nam",
+            "thanh toan tien luong cho nhung ngay chua nghi",
+            "trach nhiem khi cham dut hop dong lao dong",
+        ),
+    ),
+    RuleBasedQueryExpansion(
+        phrases=("bat nghi khong luong", "nghi khong luong", "nghi khong huong luong", "ngung viec"),
+        articles=("99", "115"),
+        expansions=(
+            "nghi khong huong luong",
+            "tien luong ngung viec",
+            "nguoi lao dong ngung viec",
+        ),
+    ),
+    RuleBasedQueryExpansion(
+        phrases=(
+            "chuyen viec khac",
+            "chuyen lam viec khac",
+            "dieu chuyen cong viec",
+            "lam cong viec khac",
+            "lam viec khac so voi hop dong",
+        ),
+        articles=("29",),
+        topics=("hop_dong_lao_dong",),
+        expansions=(
+            "chuyen nguoi lao dong lam cong viec khac so voi hop dong lao dong",
+            "bao truoc it nhat 03 ngay lam viec",
+        ),
+    ),
+    RuleBasedQueryExpansion(
+        phrases=("khong hoan thanh cong viec", "thuong xuyen khong hoan thanh", "khong dat kpi"),
+        articles=("36",),
+        topics=("cham_dut_hop_dong_lao_dong",),
+        issues=("can_cu_cham_dut",),
+        expansions=(
+            "thuong xuyen khong hoan thanh cong viec theo hop dong lao dong",
+            "quy che danh gia muc do hoan thanh cong viec",
+        ),
+    ),
+)
+
+LEGAL_ISSUE_ARTICLE_MAP = {
+    "can_cu_cham_dut": ("34", "36"),
+    "quyen_don_phuong_cham_dut": ("35",),
+    "thoi_han_bao_truoc": ("35", "36", "37"),
+    "tro_cap_thoi_viec": ("46",),
+    "tro_cap_mat_viec": ("47",),
+    "nghia_vu_khi_cham_dut": ("48",),
+    "trai_phap_luat": ("39", "40", "41"),
+    "boi_thuong": ("40", "41", "129"),
+    "sa_thai": ("124", "125"),
+    "noi_quy_lao_dong": ("122", "124", "125"),
+    "thong_bao_cham_dut": ("35", "45"),
+}
+
+LEGAL_TOPIC_ARTICLE_MAP = {
+    "tro_cap": ("46", "47"),
+    "bao_truoc": ("35", "36", "37"),
+    "ky_luat_sa_thai": ("122", "124", "125"),
+    "thay_doi_co_cau_kinh_te": ("42", "44", "47"),
+    "tam_hoan_hop_dong": ("30", "31"),
+    "bao_ve_thai_san": ("137", "138"),
+}
+
+LEGAL_ISSUE_QUERY_HINTS = {
+    "can_cu_cham_dut": ("cac truong hop cham dut hop dong lao dong",),
+    "quyen_don_phuong_cham_dut": ("quyen don phuong cham dut hop dong lao dong cua nguoi lao dong",),
+    "thoi_han_bao_truoc": ("thoi han bao truoc khi don phuong cham dut hop dong lao dong",),
+    "tro_cap_thoi_viec": ("tro cap thoi viec moi nam lam viec nua thang tien luong",),
+    "tro_cap_mat_viec": ("tro cap mat viec it nhat bang 02 thang tien luong",),
+    "nghia_vu_khi_cham_dut": ("thanh toan xac nhan thoi gian dong bao hiem xa hoi tra lai giay to",),
+    "trai_phap_luat": ("don phuong cham dut hop dong lao dong trai phap luat",),
+    "boi_thuong": ("boi thuong khi cham dut hop dong lao dong trai phap luat",),
+    "sa_thai": ("ap dung hinh thuc xu ly ky luat sa thai",),
+    "noi_quy_lao_dong": ("nguyen tac trinh tu xu ly ky luat lao dong",),
+    "thong_bao_cham_dut": ("thong bao bang van ban ve viec cham dut hop dong lao dong",),
+}
+
+QUERY_TYPE_KEYWORDS = {
+    "yes_no": ("co duoc", "co phai", "dung luat khong", "sai luat khong", "duoc khong"),
+    "time_limit": ("bao lau", "bao nhieu ngay", "thoi han", "toi da", "it nhat", "ngay lam viec"),
+    "money_percentage": (
+        "bao nhieu tien",
+        "bao nhieu phan tram",
+        "phan tram",
+        "muc luong",
+        "tien luong",
+        "lai",
+        "boi thuong",
+        "tro cap",
+    ),
+    "procedure": ("thu tuc", "quy trinh", "ho so", "phai lam gi", "thanh phan tham gia", "bien ban"),
+    "remedy": ("boi thuong", "den bu", "nhan lai lam viec", "khoi phuc", "yeu cau cong ty"),
+    "definition": ("la gi", "the nao la", "duoc hieu la", "dinh nghia"),
+    "classification": ("co phai la", "khac gi", "thuoc truong hop nao", "truong hop nao"),
+    "missing_fact": ("can biet", "co can", "neu", "truong hop"),
+}
+
+
+@dataclass(frozen=True)
 class QueryIntent:
     raw_query: str
     normalized_query: str
@@ -270,12 +643,20 @@ class QueryIntent:
     issue_filters: tuple[str, ...]
     document_filters: tuple[str, ...]
     article_numbers: tuple[str, ...] = ()
+    inferred_article_numbers: tuple[str, ...] = ()
     clause_refs: tuple[str, ...] = ()
     point_refs: tuple[str, ...] = ()
+    query_expansions: tuple[str, ...] = ()
+    query_types: tuple[str, ...] = ()
+
+    @property
+    def all_article_numbers(self) -> tuple[str, ...]:
+        return dedupe_preserve_order((*self.article_numbers, *self.inferred_article_numbers))
 
     @property
     def article_number(self) -> str | None:
-        return self.article_numbers[0] if self.article_numbers else None
+        article_numbers = self.all_article_numbers
+        return article_numbers[0] if article_numbers else None
 
     @property
     def clause_ref(self) -> str | None:
@@ -287,6 +668,18 @@ class QueryIntent:
 
     @property
     def legal_reference_filters(self) -> tuple[tuple[str, tuple[str, ...]], ...]:
+        filters: list[tuple[str, tuple[str, ...]]] = []
+        article_numbers = self.all_article_numbers
+        if article_numbers:
+            filters.append(("article_number", article_numbers))
+        if self.clause_refs:
+            filters.append(("clause_ref", self.clause_refs))
+        if self.point_refs:
+            filters.append(("point_ref", self.point_refs))
+        return tuple(filters)
+
+    @property
+    def explicit_legal_reference_filters(self) -> tuple[tuple[str, tuple[str, ...]], ...]:
         filters: list[tuple[str, tuple[str, ...]]] = []
         if self.article_numbers:
             filters.append(("article_number", self.article_numbers))
@@ -370,6 +763,24 @@ def record_from_qdrant_payload(payload: dict[str, object]) -> RetrievedRecord:
     )
 
 
+def record_reference_sort_key(record: RetrievedRecord) -> tuple[int, int, str, str, str]:
+    level_order = {"article": 0, "clause": 1, "point": 2}
+    level = str(record.payload.get("level") or "")
+    clause_ref = str(record.payload.get("clause_ref") or "")
+    point_ref = str(record.payload.get("point_ref") or "")
+    try:
+        clause_order = int(clause_ref)
+    except ValueError:
+        clause_order = 10_000
+    return (
+        level_order.get(level, 3),
+        clause_order,
+        clause_ref,
+        point_ref,
+        record.chunk_id,
+    )
+
+
 def dedupe_preserve_order(values: Sequence[str]) -> tuple[str, ...]:
     seen: set[str] = set()
     ordered: list[str] = []
@@ -400,6 +811,51 @@ def contains_normalized_phrase(normalized_text: str, phrases: Sequence[str]) -> 
     return any(phrase in normalized_text for phrase in phrases)
 
 
+def collect_rule_based_query_expansions(
+    normalized_query: str,
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    inferred_articles: list[str] = []
+    topics: list[str] = []
+    issues: list[str] = []
+    expansions: list[str] = []
+
+    for rule in (*RETRIEVAL_MISS_QUERY_RULES, *TERMINATION_ARTICLE_QUERY_RULES):
+        if not contains_normalized_phrase(normalized_query, rule.phrases):
+            continue
+        if rule.excluded_phrases and contains_normalized_phrase(
+            normalized_query,
+            rule.excluded_phrases,
+        ):
+            continue
+        inferred_articles.extend(rule.articles)
+        topics.extend(rule.topics)
+        issues.extend(rule.issues)
+        expansions.extend(rule.expansions)
+
+    return (
+        dedupe_preserve_order(inferred_articles),
+        dedupe_preserve_order(topics),
+        dedupe_preserve_order(issues),
+        dedupe_preserve_order(expansions),
+    )
+
+
+def collect_mapped_article_expansions(
+    *,
+    topic_filters: Sequence[str],
+    issue_filters: Sequence[str],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    articles: list[str] = []
+    expansions: list[str] = []
+    for issue in issue_filters:
+        articles.extend(LEGAL_ISSUE_ARTICLE_MAP.get(issue, ()))
+        expansions.extend(LEGAL_ISSUE_QUERY_HINTS.get(issue, ()))
+    for topic in topic_filters:
+        articles.extend(LEGAL_TOPIC_ARTICLE_MAP.get(topic, ()))
+    expansions.extend(f"Dieu {article}" for article in articles)
+    return dedupe_preserve_order(articles), dedupe_preserve_order(expansions)
+
+
 def filter_specific_actor_labels(actor_labels: Sequence[str]) -> tuple[str, ...]:
     return tuple(label for label in actor_labels if label not in GENERIC_ACTOR_FILTERS)
 
@@ -413,16 +869,32 @@ def prioritize_issue_filters(issue_labels: Sequence[str]) -> tuple[str, ...]:
 
 def route_query(query: str) -> QueryIntent:
     normalized_query = normalize_for_matching(f" {query} ")
+    inferred_articles, inferred_topics, inferred_issues, query_expansions = (
+        collect_rule_based_query_expansions(normalized_query)
+    )
+    topic_filters = dedupe_preserve_order(
+        (*collect_keyword_matches(normalized_query, TOPIC_KEYWORDS), *inferred_topics)
+    )
+    issue_filters = dedupe_preserve_order(
+        (*collect_keyword_matches(normalized_query, ISSUE_KEYWORDS), *inferred_issues)
+    )
+    mapped_articles, mapped_expansions = collect_mapped_article_expansions(
+        topic_filters=topic_filters,
+        issue_filters=issue_filters,
+    )
     return QueryIntent(
         raw_query=query,
         normalized_query=normalized_query,
         actor_filters=collect_keyword_matches(normalized_query, ACTOR_KEYWORDS),
-        topic_filters=collect_keyword_matches(normalized_query, TOPIC_KEYWORDS),
-        issue_filters=collect_keyword_matches(normalized_query, ISSUE_KEYWORDS),
+        topic_filters=topic_filters,
+        issue_filters=issue_filters,
         document_filters=collect_keyword_matches(normalized_query, DOCUMENT_KEYWORDS),
         article_numbers=parse_reference_values(ARTICLE_REF_RE, normalized_query),
+        inferred_article_numbers=dedupe_preserve_order((*inferred_articles, *mapped_articles)),
         clause_refs=parse_reference_values(CLAUSE_REF_RE, normalized_query),
         point_refs=parse_reference_values(POINT_REF_RE, normalized_query),
+        query_expansions=dedupe_preserve_order((*query_expansions, *mapped_expansions)),
+        query_types=collect_keyword_matches(normalized_query, QUERY_TYPE_KEYWORDS),
     )
 
 
@@ -446,11 +918,50 @@ def format_intent_summary(intent: QueryIntent) -> str:
         parts.append(f"issue={', '.join(intent.issue_filters)}")
     if intent.article_numbers:
         parts.append(f"dieu={', '.join(intent.article_numbers)}")
+    if intent.inferred_article_numbers:
+        parts.append(f"dieu_suy_luan={', '.join(intent.inferred_article_numbers)}")
     if intent.clause_refs:
         parts.append(f"khoan={', '.join(intent.clause_refs)}")
     if intent.point_refs:
         parts.append(f"diem={', '.join(intent.point_refs)}")
+    if intent.query_types:
+        parts.append(f"loai_cau_hoi={', '.join(intent.query_types)}")
+    if intent.query_expansions:
+        parts.append(f"mo_rong={'; '.join(intent.query_expansions)}")
     return "; ".join(parts) if parts else "khong co filter heuristic"
+
+
+def build_query_variants(intent: QueryIntent) -> tuple[str, ...]:
+    variants: list[str] = [intent.raw_query.strip()]
+
+    if intent.query_expansions:
+        variants.append(" ".join((intent.raw_query, *intent.query_expansions)).strip())
+
+    issue_parts: list[str] = []
+    for issue in intent.issue_filters:
+        issue_parts.extend(LEGAL_ISSUE_QUERY_HINTS.get(issue, ()))
+    if issue_parts:
+        variants.append(" ".join(dedupe_preserve_order(issue_parts)))
+
+    if intent.all_article_numbers:
+        reference_suffix = " ".join(
+            (
+                *(f"khoan {clause}" for clause in intent.clause_refs),
+                *(f"diem {point}" for point in intent.point_refs),
+            )
+        )
+        citation_parts = [
+            " ".join(part for part in [f"Dieu {article}", reference_suffix, "Bo luat Lao dong 2019"] if part)
+            for article in intent.all_article_numbers
+        ]
+        citation_parts.extend(intent.query_expansions[:3])
+        variants.append(" ".join(citation_parts))
+
+    return tuple(
+        variant
+        for variant in dedupe_preserve_order(tuple(variant for variant in variants if variant))
+        if variant
+    )
 
 
 def build_context_block(context: RetrievalContext, index: int) -> str:
@@ -477,6 +988,33 @@ def estimate_token_count(text: str) -> int:
     return len(TOKEN_ESTIMATE_RE.findall(text))
 
 
+def context_article_key(context: RetrievalContext) -> tuple[str, str] | None:
+    document_id = str(context.payload.get("document_id") or "")
+    article_number = str(context.payload.get("article_number") or "")
+    if not document_id or not article_number:
+        return None
+    return document_id, article_number
+
+
+def diversify_contexts_by_article(contexts: Sequence[RetrievalContext]) -> tuple[RetrievalContext, ...]:
+    first_per_article: list[RetrievalContext] = []
+    remaining: list[RetrievalContext] = []
+    seen_article_keys: set[tuple[str, str]] = set()
+
+    for context in contexts:
+        key = context_article_key(context)
+        if key is None:
+            first_per_article.append(context)
+            continue
+        if key not in seen_article_keys:
+            seen_article_keys.add(key)
+            first_per_article.append(context)
+        else:
+            remaining.append(context)
+
+    return tuple((*first_per_article, *remaining))
+
+
 def select_contexts_for_prompt(
     contexts: Sequence[RetrievalContext],
     *,
@@ -484,7 +1022,8 @@ def select_contexts_for_prompt(
     max_chars: int = DEFAULT_MAX_CONTEXT_CHARS,
     max_tokens: int | None = DEFAULT_MAX_CONTEXT_TOKENS,
 ) -> tuple[RetrievalContext, ...]:
-    limited_contexts = contexts[:max_contexts] if max_contexts is not None else contexts
+    ranked_contexts = diversify_contexts_by_article(contexts)
+    limited_contexts = ranked_contexts[:max_contexts] if max_contexts is not None else ranked_contexts
     selected: list[RetrievalContext] = []
     current_len = 0
     current_tokens = 0
@@ -615,12 +1154,23 @@ class HybridRetriever:
         )[0]
         return vector.tolist()
 
-    def _encode_sparse_query(self, intent: QueryIntent) -> tuple[list[str], object]:
-        tokens = self._segmenter.segment(intent.raw_query)
-        tokens.extend(extract_legal_hint_tokens(intent.raw_query))
-        tokens.extend(f"dieu_{value}" for value in intent.article_numbers)
+    def _encode_sparse_query(
+        self,
+        intent: QueryIntent,
+        query_text: str | None = None,
+    ) -> tuple[list[str], object]:
+        sparse_query_text = query_text or "\n".join(
+            part for part in (intent.raw_query, *intent.query_expansions) if part
+        )
+        tokens = self._segmenter.segment(sparse_query_text)
+        tokens.extend(extract_legal_hint_tokens(sparse_query_text))
+        tokens.extend(f"dieu_{value}" for value in intent.all_article_numbers)
         tokens.extend(f"khoan_{value}" for value in intent.clause_refs)
         tokens.extend(f"diem_{value}" for value in intent.point_refs)
+        tokens.extend(f"topic_{value}" for value in intent.topic_filters)
+        tokens.extend(f"issue_{value}" for value in intent.issue_filters)
+        tokens.extend(f"actor_{value}" for value in filter_specific_actor_labels(intent.actor_filters))
+        tokens.extend(f"qtype_{value}" for value in intent.query_types)
         sparse_query = self._sparse_encoder.encode_query(tokens)
         sparse_vector = self._qdrant_models.SparseVector(
             indices=sparse_query.indices,
@@ -630,9 +1180,7 @@ class HybridRetriever:
 
     def _build_query_filter(self, intent: QueryIntent):
         must_conditions: list[object] = []
-        ranked_conditions: list[object] = []
         models = self._qdrant_models
-        prioritized_issue_filters = prioritize_issue_filters(intent.issue_filters)
 
         if intent.document_filters:
             must_conditions.append(
@@ -642,39 +1190,15 @@ class HybridRetriever:
                 )
             )
 
-        specific_actor_filters = filter_specific_actor_labels(intent.actor_filters)
-        if specific_actor_filters:
-            ranked_conditions.append(
+        for field_name, values in intent.explicit_legal_reference_filters:
+            must_conditions.append(
                 models.FieldCondition(
-                    key="actor",
-                    match=models.MatchAny(any=list(specific_actor_filters)),
-                )
-            )
-        if intent.topic_filters:
-            ranked_conditions.append(
-                models.FieldCondition(
-                    key="topic",
-                    match=models.MatchAny(any=list(intent.topic_filters)),
-                )
-            )
-        if prioritized_issue_filters:
-            ranked_conditions.append(
-                models.FieldCondition(
-                    key="issue_type",
-                    match=models.MatchAny(any=list(prioritized_issue_filters)),
+                    key=field_name,
+                    match=models.MatchAny(any=list(values)),
                 )
             )
 
-        if not must_conditions and not ranked_conditions:
-            return None
-
-        if ranked_conditions:
-            return models.Filter(
-                must=must_conditions or None,
-                min_should=models.MinShould(conditions=ranked_conditions, min_count=1),
-            )
-
-        return models.Filter(must=must_conditions)
+        return models.Filter(must=must_conditions) if must_conditions else None
 
     def _build_reference_boost_filter(self, intent: QueryIntent):
         if not intent.legal_reference_filters:
@@ -813,6 +1337,217 @@ class HybridRetriever:
 
         return self._records_from_rows(rows)
 
+    def _build_reference_payload_filter(
+        self,
+        *,
+        document_ids: Sequence[str] = (),
+        article_numbers: Sequence[str] = (),
+        clause_refs: Sequence[str] = (),
+        point_refs: Sequence[str] = (),
+        exclude_chunk_ids: Sequence[str] = (),
+    ):
+        models = self._qdrant_models
+        must_conditions: list[object] = []
+        must_not_conditions: list[object] = []
+
+        def add_match_any(field_name: str, values: Sequence[str]) -> None:
+            ordered_values = dedupe_preserve_order(tuple(value for value in values if value))
+            if not ordered_values:
+                return
+            must_conditions.append(
+                models.FieldCondition(
+                    key=field_name,
+                    match=models.MatchAny(any=list(ordered_values)),
+                )
+            )
+
+        add_match_any("document_id", document_ids)
+        add_match_any("article_number", article_numbers)
+        add_match_any("clause_ref", clause_refs)
+        add_match_any("point_ref", point_refs)
+
+        excluded_ids = dedupe_preserve_order(tuple(value for value in exclude_chunk_ids if value))
+        if excluded_ids:
+            must_not_conditions.append(
+                models.FieldCondition(
+                    key="chunk_id",
+                    match=models.MatchAny(any=list(excluded_ids)),
+                )
+            )
+
+        if not must_conditions and not must_not_conditions:
+            return None
+        return models.Filter(
+            must=must_conditions or None,
+            must_not=must_not_conditions or None,
+        )
+
+    def _fetch_records_by_reference_from_qdrant(
+        self,
+        *,
+        document_ids: Sequence[str] = (),
+        article_numbers: Sequence[str] = (),
+        clause_refs: Sequence[str] = (),
+        point_refs: Sequence[str] = (),
+        exclude_chunk_ids: Sequence[str] = (),
+        limit: int = 12,
+    ) -> tuple[RetrievedRecord, ...]:
+        query_filter = self._build_reference_payload_filter(
+            document_ids=document_ids,
+            article_numbers=article_numbers,
+            clause_refs=clause_refs,
+            point_refs=point_refs,
+            exclude_chunk_ids=exclude_chunk_ids,
+        )
+        if query_filter is None:
+            return ()
+
+        points, _ = self._qdrant.scroll(
+            collection_name=self._collection_name,
+            scroll_filter=query_filter,
+            limit=max(1, int(limit)) * 4,
+            with_payload=True,
+            with_vectors=False,
+        )
+        records = tuple(self._records_from_qdrant_points(points).values())
+        return tuple(sorted(records, key=record_reference_sort_key)[: max(1, int(limit))])
+
+    def _fetch_records_by_reference(
+        self,
+        *,
+        document_ids: Sequence[str] = (),
+        article_numbers: Sequence[str] = (),
+        clause_refs: Sequence[str] = (),
+        point_refs: Sequence[str] = (),
+        exclude_chunk_ids: Sequence[str] = (),
+        limit: int = 12,
+    ) -> tuple[RetrievedRecord, ...]:
+        if self._uses_qdrant_payload_records():
+            return self._fetch_records_by_reference_from_qdrant(
+                document_ids=document_ids,
+                article_numbers=article_numbers,
+                clause_refs=clause_refs,
+                point_refs=point_refs,
+                exclude_chunk_ids=exclude_chunk_ids,
+                limit=limit,
+            )
+
+        if self._sqlite is None:
+            raise RuntimeError("SQLite record store is not open.")
+
+        where_parts: list[str] = []
+        params: list[object] = []
+
+        def add_in_filter(field_name: str, values: Sequence[str]) -> None:
+            ordered_values = dedupe_preserve_order(tuple(value for value in values if value))
+            if not ordered_values:
+                return
+            placeholders = ", ".join("?" for _ in ordered_values)
+            where_parts.append(f"{field_name} IN ({placeholders})")
+            params.extend(ordered_values)
+
+        add_in_filter("document_id", document_ids)
+        add_in_filter("article_number", article_numbers)
+        add_in_filter("clause_ref", clause_refs)
+        add_in_filter("point_ref", point_refs)
+
+        excluded_ids = dedupe_preserve_order(tuple(value for value in exclude_chunk_ids if value))
+        if excluded_ids:
+            placeholders = ", ".join("?" for _ in excluded_ids)
+            where_parts.append(f"chunk_id NOT IN ({placeholders})")
+            params.extend(excluded_ids)
+
+        if not where_parts:
+            return ()
+
+        params.append(max(1, int(limit)))
+        rows = self._sqlite.execute(
+            f"""
+            SELECT chunk_id, parent_chunk_id, citation_text, text, dense_text, sparse_text, payload_json
+            FROM records
+            WHERE {" AND ".join(where_parts)}
+            ORDER BY
+                CASE level
+                    WHEN 'article' THEN 0
+                    WHEN 'clause' THEN 1
+                    WHEN 'point' THEN 2
+                    ELSE 3
+                END,
+                CAST(NULLIF(clause_ref, '') AS INTEGER),
+                clause_ref,
+                point_ref,
+                chunk_id
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+        return tuple(self._records_from_rows(rows).values())
+
+    def _fetch_article_siblings(
+        self,
+        *,
+        document_id: str,
+        article_number: str,
+        exclude_chunk_ids: Sequence[str] = (),
+        limit: int = 6,
+    ) -> tuple[RetrievedRecord, ...]:
+        return self._fetch_records_by_reference(
+            document_ids=(document_id,),
+            article_numbers=(article_number,),
+            exclude_chunk_ids=exclude_chunk_ids,
+            limit=limit,
+        )
+
+    @staticmethod
+    def _record_to_search_hit(record: RetrievedRecord, score: float) -> SearchHit:
+        return SearchHit(
+            chunk_id=record.chunk_id,
+            qdrant_point_id=str(record.payload.get("qdrant_point_id") or record.chunk_id),
+            score=score,
+            citation_text=record.citation_text,
+            payload=record.payload,
+        )
+
+    def _append_reference_fallback_hits(
+        self,
+        hits: Sequence[SearchHit],
+        intent: QueryIntent,
+        *,
+        limit: int,
+    ) -> tuple[SearchHit, ...]:
+        if not intent.explicit_legal_reference_filters:
+            return tuple(hits)
+
+        existing_chunk_ids = {hit.chunk_id for hit in hits}
+        existing_records = self._fetch_records_from_hits(hits)
+        existing_articles = {
+            str(record.payload.get("article_number") or "")
+            for record in existing_records.values()
+        }
+        missing_articles = tuple(
+            article for article in intent.article_numbers if article not in existing_articles
+        )
+        if intent.article_numbers and not missing_articles and not intent.clause_refs and not intent.point_refs:
+            return tuple(hits)
+
+        fallback_records = self._fetch_records_by_reference(
+            document_ids=intent.document_filters,
+            article_numbers=missing_articles or intent.article_numbers,
+            clause_refs=intent.clause_refs,
+            point_refs=intent.point_refs,
+            exclude_chunk_ids=tuple(existing_chunk_ids),
+            limit=limit,
+        )
+        if not fallback_records:
+            return tuple(hits)
+
+        fallback_score = min((hit.score for hit in hits), default=0.0) - 1e-3
+        fallback_hits = tuple(
+            self._record_to_search_hit(record, fallback_score - (rank * 1e-4))
+            for rank, record in enumerate(fallback_records)
+        )
+        return (*hits, *fallback_hits)
+
     def _score_hit_relevance(
         self,
         hit: SearchHit,
@@ -825,6 +1560,7 @@ class HybridRetriever:
         clause_ref = str(record.payload.get("clause_ref") or "").lower()
         document_id = str(record.payload.get("document_id") or "")
         level = str(record.payload.get("level") or "")
+        actor_values = {str(value) for value in (record.payload.get("actor") or [])}
         topic_values = {str(value) for value in (record.payload.get("topic") or [])}
         issue_values = {str(value) for value in (record.payload.get("issue_type") or [])}
         section_heading = normalize_for_matching(str(record.payload.get("section_heading") or ""))
@@ -877,7 +1613,7 @@ class HybridRetriever:
             and "nghi dinh" not in intent.normalized_query
         )
 
-        if intent.article_numbers and article_number in intent.article_numbers:
+        if intent.all_article_numbers and article_number in intent.all_article_numbers:
             boost += 0.2
         if intent.clause_refs and clause_ref in intent.clause_refs:
             boost += 0.25
@@ -885,6 +1621,29 @@ class HybridRetriever:
             boost += 0.15
         if intent.topic_filters and topic_values.intersection(intent.topic_filters):
             boost += 0.05
+        specific_actor_filters = filter_specific_actor_labels(intent.actor_filters)
+        if specific_actor_filters and actor_values.intersection(specific_actor_filters):
+            boost += 0.04
+        if "time_limit" in intent.query_types and contains_normalized_phrase(
+            normalized_text,
+            ("ngay", "thang", "nam", "thoi han", "khong qua", "it nhat"),
+        ):
+            boost += 0.08
+        if "money_percentage" in intent.query_types and contains_normalized_phrase(
+            normalized_text,
+            ("%", "phan tram", "tien luong", "it nhat", "bang", "muc luong"),
+        ):
+            boost += 0.08
+        if "procedure" in intent.query_types and contains_normalized_phrase(
+            normalized_text,
+            ("thong bao", "tham khao y kien", "bien ban", "thoi han", "to chuc dai dien"),
+        ):
+            boost += 0.08
+        if "classification" in intent.query_types and contains_normalized_phrase(
+            normalized_text,
+            ("hinh thuc", "don phuong cham dut", "cac truong hop", "ap dung"),
+        ):
+            boost += 0.08
 
         if is_termination_query:
             if contains_normalized_phrase(section_heading, TERMINATION_SECTION_HINTS):
@@ -1077,7 +1836,93 @@ class HybridRetriever:
         remainder = tuple(hits[len(candidate_hits) :])
         return reranked_candidates + remainder
 
-    def _assemble_contexts(self, hits: Sequence[SearchHit]) -> tuple[RetrievalContext, ...]:
+    def _query_needs_article_siblings(self, intent: QueryIntent) -> bool:
+        if intent.clause_refs or intent.point_refs:
+            return True
+        if set(intent.query_types).intersection({"procedure", "remedy", "definition", "classification", "money_percentage"}):
+            return True
+        return bool(
+            set(intent.issue_filters).intersection(
+                {
+                    "boi_thuong",
+                    "tro_cap_thoi_viec",
+                    "tro_cap_mat_viec",
+                    "nghia_vu_khi_cham_dut",
+                    "trai_phap_luat",
+                }
+            )
+        )
+
+    def _add_article_sibling_contexts(
+        self,
+        contexts: Sequence[RetrievalContext],
+        *,
+        intent: QueryIntent,
+        direct_records: dict[str, RetrievedRecord],
+    ) -> tuple[RetrievalContext, ...]:
+        if not self._query_needs_article_siblings(intent):
+            return tuple(contexts)
+
+        seen_chunk_ids = {context.chunk_id for context in contexts}
+        seen_chunk_ids.update(
+            chunk_id
+            for context in contexts
+            for chunk_id in context.matched_chunk_ids
+        )
+        context_article_levels = {
+            context_article_key(context): str(context.payload.get("level") or "")
+            for context in contexts
+            if context_article_key(context) is not None
+        }
+        records_by_article: dict[tuple[str, str], RetrievedRecord] = {}
+        for record in direct_records.values():
+            document_id = str(record.payload.get("document_id") or "")
+            article_number = str(record.payload.get("article_number") or "")
+            if not document_id or not article_number:
+                continue
+            key = (document_id, article_number)
+            if context_article_levels.get(key) == "article":
+                continue
+            records_by_article.setdefault(key, record)
+
+        if not records_by_article:
+            return tuple(contexts)
+
+        expanded_contexts: list[RetrievalContext] = []
+        added_sibling_ids: set[str] = set()
+        for context in contexts:
+            expanded_contexts.append(context)
+            key = context_article_key(context)
+            if key not in records_by_article:
+                continue
+            document_id, article_number = key
+            siblings = self._fetch_article_siblings(
+                document_id=document_id,
+                article_number=article_number,
+                exclude_chunk_ids=tuple(seen_chunk_ids | added_sibling_ids),
+                limit=3,
+            )
+            for rank, sibling in enumerate(siblings, start=1):
+                added_sibling_ids.add(sibling.chunk_id)
+                expanded_contexts.append(
+                    RetrievalContext(
+                        chunk_id=sibling.chunk_id,
+                        citation_text=sibling.citation_text,
+                        text=sibling.text,
+                        payload=sibling.payload,
+                        score=max(context.score - (rank * 1e-3), 0.0),
+                        matched_chunk_ids=(sibling.chunk_id,),
+                        matched_citations=(sibling.citation_text,),
+                    )
+                )
+
+        return tuple(expanded_contexts)
+
+    def _assemble_contexts(
+        self,
+        hits: Sequence[SearchHit],
+        intent: QueryIntent | None = None,
+    ) -> tuple[RetrievalContext, ...]:
         direct_records = self._fetch_records_from_hits(hits)
         parent_ids = [
             record.parent_chunk_id
@@ -1132,7 +1977,13 @@ class HybridRetriever:
                     matched_citations=matched_citations,
                 )
             )
-        return tuple(contexts)
+        if intent is None:
+            return tuple(contexts)
+        return self._add_article_sibling_contexts(
+            contexts,
+            intent=intent,
+            direct_records=direct_records,
+        )
 
     def retrieve(
         self,
@@ -1145,24 +1996,30 @@ class HybridRetriever:
         query_filter = self._build_query_filter(intent)
         reference_boost_filter = self._build_reference_boost_filter(intent)
         issue_focus_filter = self._build_issue_focus_filter(intent)
-        dense_query = self._encode_dense_query(query)
+        query_variants = build_query_variants(intent)
         _, sparse_query = self._encode_sparse_query(intent)
         models = self._qdrant_models
 
-        prefetches = [
-            models.Prefetch(
-                query=dense_query,
-                using=self._dense_vector_name,
-                filter=query_filter,
-                limit=prefetch_limit,
-            ),
-            models.Prefetch(
-                query=sparse_query,
-                using=self._sparse_vector_name,
-                filter=query_filter,
-                limit=prefetch_limit,
-            ),
-        ]
+        prefetches = []
+        for variant in query_variants:
+            dense_query = self._encode_dense_query(variant)
+            _, variant_sparse_query = self._encode_sparse_query(intent, query_text=variant)
+            prefetches.extend(
+                [
+                    models.Prefetch(
+                        query=dense_query,
+                        using=self._dense_vector_name,
+                        filter=query_filter,
+                        limit=prefetch_limit,
+                    ),
+                    models.Prefetch(
+                        query=variant_sparse_query,
+                        using=self._sparse_vector_name,
+                        filter=query_filter,
+                        limit=prefetch_limit,
+                    ),
+                ]
+            )
 
         if reference_boost_filter is not None:
             prefetches.append(
@@ -1183,7 +2040,7 @@ class HybridRetriever:
                 )
             )
 
-        candidate_limit = max(top_k * 6, prefetch_limit * 4, 64)
+        candidate_limit = max(top_k * 6, prefetch_limit * max(4, len(query_variants) * 2), 64)
 
         response = self._qdrant.query_points(
             collection_name=self._collection_name,
@@ -1206,10 +2063,11 @@ class HybridRetriever:
             )
             for point in response.points
         )
+        hits = self._append_reference_fallback_hits(hits, intent, limit=max(4, top_k))
         direct_records = self._fetch_records_from_hits(hits)
         hits = self._rerank_hits(hits, intent, direct_records)
         hits = self._semantic_rerank_hits(query, hits, direct_records)[:top_k]
-        contexts = self._assemble_contexts(hits)
+        contexts = self._assemble_contexts(hits, intent=intent)
         return RetrievalResult(
             query=query,
             intent=intent,
@@ -1223,15 +2081,19 @@ __all__ = [
     "QueryIntent",
     "RetrievalContext",
     "RetrievalResult",
+    "LEGAL_ISSUE_ARTICLE_MAP",
+    "TERMINATION_ARTICLE_MAP",
     "SearchHit",
     "RetrievedRecord",
     "build_context_block",
+    "build_query_variants",
     "dedupe_preserve_order",
     "DEFAULT_MAX_CONTEXT_CHARS",
     "DEFAULT_MAX_CONTEXT_TOKENS",
     "DEFAULT_RERANKER_TOP_N",
     "RECORD_SOURCE_QDRANT_PAYLOAD",
     "RECORD_SOURCE_SQLITE",
+    "diversify_contexts_by_article",
     "estimate_token_count",
     "format_context_for_prompt",
     "format_intent_summary",
