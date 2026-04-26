@@ -14,7 +14,7 @@ import sqlite3
 from typing import Sequence
 import uuid
 
-from .config import load_repo_env
+from .config import REPO_ROOT, load_repo_env
 from .corpus_pipeline import extract_chunk_body, normalize_for_matching
 from .embeddings import embed_texts_via_http, is_custom_http_embedding_provider
 
@@ -731,6 +731,14 @@ def write_build_manifest(manifest: dict[str, object], output_path: Path) -> None
     output_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def path_for_manifest(path: Path) -> str:
+    resolved_path = path.resolve()
+    try:
+        return resolved_path.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return resolved_path.as_posix()
+
+
 def update_current_pointer(artifacts_dir: Path, manifest: dict[str, object]) -> None:
     current_manifest_path = artifacts_dir / "current.json"
     temp_manifest_path = artifacts_dir / ".current.json.tmp"
@@ -804,12 +812,12 @@ def build_hybrid_index(
         "sparse_vector_name": "sparse",
         "record_count": len(records),
         "corpus_signature": build_corpus_signature(chunk_paths),
-        "chunk_paths": [path.as_posix() for path in chunk_paths],
-        "build_dir": final_build_dir.as_posix(),
-        "qdrant_path": (final_build_dir / "qdrant").as_posix(),
-        "records_db_path": (final_build_dir / "records.db").as_posix(),
-        "records_jsonl_path": (final_build_dir / "records.jsonl").as_posix(),
-        "sparse_encoder_path": (final_build_dir / "sparse_encoder.json").as_posix(),
+        "chunk_paths": [path_for_manifest(path) for path in chunk_paths],
+        "build_dir": path_for_manifest(final_build_dir),
+        "qdrant_path": path_for_manifest(final_build_dir / "qdrant"),
+        "records_db_path": path_for_manifest(final_build_dir / "records.db"),
+        "records_jsonl_path": path_for_manifest(final_build_dir / "records.jsonl"),
+        "sparse_encoder_path": path_for_manifest(final_build_dir / "sparse_encoder.json"),
         "batch_size": batch_size,
         "device": resolve_device(device),
     }

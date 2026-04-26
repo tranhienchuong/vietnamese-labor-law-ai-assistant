@@ -17,6 +17,7 @@ from src.vn_labor_law_ai_assistant.indexing import (
     extract_legal_hint_tokens,
     is_sparse_stopword,
     make_qdrant_point_id,
+    path_for_manifest,
     write_records_sqlite,
 )
 
@@ -54,6 +55,12 @@ class IndexingTests(unittest.TestCase):
             client = build_qdrant_client(FakeQdrantClient, Path("artifacts/index/qdrant"))
 
         self.assertEqual(client.kwargs, {"path": str(Path("artifacts/index/qdrant"))})
+
+    def test_path_for_manifest_uses_repo_relative_paths(self) -> None:
+        self.assertEqual(
+            path_for_manifest(Path("artifacts/index/current.json")),
+            "artifacts/index/current.json",
+        )
 
     def test_embed_dense_texts_uses_custom_http_provider(self) -> None:
         with (

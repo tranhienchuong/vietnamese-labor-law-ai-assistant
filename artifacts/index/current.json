@@ -1,10 +1,10 @@
 {
-  "build_id": "20260426T101518Z",
-  "generated_at": "2026-04-26T10:19:34.200220+00:00",
+  "build_id": "20260426T140706Z",
+  "generated_at": "2026-04-26T14:09:48.384971+00:00",
   "collection_name": "vietnamese_labor_law_chunks",
   "qdrant_storage": "cloud",
   "record_source": "qdrant_payload",
-  "dense_model_name": "keepitreal/vietnamese-sbert",
+  "dense_model_name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
   "dense_vector_name": "dense",
   "sparse_vector_name": "sparse",
   "record_count": 1013,
@@ -13,11 +13,11 @@
     "corpus/chunks/45-2019-qh14.jsonl",
     "corpus/chunks/nghi-dinh-145-2020-nd-cp.jsonl"
   ],
-  "build_dir": "artifacts/index/builds/build_20260426T101518Z",
-  "qdrant_path": "artifacts/index/builds/build_20260426T101518Z/qdrant",
-  "records_db_path": "artifacts/index/builds/build_20260426T101518Z/records.db",
-  "records_jsonl_path": "artifacts/index/builds/build_20260426T101518Z/records.jsonl",
-  "sparse_encoder_path": "artifacts/index/builds/build_20260426T101518Z/sparse_encoder.json",
+  "build_dir": "artifacts/index/builds/build_20260426T140706Z",
+  "qdrant_path": "artifacts/index/builds/build_20260426T140706Z/qdrant",
+  "records_db_path": "artifacts/index/builds/build_20260426T140706Z/records.db",
+  "records_jsonl_path": "artifacts/index/builds/build_20260426T140706Z/records.jsonl",
+  "sparse_encoder_path": "artifacts/index/builds/build_20260426T140706Z/sparse_encoder.json",
   "batch_size": 32,
   "device": "cpu"
 }
