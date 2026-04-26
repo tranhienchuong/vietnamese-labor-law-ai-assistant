@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import sys
 
@@ -31,10 +32,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dense-model",
         type=str,
-        default="keepitreal/vietnamese-sbert",
+        default=os.getenv("DENSE_MODEL", "keepitreal/vietnamese-sbert"),
         help="Sentence-transformers model used for dense embeddings.",
     )
-    parser.add_argument("--collection-name", type=str, default="labor_law_hybrid")
+    parser.add_argument(
+        "--collection-name",
+        type=str,
+        default=os.getenv("QDRANT_COLLECTION", "labor_law_hybrid"),
+    )
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--device", type=str, default=None, help="Optional torch device override, e.g. cpu or cuda.")
     parser.add_argument("--build-id", type=str, default=None, help="Optional explicit build id.")
@@ -62,6 +67,8 @@ def main() -> None:
     print(f"Collection: {manifest['collection_name']}")
     print(f"Records: {manifest['record_count']}")
     print(f"Dense model: {manifest['dense_model_name']}")
+    print(f"Qdrant storage: {manifest.get('qdrant_storage', 'local')}")
+    print(f"Record source: {manifest.get('record_source', 'sqlite')}")
     print(f"Build directory: {manifest['build_dir']}")
     print(f"Current pointer: {(args.artifacts_dir / 'current.json').resolve().as_posix()}")
 

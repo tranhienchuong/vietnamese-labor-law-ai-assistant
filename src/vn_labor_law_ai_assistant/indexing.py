@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import re
 import shutil
@@ -13,8 +14,11 @@ import sqlite3
 from typing import Sequence
 import uuid
 
+from .config import load_repo_env
 from .corpus_pipeline import extract_chunk_body, normalize_for_matching
 
+
+load_repo_env()
 
 LEGAL_ARTICLE_RE = re.compile(r"\bdieu\s+(?P<value>\d+[a-z]?)")
 LEGAL_CLAUSE_RE = re.compile(r"\bkhoan\s+(?P<value>\d+)")
@@ -114,6 +118,26 @@ def require_qdrant():
     except ImportError as exc:
         raise RuntimeError("qdrant-client is required for hybrid index builds.") from exc
     return QdrantClient, models
+
+
+def qdrant_storage_mode() -> str:
+    return "cloud" if os.getenv("QDRANT_URL", "").strip() else "local"
+
+
+def build_qdrant_client(qdrant_client_cls, qdrant_path: Path | None = None):
+    qdrant_url = os.getenv("QDRANT_URL", "").strip()
+    qdrant_api_key = os.getenv("QDRANT_API_KEY", "").strip()
+
+    if qdrant_url:
+        return qdrant_client_cls(
+            url=qdrant_url,
+            api_key=qdrant_api_key or None,
+        )
+
+    if qdrant_path is None:
+        raise ValueError("qdrant_path is required when QDRANT_URL is not set.")
+
+    return qdrant_client_cls(path=str(qdrant_path))
 
 
 def require_pyvi():
@@ -257,6 +281,17 @@ class IndexRecord:
     @property
     def source_path(self) -> str:
         return str(self.payload["source_path"])
+
+
+def build_qdrant_payload(record: IndexRecord) -> dict[str, object]:
+    return {
+        **record.payload,
+        "text": record.text,
+        "dense_text": record.dense_text,
+        "sparse_text": record.sparse_text,
+        "citation_text": record.citation_text,
+        "parent_chunk_id": record.parent_chunk_id,
+    }
 
 
 @dataclass
@@ -558,7 +593,7 @@ def build_qdrant_collection(
         raise ValueError("No records available for Qdrant indexing.")
 
     qdrant_client_cls, models = require_qdrant()
-    client = qdrant_client_cls(path=str(qdrant_path))
+    client = build_qdrant_client(qdrant_client_cls, qdrant_path)
     try:
         dense_size = len(dense_vectors[0])
         client.recreate_collection(
@@ -594,7 +629,7 @@ def build_qdrant_collection(
                                 values=sparse_vector.values,
                             ),
                         },
-                        payload=record.payload,
+                        payload=build_qdrant_payload(record),
                     )
                 )
 
@@ -668,10 +703,13 @@ def build_hybrid_index(
         batch_size=batch_size,
     )
 
+    storage_mode = qdrant_storage_mode()
     manifest = {
         "build_id": timestamp,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "collection_name": collection_name,
+        "qdrant_storage": storage_mode,
+        "record_source": "qdrant_payload" if storage_mode == "cloud" else "sqlite",
         "dense_model_name": dense_model_name,
         "dense_vector_name": "dense",
         "sparse_vector_name": "sparse",
@@ -698,8 +736,10 @@ __all__ = [
     "PyViWordSegmenter",
     "SparseBM25Encoder",
     "SparseVectorData",
+    "build_qdrant_client",
     "build_hybrid_index",
     "build_index_records",
+    "build_qdrant_payload",
     "build_sparse_text",
     "build_sparse_tokens",
     "extract_legal_hint_tokens",
@@ -708,6 +748,8 @@ __all__ = [
     "load_chunk_payloads",
     "make_qdrant_point_id",
     "normalize_reference_token",
+    "qdrant_storage_mode",
     "require_cross_encoder",
+    "require_qdrant",
     "resolve_chunk_paths",
 ]

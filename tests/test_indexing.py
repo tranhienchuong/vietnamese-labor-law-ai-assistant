@@ -4,11 +4,14 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from src.vn_labor_law_ai_assistant.indexing import (
     PyViWordSegmenter,
     SparseBM25Encoder,
     build_index_records,
+    build_qdrant_client,
+    build_qdrant_payload,
     extract_legal_hint_tokens,
     is_sparse_stopword,
     make_qdrant_point_id,
@@ -22,6 +25,34 @@ class FakeSegmenter:
 
 
 class IndexingTests(unittest.TestCase):
+    def test_build_qdrant_client_uses_cloud_url_when_configured(self) -> None:
+        class FakeQdrantClient:
+            def __init__(self, **kwargs) -> None:
+                self.kwargs = kwargs
+
+        with patch.dict(
+            "os.environ",
+            {
+                "QDRANT_URL": "https://example.qdrant.io",
+                "QDRANT_API_KEY": "secret",
+            },
+        ):
+            client = build_qdrant_client(FakeQdrantClient, Path("ignored"))
+
+        self.assertEqual(client.kwargs["url"], "https://example.qdrant.io")
+        self.assertEqual(client.kwargs["api_key"], "secret")
+        self.assertNotIn("path", client.kwargs)
+
+    def test_build_qdrant_client_falls_back_to_local_path(self) -> None:
+        class FakeQdrantClient:
+            def __init__(self, **kwargs) -> None:
+                self.kwargs = kwargs
+
+        with patch.dict("os.environ", {"QDRANT_URL": "", "QDRANT_API_KEY": ""}):
+            client = build_qdrant_client(FakeQdrantClient, Path("artifacts/index/qdrant"))
+
+        self.assertEqual(client.kwargs, {"path": str(Path("artifacts/index/qdrant"))})
+
     def test_extract_legal_hint_tokens_captures_article_clause_point(self) -> None:
         text = "Trợ cấp thôi việc được tính theo Điều 46 khoản 1 điểm c.2 của Bộ luật Lao động."
         tokens = extract_legal_hint_tokens(text)
@@ -64,6 +95,40 @@ class IndexingTests(unittest.TestCase):
         self.assertIn("khoan_1", record.sparse_tokens)
         self.assertIn("diem_c.2", record.sparse_tokens)
         self.assertIn("người", record.dense_text.lower())
+
+    def test_build_qdrant_payload_contains_runtime_text_fields(self) -> None:
+        chunk = {
+            "chunk_id": "bo-luat-dieu-46-chunk-01",
+            "document_id": "bo-luat-45-2019-qh14",
+            "document_title": "Bo luat so 45/2019/QH14",
+            "source_kind": "curated_text",
+            "source_path": "corpus/cleaned/du_lieu.txt",
+            "section_id": "bo-luat-dieu-46",
+            "article_number": "46",
+            "article_title": "Tro cap thoi viec",
+            "heading": "Dieu 46. Tro cap thoi viec",
+            "chapter_heading": None,
+            "section_heading": "Muc 3. Cham dut hop dong lao dong",
+            "level": "clause",
+            "clause_ref": "1",
+            "point_ref": None,
+            "parent_chunk_id": "bo-luat-dieu-46-parent",
+            "citation_text": "Bo luat so 45/2019/QH14, Dieu 46, khoan 1",
+            "topic": ["tro_cap"],
+            "actor": ["nguoi_lao_dong"],
+            "issue_type": ["tro_cap_thoi_viec"],
+            "text": "Moi nam lam viec duoc tro cap mot nua thang tien luong.",
+        }
+
+        record = build_index_records([chunk], segmenter=FakeSegmenter())[0]
+        payload = build_qdrant_payload(record)
+
+        self.assertEqual(payload["chunk_id"], record.chunk_id)
+        self.assertEqual(payload["text"], record.text)
+        self.assertEqual(payload["dense_text"], record.dense_text)
+        self.assertEqual(payload["sparse_text"], record.sparse_text)
+        self.assertEqual(payload["citation_text"], record.citation_text)
+        self.assertEqual(payload["parent_chunk_id"], record.parent_chunk_id)
 
     def test_sparse_bm25_encoder_aligns_query_and_document_indices(self) -> None:
         encoder = SparseBM25Encoder.fit(
