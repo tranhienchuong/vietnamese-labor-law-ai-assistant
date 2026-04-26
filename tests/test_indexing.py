@@ -12,6 +12,7 @@ from src.vn_labor_law_ai_assistant.indexing import (
     build_index_records,
     build_qdrant_client,
     build_qdrant_payload,
+    embed_dense_texts,
     ensure_qdrant_payload_indexes,
     extract_legal_hint_tokens,
     is_sparse_stopword,
@@ -53,6 +54,28 @@ class IndexingTests(unittest.TestCase):
             client = build_qdrant_client(FakeQdrantClient, Path("artifacts/index/qdrant"))
 
         self.assertEqual(client.kwargs, {"path": str(Path("artifacts/index/qdrant"))})
+
+    def test_embed_dense_texts_uses_custom_http_provider(self) -> None:
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "EMBEDDING_PROVIDER": "custom_http",
+                    "EMBEDDING_API_URL": "https://embedding.example/v1/embeddings",
+                },
+                clear=False,
+            ),
+            patch(
+                "src.vn_labor_law_ai_assistant.indexing.embed_texts_via_http",
+                return_value=[[1.0, 2.0]],
+            ) as embed_http,
+            patch("src.vn_labor_law_ai_assistant.indexing.require_sentence_transformers") as require_local,
+        ):
+            vectors = embed_dense_texts(["mot cau"], model_name="ignored", batch_size=7)
+
+        self.assertEqual(vectors, [[1.0, 2.0]])
+        embed_http.assert_called_once_with(["mot cau"], batch_size=7)
+        require_local.assert_not_called()
 
     def test_ensure_qdrant_payload_indexes_creates_keyword_indexes(self) -> None:
         class FakeClient:

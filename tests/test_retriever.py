@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from qdrant_client import models
 
@@ -212,6 +213,30 @@ class QueryRoutingTests(unittest.TestCase):
         self.assertIn("dieu_17", tokens)
         self.assertIn("bao", tokens)
         self.assertIn("hiem", tokens)
+
+    def test_dense_query_uses_custom_http_provider(self) -> None:
+        retriever = HybridRetriever.__new__(HybridRetriever)
+
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "EMBEDDING_PROVIDER": "custom_http",
+                    "EMBEDDING_API_URL": "https://embedding.example/v1/embeddings",
+                },
+                clear=False,
+            ),
+            patch(
+                "vn_labor_law_ai_assistant.retriever.embed_query_via_http",
+                return_value=[0.1, 0.2],
+            ) as embed_http,
+            patch.object(HybridRetriever, "_get_dense_model") as get_dense_model,
+        ):
+            vector = HybridRetriever._encode_dense_query(retriever, "cong ty cham dut trai luat")
+
+        self.assertEqual(vector, [0.1, 0.2])
+        embed_http.assert_called_once_with("cong ty cham dut trai luat")
+        get_dense_model.assert_not_called()
 
 
 class RetrievalAssemblyTests(unittest.TestCase):

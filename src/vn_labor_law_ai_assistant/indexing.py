@@ -16,6 +16,7 @@ import uuid
 
 from .config import load_repo_env
 from .corpus_pipeline import extract_chunk_body, normalize_for_matching
+from .embeddings import embed_texts_via_http, is_custom_http_embedding_provider
 
 
 load_repo_env()
@@ -541,10 +542,14 @@ def embed_dense_texts(
     batch_size: int = 32,
     device: str | None = None,
 ) -> list[list[float]]:
+    text_list = list(texts)
+    if is_custom_http_embedding_provider():
+        return embed_texts_via_http(text_list, batch_size=batch_size)
+
     sentence_transformer_cls = require_sentence_transformers()
     model = sentence_transformer_cls(model_name, device=resolve_device(device))
     embeddings = model.encode(
-        list(texts),
+        text_list,
         batch_size=batch_size,
         convert_to_numpy=True,
         normalize_embeddings=True,

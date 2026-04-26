@@ -110,6 +110,9 @@ QDRANT_COLLECTION=vietnamese_labor_law_chunks
 
 RERANKER_MODEL=
 RERANKER_TOP_N=24
+EMBEDDING_PROVIDER=sentence_transformers
+EMBEDDING_API_URL=
+EMBEDDING_API_TIMEOUT_SECONDS=60
 ```
 
 Build/indexing environment:
@@ -119,7 +122,18 @@ QDRANT_URL=https://your-cluster-url.qdrant.io
 QDRANT_API_KEY=your_qdrant_api_key
 QDRANT_COLLECTION=vietnamese_labor_law_chunks
 DENSE_MODEL=keepitreal/vietnamese-sbert
+EMBEDDING_PROVIDER=sentence_transformers
 ```
+
+If runtime embeddings come from the Hugging Face Space in `my-embedding-api`, set:
+
+```env
+EMBEDDING_PROVIDER=custom_http
+EMBEDDING_API_URL=https://your-username-my-embedding-api.hf.space/v1/embeddings
+DENSE_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+```
+
+Then rebuild and upload the Qdrant collection with the same dense model used by the Space.
 
 Frontend Vercel:
 

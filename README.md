@@ -89,11 +89,15 @@ Bien moi truong:
 - `BENCHMARK_JUDGE_MODEL`: model mac dinh cho LLM judge. Neu de trong va judge provider la `groq`, script se dung `openai/gpt-oss-120b`.
 - `RERANKER_MODEL`: model cross-encoder reranker tuy chon, vi du `BAAI/bge-reranker-v2-m3`. De trong neu muon tat semantic reranking.
 - `RERANKER_TOP_N`: so candidate top dau duoc dua qua reranker. Mac dinh la `24`.
+- `EMBEDDING_PROVIDER`: `sentence_transformers` de encode local, hoac `custom_http` de goi embedding API rieng.
+- `EMBEDDING_API_URL`: endpoint HTTP khi dung `EMBEDDING_PROVIDER=custom_http`, vi du `https://your-space.hf.space/v1/embeddings`.
+- `EMBEDDING_API_TIMEOUT_SECONDS`: timeout cho embedding API. Mac dinh la `60`.
 - `QDRANT_URL`: URL Qdrant server/cloud. Neu de trong, he thong fallback ve Qdrant embedded local.
 - `QDRANT_API_KEY`: API key cho Qdrant Cloud.
 - `QDRANT_COLLECTION`: ten collection Qdrant dung khi build/query.
 - `RETRIEVER_RECORD_SOURCE`: `sqlite` cho mode local cu, hoac `qdrant_payload` de runtime doc full text truc tiep tu Qdrant payload.
 - `INDEX_PATH`: duong dan manifest index cho backend API. Mac dinh la `artifacts/index`.
+- Khi doi model embedding runtime, phai rebuild lai Qdrant index bang dung `DENSE_MODEL` do.
 
 ## Dau ra cua pipeline
 

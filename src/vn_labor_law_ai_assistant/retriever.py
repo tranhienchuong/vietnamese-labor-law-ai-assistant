@@ -9,6 +9,7 @@ import re
 from typing import Sequence
 
 from .corpus_pipeline import normalize_for_matching
+from .embeddings import embed_query_via_http, is_custom_http_embedding_provider
 from .indexing import (
     PyViWordSegmenter,
     SparseBM25Encoder,
@@ -1145,6 +1146,9 @@ class HybridRetriever:
         return self._reranker
 
     def _encode_dense_query(self, query: str) -> list[float]:
+        if is_custom_http_embedding_provider():
+            return embed_query_via_http(query)
+
         model = self._get_dense_model()
         vector = model.encode(
             [query],
