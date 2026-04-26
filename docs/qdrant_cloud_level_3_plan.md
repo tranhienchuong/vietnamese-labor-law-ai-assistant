@@ -112,6 +112,7 @@ RERANKER_MODEL=
 RERANKER_TOP_N=24
 EMBEDDING_PROVIDER=sentence_transformers
 EMBEDDING_API_URL=
+EMBEDDING_API_TOKEN=
 EMBEDDING_API_TIMEOUT_SECONDS=60
 ```
 
@@ -130,6 +131,7 @@ If runtime embeddings come from the Hugging Face Space in `my-embedding-api`, se
 ```env
 EMBEDDING_PROVIDER=custom_http
 EMBEDDING_API_URL=https://your-username-my-embedding-api.hf.space/v1/embeddings
+EMBEDDING_API_TOKEN=
 DENSE_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 ```
 

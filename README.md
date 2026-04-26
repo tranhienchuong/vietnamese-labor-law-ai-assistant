@@ -91,6 +91,7 @@ Bien moi truong:
 - `RERANKER_TOP_N`: so candidate top dau duoc dua qua reranker. Mac dinh la `24`.
 - `EMBEDDING_PROVIDER`: `sentence_transformers` de encode local, hoac `custom_http` de goi embedding API rieng.
 - `EMBEDDING_API_URL`: endpoint HTTP khi dung `EMBEDDING_PROVIDER=custom_http`, vi du `https://your-space.hf.space/v1/embeddings`.
+- `EMBEDDING_API_TOKEN`: optional Bearer token neu embedding API/Space de private.
 - `EMBEDDING_API_TIMEOUT_SECONDS`: timeout cho embedding API. Mac dinh la `60`.
 - `QDRANT_URL`: URL Qdrant server/cloud. Neu de trong, he thong fallback ve Qdrant embedded local.
 - `QDRANT_API_KEY`: API key cho Qdrant Cloud.

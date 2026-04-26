@@ -9,6 +9,7 @@ from vn_labor_law_ai_assistant.embeddings import (
     embedding_api_timeout_seconds,
     embedding_provider,
     is_custom_http_embedding_provider,
+    normalize_embedding_api_url,
 )
 
 
@@ -40,6 +41,18 @@ class EmbeddingHttpTests(unittest.TestCase):
         with patch.dict("os.environ", {"EMBEDDING_API_TIMEOUT_SECONDS": "12.5"}, clear=False):
             self.assertEqual(embedding_api_timeout_seconds(), 12.5)
 
+    def test_normalize_embedding_api_url_converts_space_page_url(self) -> None:
+        self.assertEqual(
+            normalize_embedding_api_url("https://huggingface.co/spaces/chuong0306/my-api-embedding"),
+            "https://chuong0306-my-api-embedding.hf.space/v1/embeddings",
+        )
+
+    def test_normalize_embedding_api_url_appends_default_path_for_hf_space_root(self) -> None:
+        self.assertEqual(
+            normalize_embedding_api_url("https://chuong0306-my-api-embedding.hf.space/"),
+            "https://chuong0306-my-api-embedding.hf.space/v1/embeddings",
+        )
+
     def test_embed_texts_via_http_sends_batch_request(self) -> None:
         requests = []
 
@@ -47,6 +60,7 @@ class EmbeddingHttpTests(unittest.TestCase):
             requests.append((http_request, timeout))
             body = json.loads(http_request.data.decode("utf-8"))
             self.assertEqual(body, {"input": ["cau mot", "cau hai"]})
+            self.assertEqual(http_request.get_header("Authorization"), "Bearer hf_test")
             return FakeResponse({"embedding": [[1, 2], [3.5, 4]], "model": "test-model"})
 
         with (
@@ -54,6 +68,7 @@ class EmbeddingHttpTests(unittest.TestCase):
                 "os.environ",
                 {
                     "EMBEDDING_API_URL": "https://embedding.example/v1/embeddings",
+                    "EMBEDDING_API_TOKEN": "hf_test",
                     "EMBEDDING_API_TIMEOUT_SECONDS": "8",
                 },
                 clear=False,

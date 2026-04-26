@@ -4,6 +4,7 @@ import json
 import os
 from typing import Sequence
 from urllib import error, request
+from urllib.parse import urlparse
 
 from .config import load_repo_env
 
@@ -34,7 +35,29 @@ def embedding_api_url() -> str:
     api_url = os.getenv("EMBEDDING_API_URL", "").strip()
     if not api_url:
         raise RuntimeError("EMBEDDING_API_URL is required when EMBEDDING_PROVIDER=custom_http.")
+    return normalize_embedding_api_url(api_url)
+
+
+def normalize_embedding_api_url(api_url: str) -> str:
+    parsed_url = urlparse(api_url.strip())
+    if parsed_url.netloc == "huggingface.co":
+        path_parts = [part for part in parsed_url.path.split("/") if part]
+        if len(path_parts) >= 3 and path_parts[0] == "spaces":
+            owner, space_name = path_parts[1], path_parts[2]
+            return f"https://{owner}-{space_name}.hf.space/v1/embeddings"
+
+    if parsed_url.netloc.endswith(".hf.space") and parsed_url.path in {"", "/"}:
+        return api_url.rstrip("/") + "/v1/embeddings"
+
     return api_url
+
+
+def embedding_api_token() -> str:
+    for key in ("EMBEDDING_API_TOKEN", "HF_TOKEN", "HUGGINGFACE_HUB_TOKEN"):
+        token = os.getenv(key, "").strip()
+        if token:
+            return token
+    return ""
 
 
 def embedding_api_timeout_seconds() -> float:
@@ -103,6 +126,9 @@ def _request_embedding_batch(
         },
         method="POST",
     )
+    token = embedding_api_token()
+    if token:
+        http_request.add_header("Authorization", f"Bearer {token}")
 
     try:
         with request.urlopen(http_request, timeout=timeout_seconds) as response:
