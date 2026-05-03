@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import Script from "next/script"
 import { GeistSans } from "geist/font/sans"
 import "./globals.css"
+import { AuthProvider } from "@/components/auth/auth-provider"
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants"
 
 export const metadata: Metadata = {
@@ -77,7 +78,7 @@ export default function RootLayout({
             `
           }}
         />
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   )

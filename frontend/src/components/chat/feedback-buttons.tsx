@@ -1,16 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { AlertTriangle, Check, FileWarning, HelpCircle, ThumbsDown } from "lucide-react"
+import { ThumbsDown, ThumbsUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 const feedbackOptions = [
-  { id: "helpful", label: "Đúng", icon: Check },
-  { id: "not-helpful", label: "Sai", icon: ThumbsDown },
-  { id: "wrong-citation", label: "Sai nguồn", icon: FileWarning },
-  { id: "missing-info", label: "Thiếu ý", icon: HelpCircle },
-  { id: "hallucination", label: "Bịa nguồn", icon: AlertTriangle }
+  { id: "helpful", label: "Hữu ích", icon: ThumbsUp },
+  { id: "not-helpful", label: "Chưa đúng", icon: ThumbsDown }
 ]
 
 export function FeedbackButtons() {

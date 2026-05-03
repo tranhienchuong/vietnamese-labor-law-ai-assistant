@@ -1,16 +1,49 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { X } from "lucide-react"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { ChatInput } from "@/components/chat/chat-input"
 import { MessageList } from "@/components/chat/message-list"
-import { useStreamingChat } from "@/hooks/use-streaming-chat"
+import { useStreamingChat, type ChatMessage } from "@/hooks/use-streaming-chat"
+import type { ConversationSummary } from "@/lib/types"
 
 export function ChatInterface() {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [conversations, setConversations] = useState<ConversationSummary[]>([])
+
+  const loadConversations = useCallback(async () => {
+    const response = await fetch("/api/conversations", { cache: "no-store" })
+    if (!response.ok) return
+    const payload = (await response.json()) as {
+      conversations?: ConversationSummary[]
+    }
+    setConversations(payload.conversations ?? [])
+  }, [])
+
+  const chatBody = useMemo(
+    () => ({
+      mode: "legal_qa",
+      language: "vi",
+      includeCitations: true,
+      ...(conversationId ? { conversationId } : {})
+    }),
+    [conversationId]
+  )
+
+  const handleResponseMetadata = useCallback(
+    ({ conversationId: nextConversationId }: { conversationId?: string }) => {
+      if (nextConversationId) {
+        setConversationId(nextConversationId)
+      }
+      void loadConversations()
+    },
+    [loadConversations]
+  )
+
   const {
     messages,
     input,
@@ -24,14 +57,9 @@ export function ChatInterface() {
     setMessages
   } = useStreamingChat({
     api: "/api/chat",
-    body: {
-      mode: "legal_qa",
-      language: "vi",
-      includeCitations: true
-    }
+    body: chatBody,
+    onResponseMetadata: handleResponseMetadata
   })
-
-  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     const question = new URLSearchParams(window.location.search).get("question")
@@ -40,10 +68,39 @@ export function ChatInterface() {
     }
   }, [setInput])
 
+  useEffect(() => {
+    void loadConversations()
+  }, [loadConversations])
+
   function startNewChat() {
     stop()
+    setConversationId(null)
     setInput("")
     setMessages([])
+    setSidebarOpen(false)
+  }
+
+  async function selectConversation(nextConversationId: string) {
+    stop()
+    const response = await fetch(`/api/conversations/${nextConversationId}`, {
+      cache: "no-store"
+    })
+    if (!response.ok) return
+
+    const payload = (await response.json()) as {
+      messages?: Array<ChatMessage & { created_at?: string }>
+    }
+    const nextMessages =
+      payload.messages
+        ?.filter((message) => message.role === "user" || message.role === "assistant")
+        .map((message) => ({
+          id: message.id,
+          role: message.role,
+          content: message.content
+        })) ?? []
+
+    setConversationId(nextConversationId)
+    setMessages(nextMessages)
     setSidebarOpen(false)
   }
 
@@ -58,7 +115,10 @@ export function ChatInterface() {
 
       <div className="mx-auto flex h-[calc(100vh-4rem)] max-w-[1600px]">
         <AppSidebar
+          activeConversationId={conversationId}
           className="hidden lg:flex"
+          conversations={conversations}
+          onConversationSelect={selectConversation}
           onExampleSelect={selectExample}
           onNewChat={startNewChat}
         />
@@ -73,7 +133,7 @@ export function ChatInterface() {
             />
             <div className="relative h-full w-[min(88vw,20rem)] bg-surface shadow-soft">
               <div className="flex h-16 items-center justify-between border-b border-border px-4">
-                <Badge variant="secondary">Menu</Badge>
+                <span className="text-sm font-semibold">Điều hướng</span>
                 <Button
                   aria-label="Đóng điều hướng"
                   onClick={() => setSidebarOpen(false)}
@@ -85,7 +145,10 @@ export function ChatInterface() {
                 </Button>
               </div>
               <AppSidebar
+                activeConversationId={conversationId}
                 className="h-[calc(100%-4rem)] w-full border-r-0"
+                conversations={conversations}
+                onConversationSelect={selectConversation}
                 onExampleSelect={selectExample}
                 onNewChat={startNewChat}
               />
@@ -109,37 +172,7 @@ export function ChatInterface() {
             onSubmit={handleSubmit}
           />
         </main>
-
-        <aside className="hidden w-80 shrink-0 border-l border-border bg-surface xl:block">
-          <div className="space-y-5 p-5">
-            <div>
-              <h2 className="text-sm font-semibold">Trạng thái truy xuất</h2>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Backend thật có thể trả thêm confidence, legal basis và metadata
-                nguồn để thay thế dữ liệu demo.
-              </p>
-            </div>
-            <div className="grid gap-3">
-              <StatusRow label="Nguồn đang index" value="2" />
-              <StatusRow label="Chế độ trả lời" value="Có căn cứ" />
-              <StatusRow label="Streaming" value="Bật" />
-            </div>
-            <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-3 text-sm leading-6 text-warning-foreground">
-              Khi câu hỏi thiếu dữ kiện, hệ thống nên yêu cầu bổ sung thay vì
-              suy đoán kết luận pháp lý.
-            </div>
-          </div>
-        </aside>
       </div>
-    </div>
-  )
-}
-
-function StatusRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
     </div>
   )
 }

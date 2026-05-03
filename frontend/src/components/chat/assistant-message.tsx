@@ -70,12 +70,12 @@ export function AssistantMessage({
           <div className="flex flex-wrap items-center gap-2">
             <Button onClick={copyAnswer} size="sm" type="button" variant="outline">
               <Copy className="h-3.5 w-3.5" />
-              {copied ? "Đã copy" : "Copy"}
+              {copied ? "Đã sao chép" : "Sao chép"}
             </Button>
             {isLatest && onRegenerate ? (
               <Button onClick={onRegenerate} size="sm" type="button" variant="outline">
                 <RefreshCw className="h-3.5 w-3.5" />
-                Regenerate
+                Tạo lại
               </Button>
             ) : null}
             <FeedbackButtons />

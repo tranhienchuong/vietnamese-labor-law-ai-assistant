@@ -36,12 +36,11 @@ export function MessageList({
                 <Sparkles className="h-5 w-5" />
               </div>
               <h1 className="text-2xl font-semibold tracking-normal text-foreground sm:text-3xl">
-                Trợ lí AI Luật Lao động Việt Nam
+                Bạn muốn hỏi gì về luật lao động?
               </h1>
               <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
-                Tập trung vào chấm dứt hợp đồng lao động, thời hạn báo trước,
-                bồi thường, trợ cấp thôi việc và nguồn trích dẫn từ văn bản đã
-                index.
+                Hãy đặt câu hỏi về chấm dứt hợp đồng, thời hạn báo trước,
+                bồi thường, trợ cấp thôi việc hoặc căn cứ pháp lý liên quan.
               </p>
             </div>
 
@@ -75,7 +74,7 @@ export function MessageList({
                   key={message.id}
                 >
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Đang truy xuất căn cứ pháp lý và sinh câu trả lời...
+                  Đang chuẩn bị câu trả lời có căn cứ pháp lý...
                 </div>
               )
             }
@@ -93,7 +92,7 @@ export function MessageList({
         {isLoading && messages[messages.length - 1]?.role === "user" ? (
           <div className="flex items-center gap-2 rounded-md border border-border bg-surface px-4 py-3 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Đang truy xuất căn cứ pháp lý và sinh câu trả lời...
+            Đang chuẩn bị câu trả lời có căn cứ pháp lý...
           </div>
         ) : null}
 
