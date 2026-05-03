@@ -37,7 +37,7 @@ export function ChatInput({
             maxLength={4000}
             onChange={onInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="Nhập câu hỏi về chấm dứt hợp đồng lao động..."
+            placeholder="Nhập câu hỏi về chấm dứt hợp đồng, báo trước, bồi thường hoặc trợ cấp..."
             value={input}
           />
           <div className="flex flex-col gap-3 px-1 pt-2 sm:flex-row sm:items-center sm:justify-between">
@@ -48,7 +48,7 @@ export function ChatInput({
               {isLoading ? (
                 <Button onClick={onStop} type="button" variant="secondary">
                   <Square className="h-4 w-4" />
-                  Stop
+                  Dừng
                 </Button>
               ) : (
                 <Button disabled={!input.trim()} type="submit">

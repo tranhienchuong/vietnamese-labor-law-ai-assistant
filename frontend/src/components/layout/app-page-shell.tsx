@@ -1,5 +1,5 @@
 import { AppHeader } from "@/components/layout/app-header"
-import { AppSidebar } from "@/components/layout/app-sidebar"
+import { AdminSidebar } from "@/components/layout/admin-sidebar"
 
 type AppPageShellProps = {
   title: string
@@ -16,9 +16,9 @@ export function AppPageShell({
 }: AppPageShellProps) {
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <AppHeader />
+      <AppHeader variant="admin" />
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-[1600px]">
-        <AppSidebar className="hidden lg:flex" />
+        <AdminSidebar className="hidden lg:flex" />
         <main className="min-w-0 flex-1">
           <div className="border-b border-border bg-surface px-4 py-6 sm:px-6 lg:px-8">
             <div className="mx-auto flex max-w-6xl flex-col gap-4 md:flex-row md:items-center md:justify-between">
