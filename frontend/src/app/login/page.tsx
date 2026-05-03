@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { Suspense, useState } from "react"
 import type { FormEvent } from "react"
 import { ArrowRight, Loader2, Scale } from "lucide-react"
@@ -19,7 +19,6 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const { login } = useAuth()
   const [email, setEmail] = useState("")
@@ -35,7 +34,7 @@ function LoginForm() {
     try {
       const user = await login(email, password)
       const next = searchParams.get("next")
-      router.replace(next || (user.role === "admin" ? "/admin" : "/chat"))
+      window.location.assign(next || (user.role === "admin" ? "/admin" : "/chat"))
     } catch {
       setError("Email hoặc mật khẩu không đúng.")
     } finally {
