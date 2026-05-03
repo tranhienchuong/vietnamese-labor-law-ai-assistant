@@ -12,6 +12,7 @@ export type ChatMessage = {
 type UseStreamingChatOptions = {
   api: string
   body?: Record<string, unknown>
+  onResponseMetadata?: (metadata: { conversationId?: string }) => void
 }
 
 function createId() {
@@ -21,7 +22,11 @@ function createId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-export function useStreamingChat({ api, body }: UseStreamingChatOptions) {
+export function useStreamingChat({
+  api,
+  body,
+  onResponseMetadata
+}: UseStreamingChatOptions) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -68,6 +73,10 @@ export function useStreamingChat({ api, body }: UseStreamingChatOptions) {
           throw new Error(`Chat request failed with ${response.status}`)
         }
 
+        onResponseMetadata?.({
+          conversationId: response.headers.get("X-Conversation-Id") || undefined
+        })
+
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
 
@@ -96,7 +105,7 @@ export function useStreamingChat({ api, body }: UseStreamingChatOptions) {
         setIsLoading(false)
       }
     },
-    [api, body]
+    [api, body, onResponseMetadata]
   )
 
   const handleInputChange = useCallback(
