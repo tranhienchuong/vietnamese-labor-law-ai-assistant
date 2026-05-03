@@ -5,7 +5,11 @@ import os
 from pathlib import Path
 import sys
 
-from vn_labor_law_ai_assistant.answering import build_messages, parse_answer_payload
+from vn_labor_law_ai_assistant.answering import (
+    build_messages,
+    format_answer_for_user,
+    parse_answer_payload,
+)
 from vn_labor_law_ai_assistant.llm import (
     DEFAULT_PROVIDER,
     SUPPORTED_PROVIDERS,
@@ -105,21 +109,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def print_answer_block(label: str, answer_payload) -> None:
+def print_answer_block(label: str, answer_payload, *, question: str) -> None:
     print(f"\n===== {label} =====")
-    print("\nTra loi:")
-    print(answer_payload.answer or "Khong co noi dung tra loi.")
-
-    print("\nCo so phap ly:")
-    if answer_payload.legal_basis:
-        for citation in answer_payload.legal_basis:
-            print(f"- {citation}")
-    else:
-        print("- Khong co co so phap ly hop le duoc xac nhan tu output cua mo hinh.")
-
-    print(f"\nInsufficient context: {'co' if answer_payload.insufficient_context else 'khong'}")
-    if answer_payload.notes:
-        print(f"Ghi chu: {answer_payload.notes}")
+    print(format_answer_for_user(answer_payload, question=question))
 
 
 def main() -> None:
@@ -190,8 +182,12 @@ def main() -> None:
             ),
             temperature=0,
         )
-        parsed = parse_answer_payload(response.content, contexts, question=args.question)
-        print_answer_block(provider_model_label(response.provider, response.model), parsed)
+        parsed = parse_answer_payload(response.content, contexts, question=question)
+        print_answer_block(
+            provider_model_label(response.provider, response.model),
+            parsed,
+            question=question,
+        )
     finally:
         retriever.close()
 

@@ -9,6 +9,7 @@ from vn_labor_law_ai_assistant.answering import (
     canonicalize_citation,
     citation_overlap_matches,
     extract_json_candidate,
+    format_answer_for_user,
     parse_answer_payload,
     sanitize_legal_basis,
 )
@@ -28,6 +29,105 @@ def make_context(citation_text: str) -> RetrievalContext:
 
 
 class AnsweringTests(unittest.TestCase):
+    def test_format_answer_for_user_wraps_short_answer_like_sample(self) -> None:
+        parsed = parse_answer_payload(
+            """
+            {
+              "answer": "Bạn có thể thỏa thuận với người sử dụng lao động để dùng phép năm trong thời gian báo trước.",
+              "legal_basis": ["Bo luat so 45/2019/QH14, Dieu 113, khoan 3"],
+              "evidence_quotes": [
+                {
+                  "citation": "Bo luat so 45/2019/QH14, Dieu 113, khoan 3",
+                  "quote": "Trường hợp do thôi việc, bị mất việc làm mà chưa nghỉ hằng năm thì được thanh toán tiền lương cho những ngày chưa nghỉ"
+                }
+              ],
+              "insufficient_context": false,
+              "notes": "Nên trao đổi rõ ràng với người sử dụng lao động trước khi nghỉ sớm."
+            }
+            """,
+            (
+                RetrievalContext(
+                    chunk_id="ctx-113",
+                    citation_text="Bo luat so 45/2019/QH14, Dieu 113, khoan 3",
+                    text=(
+                        "Trường hợp do thôi việc, bị mất việc làm mà chưa nghỉ hằng năm "
+                        "thì được thanh toán tiền lương cho những ngày chưa nghỉ"
+                    ),
+                    payload={},
+                    score=1.0,
+                    matched_chunk_ids=("ctx-113",),
+                    matched_citations=("Bo luat so 45/2019/QH14, Dieu 113, khoan 3",),
+                ),
+            ),
+        )
+
+        formatted = format_answer_for_user(
+            parsed,
+            question="Tôi có thể cấn trừ phép năm để nghỉ sớm hơn không?",
+        )
+
+        self.assertNotIn("Câu hỏi:", formatted)
+        self.assertIn("Câu trả lời:", formatted)
+        self.assertIn("Căn cứ pháp lý:", formatted)
+        self.assertIn("Nội dung cụ thể như sau:", formatted)
+        self.assertIn("Tóm lại:", formatted)
+        self.assertIn("Khuyến nghị:", formatted)
+
+    def test_format_answer_for_user_does_not_duplicate_styled_answer_sections(self) -> None:
+        parsed = parse_answer_payload(
+            """
+            {
+              "answer": "Câu trả lời:\\nCăn cứ vào Bo luat so 45/2019/QH14, Dieu 35, khoan 1 thì người lao động phải báo trước.\\n\\nNội dung cụ thể như sau:\\nPhải báo trước theo loại hợp đồng.\\n\\nTóm lại:\\n- Cần báo trước.\\n\\nKhuyến nghị: Nên thông báo bằng văn bản.",
+              "legal_basis": ["Bo luat so 45/2019/QH14, Dieu 35, khoan 1"],
+              "evidence_quotes": [
+                {
+                  "citation": "Bo luat so 45/2019/QH14, Dieu 35, khoan 1",
+                  "quote": "người lao động phải báo trước"
+                }
+              ],
+              "insufficient_context": false,
+              "notes": ""
+            }
+            """,
+            (
+                RetrievalContext(
+                    chunk_id="ctx-35",
+                    citation_text="Bo luat so 45/2019/QH14, Dieu 35, khoan 1",
+                    text="người lao động phải báo trước theo quy định",
+                    payload={},
+                    score=1.0,
+                    matched_chunk_ids=("ctx-35",),
+                    matched_citations=("Bo luat so 45/2019/QH14, Dieu 35, khoan 1",),
+                ),
+            ),
+        )
+
+        formatted = format_answer_for_user(parsed, question="Tôi nghỉ việc phải báo trước không?")
+
+        self.assertEqual(formatted.count("Câu trả lời:"), 1)
+        self.assertNotIn("Câu hỏi:", formatted)
+        self.assertNotIn("Căn cứ pháp lý:", formatted)
+        self.assertEqual(formatted.count("Nội dung cụ thể như sau:"), 1)
+
+    def test_format_answer_for_user_strips_model_question_section(self) -> None:
+        parsed = parse_answer_payload(
+            """
+            {
+              "answer": "Câu hỏi: Tôi nghỉ việc phải báo trước không?\\nCâu trả lời:\\nCăn cứ vào Bo luat so 45/2019/QH14, Dieu 35, khoan 1 thì người lao động phải báo trước.\\n\\nTóm lại:\\n- Cần báo trước.",
+              "legal_basis": ["Bo luat so 45/2019/QH14, Dieu 35, khoan 1"],
+              "evidence_quotes": [],
+              "insufficient_context": false,
+              "notes": ""
+            }
+            """,
+            (make_context("Bo luat so 45/2019/QH14, Dieu 35, khoan 1"),),
+        )
+
+        formatted = format_answer_for_user(parsed, question="Tôi nghỉ việc phải báo trước không?")
+
+        self.assertFalse(formatted.startswith("Câu hỏi:"))
+        self.assertTrue(formatted.startswith("Câu trả lời:"))
+
     def test_parse_answer_payload_accepts_valid_evidence_quotes(self) -> None:
         contexts = (
             RetrievalContext(

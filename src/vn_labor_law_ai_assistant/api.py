@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from .answering import build_messages, parse_answer_payload
+from .answering import build_messages, format_answer_for_user, parse_answer_payload
 from .config import load_repo_env
 from .llm import DEFAULT_PROVIDER, chat_completion
 from .retriever import (
@@ -77,19 +77,17 @@ def extract_last_user_message(payload: dict[str, Any]) -> str:
     return ""
 
 
-def format_plain_answer(answer_payload, *, include_citations: bool = True) -> str:
-    parts = [answer_payload.answer or "Khong co noi dung tra loi."]
-    if include_citations:
-        parts.append("")
-        parts.append("Co so phap ly:")
-        if answer_payload.legal_basis:
-            parts.extend(f"- {citation}" for citation in answer_payload.legal_basis)
-        else:
-            parts.append("- Khong co co so phap ly hop le duoc xac nhan.")
-    if answer_payload.notes:
-        parts.append("")
-        parts.append(f"Ghi chu: {answer_payload.notes}")
-    return "\n".join(parts).strip()
+def format_plain_answer(
+    answer_payload,
+    *,
+    question: str = "",
+    include_citations: bool = True,
+) -> str:
+    return format_answer_for_user(
+        answer_payload,
+        question=question,
+        include_citations=include_citations,
+    )
 
 
 @app.get("/")
@@ -146,6 +144,7 @@ async def chat(request: Request):
     return PlainTextResponse(
         format_plain_answer(
             parsed,
+            question=question,
             include_citations=bool(payload.get("includeCitations", True)),
         ),
         media_type="text/plain; charset=utf-8",
