@@ -4,7 +4,7 @@ import { AppPageShell } from "@/components/layout/app-page-shell"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
-const modelOptions = ["qwen3:4b", "qwen/qwen3-32b", "gpt-4.1-mini"]
+const modelOptions = ["qwen/qwen3-32b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
 
 export default function SettingsPage() {
   return (

@@ -12,9 +12,8 @@ from .config import load_repo_env
 
 load_repo_env()
 
-SUPPORTED_PROVIDERS = ("ollama", "groq")
-DEFAULT_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
-DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:4b")
+SUPPORTED_PROVIDERS = ("groq",)
+DEFAULT_PROVIDER = "groq"
 DEFAULT_GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3-32b")
 DEFAULT_GROQ_BENCHMARK_JUDGE_MODEL = "openai/gpt-oss-120b"
 GROQ_STRICT_JSON_MODELS = frozenset(
@@ -45,14 +44,6 @@ class LLMResponse:
     content: str
 
 
-def require_ollama():
-    try:
-        import ollama
-    except ImportError as exc:
-        raise RuntimeError("ollama is required for the Ollama provider.") from exc
-    return ollama
-
-
 def require_groq_client_class():
     try:
         from groq import Groq
@@ -70,9 +61,7 @@ def normalize_provider(provider: str | None) -> str:
 
 
 def default_model_for_provider(provider: str) -> str:
-    provider_name = normalize_provider(provider)
-    if provider_name == "ollama":
-        return DEFAULT_OLLAMA_MODEL
+    normalize_provider(provider)
     return DEFAULT_GROQ_MODEL
 
 
@@ -83,12 +72,10 @@ def default_benchmark_judge_provider() -> str:
 
 def default_benchmark_judge_model(provider: str | None = None) -> str:
     configured = os.getenv("BENCHMARK_JUDGE_MODEL", "").strip()
-    effective_provider = normalize_provider(provider or default_benchmark_judge_provider())
+    normalize_provider(provider or default_benchmark_judge_provider())
     if configured:
         return configured
-    if effective_provider == "groq":
-        return DEFAULT_GROQ_BENCHMARK_JUDGE_MODEL
-    return default_model_for_provider(effective_provider)
+    return DEFAULT_GROQ_BENCHMARK_JUDGE_MODEL
 
 
 def resolve_model_name(provider: str, model: str | None = None) -> str:
@@ -217,41 +204,31 @@ def chat_completion(
     model_name = resolve_model_name(provider_name, model)
     payload_messages = [dict(message) for message in messages]
 
-    if provider_name == "ollama":
-        ollama = require_ollama()
-        response = ollama.chat(
-            model=model_name,
-            format="json",
-            options={"temperature": temperature},
-            messages=payload_messages,
-        )
-        content = response["message"]["content"]
-    else:
-        client = build_groq_client()
-        response = None
-        response_formats = groq_response_format_fallbacks(
-            model_name,
-            json_schema=json_schema,
-            schema_name=json_schema_name,
-        )
-        for index, response_format in enumerate(response_formats):
-            try:
-                response = create_groq_chat_completion_with_retries(
-                    client=client,
-                    model=model_name,
-                    messages=payload_messages,
-                    temperature=temperature,
-                    response_format=response_format,
-                )
-                break
-            except Exception as exc:
-                is_last_fallback = index == len(response_formats) - 1
-                if not is_groq_json_validation_error(exc) or is_last_fallback:
-                    raise
+    client = build_groq_client()
+    response = None
+    response_formats = groq_response_format_fallbacks(
+        model_name,
+        json_schema=json_schema,
+        schema_name=json_schema_name,
+    )
+    for index, response_format in enumerate(response_formats):
+        try:
+            response = create_groq_chat_completion_with_retries(
+                client=client,
+                model=model_name,
+                messages=payload_messages,
+                temperature=temperature,
+                response_format=response_format,
+            )
+            break
+        except Exception as exc:
+            is_last_fallback = index == len(response_formats) - 1
+            if not is_groq_json_validation_error(exc) or is_last_fallback:
+                raise
 
-        if response is None:
-            raise RuntimeError("Groq response unexpectedly missing after fallback attempts.")
-        content = response.choices[0].message.content or ""
+    if response is None:
+        raise RuntimeError("Groq response unexpectedly missing after fallback attempts.")
+    content = response.choices[0].message.content or ""
 
     return LLMResponse(
         provider=provider_name,
@@ -266,7 +243,6 @@ __all__ = [
     "DEFAULT_GROQ_RATE_LIMIT_BACKOFF_SECONDS",
     "DEFAULT_GROQ_RATE_LIMIT_MAX_SLEEP_SECONDS",
     "DEFAULT_GROQ_RATE_LIMIT_RETRIES",
-    "DEFAULT_OLLAMA_MODEL",
     "DEFAULT_PROVIDER",
     "GROQ_STRICT_JSON_MODELS",
     "LLMResponse",

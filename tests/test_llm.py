@@ -38,13 +38,11 @@ class LLMTests(unittest.TestCase):
 
     def test_normalize_provider_validates_supported_values(self) -> None:
         self.assertEqual(normalize_provider("Groq"), "groq")
-        self.assertEqual(normalize_provider("ollama"), "ollama")
 
         with self.assertRaises(ValueError):
-            normalize_provider("openai")
+            normalize_provider("ollama")
 
     def test_resolve_model_name_uses_provider_defaults(self) -> None:
-        self.assertEqual(resolve_model_name("ollama", ""), default_model_for_provider("ollama"))
         self.assertEqual(resolve_model_name("groq", None), default_model_for_provider("groq"))
         self.assertEqual(resolve_model_name("groq", "llama-3.3-70b-versatile"), "llama-3.3-70b-versatile")
 
@@ -52,19 +50,16 @@ class LLMTests(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=True):
             self.assertEqual(default_benchmark_judge_provider(), "groq")
 
-    def test_default_benchmark_judge_provider_reads_override(self) -> None:
+    def test_default_benchmark_judge_provider_rejects_unsupported_override(self) -> None:
         with patch.dict("os.environ", {"BENCHMARK_JUDGE_PROVIDER": "ollama"}, clear=True):
-            self.assertEqual(default_benchmark_judge_provider(), "ollama")
+            with self.assertRaises(ValueError):
+                default_benchmark_judge_provider()
 
     def test_default_benchmark_judge_model_defaults_to_groq_judge_model(self) -> None:
         with patch.dict("os.environ", {"BENCHMARK_JUDGE_MODEL": ""}, clear=True):
             self.assertEqual(
                 default_benchmark_judge_model("groq"),
                 DEFAULT_GROQ_BENCHMARK_JUDGE_MODEL,
-            )
-            self.assertEqual(
-                default_benchmark_judge_model("ollama"),
-                default_model_for_provider("ollama"),
             )
 
     def test_default_benchmark_judge_model_reads_override(self) -> None:
@@ -156,24 +151,6 @@ class LLMTests(unittest.TestCase):
         self.assertEqual(response.choices[0].message.content, '{"answer":"Co"}')
         self.assertEqual(fake_client.chat.completions.create.call_count, 2)
         mock_sleep.assert_called_once_with(0.25)
-
-    @patch("vn_labor_law_ai_assistant.llm.require_ollama")
-    def test_chat_completion_dispatches_to_ollama(self, mock_require_ollama: Mock) -> None:
-        fake_ollama = Mock()
-        fake_ollama.chat.return_value = {"message": {"content": '{"answer":"Co"}'}}
-        mock_require_ollama.return_value = fake_ollama
-
-        response = chat_completion(
-            provider="ollama",
-            model="qwen3:4b",
-            messages=[{"role": "user", "content": "Xin chao"}],
-            temperature=0,
-        )
-
-        self.assertEqual(response.provider, "ollama")
-        self.assertEqual(response.model, "qwen3:4b")
-        self.assertEqual(response.content, '{"answer":"Co"}')
-        fake_ollama.chat.assert_called_once()
 
     @patch("vn_labor_law_ai_assistant.llm.build_groq_client")
     def test_chat_completion_dispatches_to_groq(self, mock_build_groq_client: Mock) -> None:

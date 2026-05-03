@@ -372,6 +372,25 @@ def first_context_with_terms(
     return None
 
 
+def citation_for_context(
+    context: RetrievalContext,
+    preferred_terms: Sequence[str] = (),
+) -> str:
+    citations = dedupe_preserve_order((*context.matched_citations, context.citation_text))
+    normalized_terms = tuple(normalize_for_matching(term) for term in preferred_terms)
+
+    for citation in citations:
+        normalized_citation = normalize_for_matching(citation)
+        if normalized_terms and all(term in normalized_citation for term in normalized_terms):
+            return citation
+
+    for citation in citations:
+        if citation:
+            return citation
+
+    return context.citation_text
+
+
 def extract_evidence_sentence(text: str, preferred_terms: Sequence[str]) -> str:
     normalized_terms = tuple(normalize_for_matching(term) for term in preferred_terms)
     candidates = [
@@ -408,7 +427,18 @@ def contextual_answer_override(
     context: RetrievalContext | None = None
     answer = ""
     quote_terms: tuple[str, ...] = ()
+    citation_terms: tuple[str, ...] = ()
     notes = ""
+    asks_notice_period = (
+        "bao truoc" in normalized_question
+        and (
+            "bao lau" in normalized_question
+            or "thoi han" in normalized_question
+            or "nghi viec" in normalized_question
+            or "cham dut" in normalized_question
+            or "don phuong" in normalized_question
+        )
+    )
 
     if (
         "hop dong lao dong" in normalized_question
@@ -428,7 +458,69 @@ def contextual_answer_override(
             "va hop dong lao dong xac dinh thoi han."
         )
         quote_terms = ("khong xac dinh thoi han", "xac dinh thoi han")
-        notes = "Da sua theo context ve so loai hop dong lao dong trong Bo luat Lao dong 2019."
+        citation_terms = ("dieu 20", "khoan 1")
+        notes = ""
+
+    elif (
+        asks_notice_period
+        and "khong xac dinh thoi han" in normalized_question
+        and "45 ngay" in normalized_context
+        and "hop dong lao dong khong xac dinh thoi han" in normalized_context
+    ):
+        context = first_context_with_terms(
+            contexts,
+            ("45 ngay", "hop dong lao dong khong xac dinh thoi han"),
+        )
+        answer = (
+            "Nguoi lao dong lam viec theo hop dong lao dong khong xac dinh thoi han "
+            "phai bao truoc it nhat 45 ngay khi don phuong cham dut hop dong."
+        )
+        if "nganh nghe cong viec dac thu" in normalized_context and "chinh phu" in normalized_context:
+            answer = (
+                answer
+                + " Neu thuoc mot so nganh, nghe, cong viec dac thu thi thoi han bao truoc "
+                + "thuc hien theo quy dinh cua Chinh phu."
+            )
+        quote_terms = ("45 ngay", "khong xac dinh thoi han")
+        citation_terms = ("dieu 35", "khoan 1", "diem a")
+        notes = ""
+
+    elif (
+        asks_notice_period
+        and "khong xac dinh thoi han" not in normalized_question
+        and "xac dinh thoi han" in normalized_question
+        and "12" in normalized_question
+        and "36" in normalized_question
+        and "30 ngay" in normalized_context
+    ):
+        context = first_context_with_terms(
+            contexts,
+            ("30 ngay", "12 thang", "36 thang"),
+        )
+        answer = (
+            "Nguoi lao dong lam viec theo hop dong lao dong xac dinh thoi han tu "
+            "12 thang den 36 thang phai bao truoc it nhat 30 ngay."
+        )
+        quote_terms = ("30 ngay", "12 thang", "36 thang")
+        citation_terms = ("dieu 35", "khoan 1", "diem b")
+        notes = ""
+
+    elif (
+        asks_notice_period
+        and "duoi 12" in normalized_question
+        and "03 ngay lam viec" in normalized_context
+    ):
+        context = first_context_with_terms(
+            contexts,
+            ("03 ngay lam viec", "duoi 12 thang"),
+        )
+        answer = (
+            "Thoi han bao truoc la it nhat 03 ngay lam viec doi voi hop dong lao dong "
+            "xac dinh thoi han co thoi han duoi 12 thang."
+        )
+        quote_terms = ("03 ngay lam viec", "duoi 12 thang")
+        citation_terms = ("dieu 35", "khoan 1", "diem c")
+        notes = ""
 
     elif (
         "thu viec" in normalized_question
@@ -445,7 +537,8 @@ def contextual_answer_override(
             "tro len la khong qua 60 ngay."
         )
         quote_terms = ("60 ngay",)
-        notes = "Da sua theo moc 60 ngay co truc tiep trong context."
+        citation_terms = ("dieu 25",)
+        notes = ""
 
     elif (
         "luong" in normalized_question
@@ -459,7 +552,8 @@ def contextual_answer_override(
         )
         answer = "Muc luong thu viec it nhat phai bang 85% muc luong cua cong viec do."
         quote_terms = ("85",)
-        notes = "Da sua theo moc 85% co truc tiep trong context."
+        citation_terms = ("dieu 26",)
+        notes = ""
 
     elif (
         "lam them" in normalized_question
@@ -476,7 +570,8 @@ def contextual_answer_override(
             "nhat bang 200% so voi ngay lam viec binh thuong."
         )
         quote_terms = ("200",)
-        notes = "Da sua theo moc 200% co truc tiep trong context."
+        citation_terms = ("dieu 98",)
+        notes = ""
 
     if context is None or not answer:
         return None
@@ -484,7 +579,10 @@ def contextual_answer_override(
     quote = extract_evidence_sentence(context.text, quote_terms)
     return ContextualAnswerOverride(
         answer=answer,
-        evidence_quote=EvidenceQuote(citation=context.citation_text, quote=quote),
+        evidence_quote=EvidenceQuote(
+            citation=citation_for_context(context, citation_terms),
+            quote=quote,
+        ),
         notes=notes,
     )
 

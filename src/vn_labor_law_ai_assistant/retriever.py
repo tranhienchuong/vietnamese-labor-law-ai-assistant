@@ -782,6 +782,32 @@ def record_reference_sort_key(record: RetrievedRecord) -> tuple[int, int, str, s
     )
 
 
+def build_expanded_context_text(
+    context_record: RetrievedRecord,
+    matched_records: Sequence[RetrievedRecord],
+) -> str:
+    parts: list[str] = []
+    seen_surfaces: list[str] = []
+
+    def add_text(text: str) -> None:
+        stripped = text.strip()
+        normalized = normalize_for_matching(stripped)
+        if not normalized:
+            return
+        if any(normalized == seen or normalized in seen for seen in seen_surfaces):
+            return
+        seen_surfaces.append(normalized)
+        parts.append(stripped)
+
+    add_text(context_record.text)
+    for record in matched_records:
+        if record.chunk_id == context_record.chunk_id:
+            continue
+        add_text(record.text)
+
+    return "\n\n".join(parts).strip()
+
+
 def dedupe_preserve_order(values: Sequence[str]) -> tuple[str, ...]:
     seen: set[str] = set()
     ordered: list[str] = []
@@ -810,6 +836,32 @@ def collect_keyword_matches(normalized_query: str, mapping: dict[str, Sequence[s
 
 def contains_normalized_phrase(normalized_text: str, phrases: Sequence[str]) -> bool:
     return any(phrase in normalized_text for phrase in phrases)
+
+
+def infer_employee_notice_period_reference(
+    intent: QueryIntent,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    if "35" not in intent.all_article_numbers:
+        return (), ()
+
+    if (
+        "thoi_han_bao_truoc" not in intent.issue_filters
+        and "bao_truoc" not in intent.topic_filters
+        and "time_limit" not in intent.query_types
+    ):
+        return (), ()
+
+    query = intent.normalized_query
+    if "khong xac dinh thoi han" in query:
+        return ("1",), ("a",)
+    if "duoi 12" in query:
+        return ("1",), ("c",)
+    if "12" in query and "36" in query and "xac dinh thoi han" in query:
+        return ("1",), ("b",)
+    if contains_normalized_phrase(query, ("dac thu", "nganh nghe", "cong viec dac thu")):
+        return ("1",), ("d",)
+
+    return ("1",), ("a", "b", "c", "d")
 
 
 def collect_rule_based_query_expansions(
@@ -1004,11 +1056,14 @@ def diversify_contexts_by_article(contexts: Sequence[RetrievalContext]) -> tuple
 
     for context in contexts:
         key = context_article_key(context)
+        force_include = bool(context.payload.get("retrieval_force_include"))
         if key is None:
             first_per_article.append(context)
             continue
         if key not in seen_article_keys:
             seen_article_keys.add(key)
+            first_per_article.append(context)
+        elif force_include:
             first_per_article.append(context)
         else:
             remaining.append(context)
@@ -1843,7 +1898,9 @@ class HybridRetriever:
     def _query_needs_article_siblings(self, intent: QueryIntent) -> bool:
         if intent.clause_refs or intent.point_refs:
             return True
-        if set(intent.query_types).intersection({"procedure", "remedy", "definition", "classification", "money_percentage"}):
+        if set(intent.query_types).intersection(
+            {"procedure", "remedy", "definition", "classification", "money_percentage", "time_limit"}
+        ):
             return True
         return bool(
             set(intent.issue_filters).intersection(
@@ -1853,6 +1910,7 @@ class HybridRetriever:
                     "tro_cap_mat_viec",
                     "nghia_vu_khi_cham_dut",
                     "trai_phap_luat",
+                    "thoi_han_bao_truoc",
                 }
             )
         )
@@ -1900,20 +1958,36 @@ class HybridRetriever:
             if key not in records_by_article:
                 continue
             document_id, article_number = key
-            siblings = self._fetch_article_siblings(
-                document_id=document_id,
-                article_number=article_number,
-                exclude_chunk_ids=tuple(seen_chunk_ids | added_sibling_ids),
-                limit=3,
-            )
+            notice_clause_refs, notice_point_refs = infer_employee_notice_period_reference(intent)
+            if article_number == "35" and notice_clause_refs and notice_point_refs:
+                siblings = self._fetch_records_by_reference(
+                    document_ids=(document_id,),
+                    article_numbers=(article_number,),
+                    clause_refs=notice_clause_refs,
+                    point_refs=notice_point_refs,
+                    exclude_chunk_ids=tuple(seen_chunk_ids | added_sibling_ids),
+                    limit=4,
+                )
+                force_include_siblings = True
+            else:
+                siblings = self._fetch_article_siblings(
+                    document_id=document_id,
+                    article_number=article_number,
+                    exclude_chunk_ids=tuple(seen_chunk_ids | added_sibling_ids),
+                    limit=3,
+                )
+                force_include_siblings = False
             for rank, sibling in enumerate(siblings, start=1):
                 added_sibling_ids.add(sibling.chunk_id)
+                payload = dict(sibling.payload)
+                if force_include_siblings:
+                    payload["retrieval_force_include"] = True
                 expanded_contexts.append(
                     RetrievalContext(
                         chunk_id=sibling.chunk_id,
                         citation_text=sibling.citation_text,
                         text=sibling.text,
-                        payload=sibling.payload,
+                        payload=payload,
                         score=max(context.score - (rank * 1e-3), 0.0),
                         matched_chunk_ids=(sibling.chunk_id,),
                         matched_citations=(sibling.citation_text,),
@@ -1952,12 +2026,14 @@ class HybridRetriever:
                     "rank": rank,
                     "matched_chunk_ids": [],
                     "matched_citations": [],
+                    "matched_records": [],
                 },
             )
             group["score"] = max(float(group["score"]), hit.score)
             group["rank"] = min(int(group["rank"]), rank)
             group["matched_chunk_ids"].append(hit.chunk_id)
             group["matched_citations"].append(hit.citation_text)
+            group["matched_records"].append(matched_record)
 
         ordered_groups = sorted(
             grouped.values(),
@@ -1970,11 +2046,16 @@ class HybridRetriever:
             assert isinstance(record, RetrievedRecord)
             matched_chunk_ids = dedupe_preserve_order(item["matched_chunk_ids"])
             matched_citations = dedupe_preserve_order(item["matched_citations"])
+            matched_records = tuple(
+                record
+                for record in item["matched_records"]
+                if isinstance(record, RetrievedRecord)
+            )
             contexts.append(
                 RetrievalContext(
                     chunk_id=record.chunk_id,
                     citation_text=record.citation_text,
-                    text=record.text,
+                    text=build_expanded_context_text(record, matched_records),
                     payload=record.payload,
                     score=float(item["score"]),
                     matched_chunk_ids=matched_chunk_ids,

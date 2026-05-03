@@ -19,6 +19,7 @@ from vn_labor_law_ai_assistant.retriever import (
     build_context_block,
     build_query_variants,
     dedupe_preserve_order,
+    diversify_contexts_by_article,
     format_context_for_prompt,
     parse_reference_values,
     prioritize_issue_filters,
@@ -397,6 +398,57 @@ class RetrievalAssemblyTests(unittest.TestCase):
 
         self.assertEqual([context.chunk_id for context in selected], ["dieu-41-k1", "dieu-48-k1"])
 
+    def test_diversify_contexts_keeps_forced_duplicate_article_contexts_early(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="dieu-35-k2",
+                citation_text="Dieu 35 khoan 2",
+                text="Noi dung 35.2",
+                payload={"document_id": "45-2019-qh14", "article_number": "35"},
+                score=1.0,
+                matched_chunk_ids=("dieu-35-k2",),
+                matched_citations=("Dieu 35 khoan 2",),
+            ),
+            RetrievalContext(
+                chunk_id="dieu-36-k1",
+                citation_text="Dieu 36 khoan 1",
+                text="Noi dung 36.1",
+                payload={"document_id": "45-2019-qh14", "article_number": "36"},
+                score=0.9,
+                matched_chunk_ids=("dieu-36-k1",),
+                matched_citations=("Dieu 36 khoan 1",),
+            ),
+            RetrievalContext(
+                chunk_id="dieu-35-k1-a",
+                citation_text="Dieu 35 khoan 1 diem a",
+                text="Noi dung 35.1.a",
+                payload={
+                    "document_id": "45-2019-qh14",
+                    "article_number": "35",
+                    "retrieval_force_include": True,
+                },
+                score=0.8,
+                matched_chunk_ids=("dieu-35-k1-a",),
+                matched_citations=("Dieu 35 khoan 1 diem a",),
+            ),
+            RetrievalContext(
+                chunk_id="dieu-35-k1-b",
+                citation_text="Dieu 35 khoan 1 diem b",
+                text="Noi dung 35.1.b",
+                payload={"document_id": "45-2019-qh14", "article_number": "35"},
+                score=0.7,
+                matched_chunk_ids=("dieu-35-k1-b",),
+                matched_citations=("Dieu 35 khoan 1 diem b",),
+            ),
+        )
+
+        diversified = diversify_contexts_by_article(contexts)
+
+        self.assertEqual(
+            [context.chunk_id for context in diversified],
+            ["dieu-35-k2", "dieu-36-k1", "dieu-35-k1-a", "dieu-35-k1-b"],
+        )
+
     def test_format_context_for_prompt_preserves_first_oversized_block_without_ellipsis(self) -> None:
         context = RetrievalContext(
             chunk_id="chunk-1",
@@ -490,6 +542,8 @@ class RetrievalAssemblyTests(unittest.TestCase):
 
         self.assertEqual(len(contexts), 1)
         self.assertEqual(contexts[0].chunk_id, "parent-1")
+        self.assertIn("Nguoi lao dong thuong xuyen khong hoan thanh cong viec", contexts[0].text)
+        self.assertIn("Nguoi lao dong bi om dau keo dai", contexts[0].text)
         self.assertEqual(contexts[0].matched_chunk_ids, ("child-a", "child-b"))
         self.assertEqual(
             contexts[0].matched_citations,
@@ -559,6 +613,71 @@ class RetrievalAssemblyTests(unittest.TestCase):
         )
 
         self.assertEqual([context.chunk_id for context in contexts], ["dieu-41-k1", "dieu-41-k2"])
+
+    def test_assemble_contexts_adds_specific_notice_period_point_for_indefinite_contract(self) -> None:
+        clause = RetrievedRecord(
+            chunk_id="dieu-35-k1",
+            parent_chunk_id=None,
+            citation_text="Bo luat so 45/2019/QH14, Dieu 35, khoan 1",
+            text="Nguoi lao dong co quyen don phuong cham dut hop dong nhung phai bao truoc.",
+            dense_text="",
+            sparse_text="",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "35",
+                "clause_ref": "1",
+                "level": "clause",
+            },
+        )
+        point_a = RetrievedRecord(
+            chunk_id="dieu-35-k1-a",
+            parent_chunk_id="dieu-35-k1",
+            citation_text="Bo luat so 45/2019/QH14, Dieu 35, khoan 1, diem a",
+            text="It nhat 45 ngay neu lam viec theo hop dong lao dong khong xac dinh thoi han.",
+            dense_text="",
+            sparse_text="",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "35",
+                "clause_ref": "1",
+                "point_ref": "a",
+                "level": "point",
+            },
+        )
+        context = RetrievalContext(
+            chunk_id=clause.chunk_id,
+            citation_text=clause.citation_text,
+            text=clause.text,
+            payload=clause.payload,
+            score=1.0,
+            matched_chunk_ids=(clause.chunk_id,),
+            matched_citations=(clause.citation_text,),
+        )
+        captured_kwargs: list[dict[str, object]] = []
+
+        retriever = HybridRetriever.__new__(HybridRetriever)
+
+        def fake_fetch_records_by_reference(**kwargs):
+            captured_kwargs.append(kwargs)
+            return (point_a,)
+
+        retriever._fetch_records_by_reference = fake_fetch_records_by_reference
+        intent = route_query(
+            "Nguoi lao dong ky hop dong khong xac dinh thoi han muon nghi viec "
+            "thi phai bao truoc bao lau?"
+        )
+
+        contexts = HybridRetriever._add_article_sibling_contexts(
+            retriever,
+            (context,),
+            intent=intent,
+            direct_records={clause.chunk_id: clause},
+        )
+
+        self.assertEqual([item.chunk_id for item in contexts], ["dieu-35-k1", "dieu-35-k1-a"])
+        self.assertEqual(captured_kwargs[0]["clause_refs"], ("1",))
+        self.assertEqual(captured_kwargs[0]["point_refs"], ("a",))
+        self.assertTrue(contexts[1].payload["retrieval_force_include"])
 
     def test_reference_fallback_fetches_explicit_clause_even_when_article_is_present(self) -> None:
         existing = RetrievedRecord(

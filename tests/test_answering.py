@@ -107,6 +107,53 @@ class AnsweringTests(unittest.TestCase):
         self.assertEqual(parsed.legal_basis, ("Bo luat so 45/2019/QH14, Dieu 20, khoan 1",))
         self.assertTrue(parsed.evidence_quotes)
 
+    def test_parse_answer_payload_overrides_false_insufficient_notice_period(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="ctx-35",
+                citation_text="Bo luat so 45/2019/QH14, Dieu 35, khoan 1",
+                text=(
+                    "Dieu 35. Quyen don phuong cham dut hop dong lao dong cua nguoi lao dong\n"
+                    "1. Nguoi lao dong co quyen don phuong cham dut hop dong lao dong "
+                    "nhung phai bao truoc cho nguoi su dung lao dong nhu sau:\n"
+                    "a) It nhat 45 ngay neu lam viec theo hop dong lao dong khong xac dinh thoi han;"
+                ),
+                payload={},
+                score=1.0,
+                matched_chunk_ids=("ctx-35-a",),
+                matched_citations=(
+                    "Bo luat so 45/2019/QH14, Dieu 35, khoan 1, diem a",
+                ),
+            ),
+        )
+        raw_content = """
+        {
+          "answer": "Chua du can cu de xac dinh.",
+          "legal_basis": [],
+          "evidence_quotes": [],
+          "insufficient_context": true,
+          "notes": ""
+        }
+        """
+
+        parsed = parse_answer_payload(
+            raw_content,
+            contexts,
+            question=(
+                "Nguoi lao dong ky hop dong khong xac dinh thoi han muon nghi viec "
+                "thi phai bao truoc bao lau?"
+            ),
+        )
+
+        self.assertFalse(parsed.insufficient_context)
+        self.assertIn("45 ngay", parsed.answer.lower())
+        self.assertEqual(
+            parsed.legal_basis,
+            ("Bo luat so 45/2019/QH14, Dieu 35, khoan 1, diem a",),
+        )
+        self.assertTrue(parsed.evidence_quotes)
+        self.assertIn("45 ngay", parsed.evidence_quotes[0].quote.lower())
+
     def test_sanitize_legal_basis_keeps_only_allowed_citations(self) -> None:
         contexts = (
             make_context("Bo luat so 45/2019/QH 14, Dieu 46, khoan 1"),

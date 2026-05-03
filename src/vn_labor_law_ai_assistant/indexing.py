@@ -13,6 +13,7 @@ import shutil
 import sqlite3
 from typing import Sequence
 import uuid
+import warnings
 
 from .config import REPO_ROOT, load_repo_env
 from .corpus_pipeline import extract_chunk_body, normalize_for_matching
@@ -189,7 +190,19 @@ def build_qdrant_client(qdrant_client_cls, qdrant_path: Path | None = None):
 
 def require_pyvi():
     try:
-        from pyvi import ViTokenizer
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r".*invalid escape sequence.*",
+                category=SyntaxWarning,
+                module=r"pyvi(\.|$)",
+            )
+            warnings.filterwarnings(
+                "ignore",
+                message=r"dtype\(\): align should be passed as Python or NumPy boolean.*",
+                category=Warning,
+            )
+            from pyvi import ViTokenizer
     except ImportError as exc:
         raise RuntimeError("pyvi is required for Vietnamese sparse tokenization.") from exc
     return ViTokenizer

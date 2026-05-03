@@ -137,7 +137,7 @@ async def chat(request: Request):
         )
 
     response = chat_completion(
-        provider=str(payload.get("provider") or os.getenv("LLM_PROVIDER") or DEFAULT_PROVIDER),
+        provider=str(payload.get("provider") or DEFAULT_PROVIDER),
         model=str(payload.get("model") or ""),
         messages=build_messages(question, contexts),
         temperature=float(payload.get("temperature") or 0),
