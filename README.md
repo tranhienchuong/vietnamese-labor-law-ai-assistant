@@ -185,7 +185,7 @@ Retrieve context only:
 Generate an answer with Groq:
 
 ```powershell
-.venv\Scripts\python.exe scripts\ask.py --provider groq --model qwen/qwen3-32b "tro cap thoi viec tinh the nao theo Dieu 46?"
+.venv\Scripts\python.exe scripts\ask.py --provider groq --model openai/gpt-oss-120b "Khi nào người lao động được nghỉ việc mà không cần báo trước?"
 ```
 
 ### Start up your backend

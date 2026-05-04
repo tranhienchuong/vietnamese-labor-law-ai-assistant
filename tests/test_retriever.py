@@ -152,6 +152,12 @@ class QueryRoutingTests(unittest.TestCase):
         self.assertIn("tro_cap_thoi_viec", intent.issue_filters)
         self.assertIn("nghia_vu_khi_cham_dut", intent.issue_filters)
 
+    def test_route_query_does_not_treat_notice_period_as_termination_notice_issue(self) -> None:
+        intent = route_query("Nguoi lao dong nghi viec khong can bao truoc trong truong hop nao?")
+
+        self.assertIn("thoi_han_bao_truoc", intent.issue_filters)
+        self.assertNotIn("thong_bao_cham_dut", intent.issue_filters)
+
     def test_build_query_filter_uses_only_document_and_explicit_refs_as_hard_filters(self) -> None:
         retriever = HybridRetriever.__new__(HybridRetriever)
         retriever._qdrant_models = models
@@ -678,6 +684,208 @@ class RetrievalAssemblyTests(unittest.TestCase):
         self.assertEqual(captured_kwargs[0]["clause_refs"], ("1",))
         self.assertEqual(captured_kwargs[0]["point_refs"], ("a",))
         self.assertTrue(contexts[1].payload["retrieval_force_include"])
+
+    def test_assemble_contexts_merges_no_notice_clause_points(self) -> None:
+        clause = RetrievedRecord(
+            chunk_id="dieu-35-k2",
+            parent_chunk_id=None,
+            citation_text="Bo luat so 45/2019/QH14, Dieu 35, khoan 2",
+            text="Nguoi lao dong co quyen don phuong cham dut hop dong khong can bao truoc trong truong hop sau day:",
+            dense_text="",
+            sparse_text="",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "35",
+                "clause_ref": "2",
+                "level": "clause",
+            },
+        )
+        point_a = RetrievedRecord(
+            chunk_id="dieu-35-k2-a",
+            parent_chunk_id="dieu-35-k2",
+            citation_text="Bo luat so 45/2019/QH14, Dieu 35, khoan 2, diem a",
+            text="Khong duoc bo tri theo dung cong viec, dia diem lam viec.",
+            dense_text="",
+            sparse_text="",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "35",
+                "clause_ref": "2",
+                "point_ref": "a",
+                "level": "point",
+            },
+        )
+        point_b = RetrievedRecord(
+            chunk_id="dieu-35-k2-b",
+            parent_chunk_id="dieu-35-k2",
+            citation_text="Bo luat so 45/2019/QH14, Dieu 35, khoan 2, diem b",
+            text="Khong duoc tra du luong hoac tra luong khong dung thoi han.",
+            dense_text="",
+            sparse_text="",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "35",
+                "clause_ref": "2",
+                "point_ref": "b",
+                "level": "point",
+            },
+        )
+        context = RetrievalContext(
+            chunk_id=clause.chunk_id,
+            citation_text=clause.citation_text,
+            text=clause.text,
+            payload=clause.payload,
+            score=1.0,
+            matched_chunk_ids=(clause.chunk_id,),
+            matched_citations=(clause.citation_text,),
+        )
+        captured_kwargs: list[dict[str, object]] = []
+
+        retriever = HybridRetriever.__new__(HybridRetriever)
+
+        def fake_fetch_records_by_reference(**kwargs):
+            captured_kwargs.append(kwargs)
+            return (point_a, point_b)
+
+        retriever._fetch_records_by_reference = fake_fetch_records_by_reference
+        intent = route_query("Nguoi lao dong nghi viec khong can bao truoc trong truong hop nao?")
+
+        contexts = HybridRetriever._add_article_sibling_contexts(
+            retriever,
+            (context,),
+            intent=intent,
+            direct_records={clause.chunk_id: clause},
+        )
+
+        self.assertEqual([item.chunk_id for item in contexts], ["dieu-35-k2"])
+        self.assertIn("Khong duoc bo tri", contexts[0].text)
+        self.assertIn("Khong duoc tra du luong", contexts[0].text)
+        self.assertEqual(captured_kwargs[0]["clause_refs"], ("2",))
+        self.assertEqual(captured_kwargs[0]["point_refs"], ())
+        self.assertIn(point_a.citation_text, contexts[0].matched_citations)
+        self.assertTrue(contexts[0].payload["retrieval_force_include"])
+
+    def test_assemble_contexts_merges_children_for_enumeration_parent_clause(self) -> None:
+        clause = RetrievedRecord(
+            chunk_id="dieu-36-k1",
+            parent_chunk_id=None,
+            citation_text="Bo luat so 45/2019/QH14, Dieu 36, khoan 1",
+            text="Nguoi su dung lao dong co quyen don phuong cham dut hop dong trong truong hop sau day:",
+            dense_text="",
+            sparse_text="",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "36",
+                "clause_ref": "1",
+                "level": "clause",
+            },
+        )
+        point_a = RetrievedRecord(
+            chunk_id="dieu-36-k1-a",
+            parent_chunk_id="dieu-36-k1",
+            citation_text="Bo luat so 45/2019/QH14, Dieu 36, khoan 1, diem a",
+            text="Nguoi lao dong thuong xuyen khong hoan thanh cong viec.",
+            dense_text="",
+            sparse_text="",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "36",
+                "clause_ref": "1",
+                "point_ref": "a",
+                "level": "point",
+            },
+        )
+        context = RetrievalContext(
+            chunk_id=clause.chunk_id,
+            citation_text=clause.citation_text,
+            text=clause.text,
+            payload=clause.payload,
+            score=1.0,
+            matched_chunk_ids=(clause.chunk_id,),
+            matched_citations=(clause.citation_text,),
+        )
+        captured_kwargs: list[dict[str, object]] = []
+
+        retriever = HybridRetriever.__new__(HybridRetriever)
+
+        def fake_fetch_records_by_reference(**kwargs):
+            captured_kwargs.append(kwargs)
+            return (point_a,)
+
+        retriever._fetch_records_by_reference = fake_fetch_records_by_reference
+        intent = route_query("Khi nao cong ty duoc don phuong cham dut hop dong?")
+
+        contexts = HybridRetriever._add_article_sibling_contexts(
+            retriever,
+            (context,),
+            intent=intent,
+            direct_records={clause.chunk_id: clause},
+        )
+
+        self.assertEqual([item.chunk_id for item in contexts], ["dieu-36-k1"])
+        self.assertIn("thuong xuyen khong hoan thanh", contexts[0].text)
+        self.assertEqual(captured_kwargs[0]["clause_refs"], ("1",))
+        self.assertTrue(contexts[0].payload["retrieval_force_include"])
+
+    def test_assemble_contexts_merges_article_siblings_for_enumeration_query(self) -> None:
+        clause_1 = RetrievedRecord(
+            chunk_id="dieu-34-k1",
+            parent_chunk_id=None,
+            citation_text="Bo luat so 45/2019/QH14, Dieu 34, khoan 1",
+            text="Het han hop dong lao dong.",
+            dense_text="",
+            sparse_text="",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "34",
+                "clause_ref": "1",
+                "level": "clause",
+            },
+        )
+        clause_2 = RetrievedRecord(
+            chunk_id="dieu-34-k2",
+            parent_chunk_id=None,
+            citation_text="Bo luat so 45/2019/QH14, Dieu 34, khoan 2",
+            text="Da hoan thanh cong viec theo hop dong lao dong.",
+            dense_text="",
+            sparse_text="",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "34",
+                "clause_ref": "2",
+                "level": "clause",
+            },
+        )
+        context = RetrievalContext(
+            chunk_id=clause_1.chunk_id,
+            citation_text=clause_1.citation_text,
+            text=clause_1.text,
+            payload=clause_1.payload,
+            score=1.0,
+            matched_chunk_ids=(clause_1.chunk_id,),
+            matched_citations=(clause_1.citation_text,),
+        )
+        captured_kwargs: list[dict[str, object]] = []
+
+        retriever = HybridRetriever.__new__(HybridRetriever)
+
+        def fake_fetch_article_siblings(**kwargs):
+            captured_kwargs.append(kwargs)
+            return (clause_2,)
+
+        retriever._fetch_article_siblings = fake_fetch_article_siblings
+        intent = route_query("Cac truong hop cham dut hop dong lao dong la gi?")
+
+        contexts = HybridRetriever._add_article_sibling_contexts(
+            retriever,
+            (context,),
+            intent=intent,
+            direct_records={clause_1.chunk_id: clause_1},
+        )
+
+        self.assertEqual([item.chunk_id for item in contexts], ["dieu-34-k1"])
+        self.assertIn("Da hoan thanh cong viec", contexts[0].text)
+        self.assertEqual(captured_kwargs[0]["limit"], 16)
 
     def test_reference_fallback_fetches_explicit_clause_even_when_article_is_present(self) -> None:
         existing = RetrievedRecord(
