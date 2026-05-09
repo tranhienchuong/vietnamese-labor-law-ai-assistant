@@ -403,6 +403,27 @@ def select_contexts_for_prompt(
     return tuple(selected)
 
 
+def actor_labels_for_sparse(intent: QueryIntent) -> tuple[str, ...]:
+    if (
+        "definition" in intent.query_types
+        or "quyen va nghia vu" in intent.normalized_query
+        or "quyen nghia vu" in intent.normalized_query
+    ):
+        return tuple(intent.actor_filters)
+    return filter_specific_actor_labels(intent.actor_filters)
+
+
+def dedupe_records_by_chunk_id(records: Sequence[RetrievedRecord]) -> tuple[RetrievedRecord, ...]:
+    seen: set[str] = set()
+    ordered: list[RetrievedRecord] = []
+    for record in records:
+        if record.chunk_id in seen:
+            continue
+        seen.add(record.chunk_id)
+        ordered.append(record)
+    return tuple(ordered)
+
+
 def format_context_for_prompt(
     contexts: Sequence[RetrievalContext],
     *,
@@ -550,7 +571,7 @@ class HybridRetriever:
         tokens.extend(f"diem_{value}" for value in intent.point_refs)
         tokens.extend(f"topic_{value}" for value in intent.topic_filters)
         tokens.extend(f"issue_{value}" for value in intent.issue_filters)
-        tokens.extend(f"actor_{value}" for value in filter_specific_actor_labels(intent.actor_filters))
+        tokens.extend(f"actor_{value}" for value in actor_labels_for_sparse(intent))
         tokens.extend(f"qtype_{value}" for value in intent.query_types)
         sparse_query = self._sparse_encoder.encode_query(tokens)
         sparse_vector = self._qdrant_models.SparseVector(
@@ -896,38 +917,97 @@ class HybridRetriever:
         *,
         limit: int,
     ) -> tuple[SearchHit, ...]:
-        if not intent.explicit_legal_reference_filters:
+        fallback_kind = "explicit" if intent.article_numbers else "high_confidence"
+        article_candidates = intent.article_numbers
+        if not article_candidates:
+            article_candidates = tuple(
+                article
+                for article in intent.force_reference_article_numbers
+                if article not in intent.article_numbers
+            )
+            if len(article_candidates) > 4:
+                return tuple(hits)
+
+        if not article_candidates:
             return tuple(hits)
 
-        existing_chunk_ids = {hit.chunk_id for hit in hits}
         existing_records = self._fetch_records_from_hits(hits)
         existing_articles = {
             str(record.payload.get("article_number") or "")
             for record in existing_records.values()
         }
         missing_articles = tuple(
-            article for article in intent.article_numbers if article not in existing_articles
+            article for article in article_candidates if article not in existing_articles
         )
-        if intent.article_numbers and not missing_articles and not intent.clause_refs and not intent.point_refs:
-            return tuple(hits)
+        if fallback_kind == "explicit":
+            article_numbers_to_fetch = missing_articles or article_candidates
+            if not missing_articles and not intent.clause_refs and not intent.point_refs:
+                return tuple(hits)
+        else:
+            article_numbers_to_fetch = missing_articles
+            if not article_numbers_to_fetch or intent.clause_refs or intent.point_refs:
+                return tuple(hits)
 
-        fallback_records = self._fetch_records_by_reference(
-            document_ids=intent.document_filters,
-            article_numbers=missing_articles or intent.article_numbers,
-            clause_refs=intent.clause_refs,
-            point_refs=intent.point_refs,
-            exclude_chunk_ids=tuple(existing_chunk_ids),
-            limit=limit,
-        )
+        if article_numbers_to_fetch and not intent.clause_refs and not intent.point_refs:
+            fallback_records_list: list[RetrievedRecord] = []
+            excluded_chunk_ids: set[str] = set()
+            primary_article_limit = max(
+                limit,
+                8
+                if (
+                    "definition" in intent.query_types
+                    or "giai_thich_tu_ngu" in intent.issue_filters
+                    or "loai_hop_dong" in intent.issue_filters
+                )
+                else 4,
+            )
+            secondary_article_limit = max(2, min(4, limit))
+            for index, article_number in enumerate(article_numbers_to_fetch):
+                fetched_records = self._fetch_records_by_reference(
+                    document_ids=intent.document_filters,
+                    article_numbers=(article_number,),
+                    exclude_chunk_ids=tuple(excluded_chunk_ids),
+                    limit=primary_article_limit if index == 0 else secondary_article_limit,
+                )
+                fallback_records_list.extend(fetched_records)
+                excluded_chunk_ids.update(record.chunk_id for record in fetched_records)
+            fallback_records = tuple(fallback_records_list)
+        else:
+            fallback_records = self._fetch_records_by_reference(
+                document_ids=intent.document_filters,
+                article_numbers=article_numbers_to_fetch,
+                clause_refs=intent.clause_refs,
+                point_refs=intent.point_refs,
+                limit=limit,
+            )
         if not fallback_records:
             return tuple(hits)
 
-        fallback_score = min((hit.score for hit in hits), default=0.0) - 1e-3
-        fallback_hits = tuple(
-            self._record_to_search_hit(record, fallback_score - (rank * 1e-4))
-            for rank, record in enumerate(fallback_records)
+        max_existing_score = max((hit.score for hit in hits), default=0.0)
+        fallback_score = (
+            max_existing_score + 1e-3
+            if fallback_kind == "explicit"
+            else max(max_existing_score - 1e-3, 0.0)
         )
-        return (*hits, *fallback_hits)
+        fallback_hits_by_chunk_id = {
+            record.chunk_id: self._record_to_search_hit(record, fallback_score - (rank * 1e-4))
+            for rank, record in enumerate(dedupe_records_by_chunk_id(fallback_records))
+        }
+        promoted_hits: list[SearchHit] = []
+        used_fallback_chunk_ids: set[str] = set()
+        for hit in hits:
+            fallback_hit = fallback_hits_by_chunk_id.get(hit.chunk_id)
+            if fallback_hit is None:
+                promoted_hits.append(hit)
+                continue
+            promoted_hits.append(fallback_hit if fallback_kind == "explicit" else hit)
+            used_fallback_chunk_ids.add(hit.chunk_id)
+        promoted_hits.extend(
+            fallback_hit
+            for chunk_id, fallback_hit in fallback_hits_by_chunk_id.items()
+            if chunk_id not in used_fallback_chunk_ids
+        )
+        return tuple(promoted_hits)
 
     def _score_hit_relevance(
         self,
@@ -939,6 +1019,7 @@ class HybridRetriever:
         prioritized_issue_filters = prioritize_issue_filters(intent.issue_filters)
         article_number = str(record.payload.get("article_number") or "").lower()
         clause_ref = str(record.payload.get("clause_ref") or "").lower()
+        point_ref = str(record.payload.get("point_ref") or "").lower()
         document_id = str(record.payload.get("document_id") or "")
         level = str(record.payload.get("level") or "")
         actor_values = {str(value) for value in (record.payload.get("actor") or [])}
@@ -998,11 +1079,58 @@ class HybridRetriever:
             boost += 0.2
         if intent.clause_refs and clause_ref in intent.clause_refs:
             boost += 0.25
+        if article_number == "20" and "loai_hop_dong" in intent.issue_filters:
+            if point_ref == "a" and "khong xac dinh thoi han" in intent.normalized_query:
+                boost += 0.75
+            elif (
+                point_ref == "b"
+                and "xac dinh thoi han" in intent.normalized_query
+                and "khong xac dinh thoi han" not in intent.normalized_query
+            ):
+                boost += 0.75
+        if article_number == "17" and {
+            "giu_giay_to_goc",
+            "dat_coc_bao_dam",
+            "hanh_vi_cam_khi_giao_ket",
+        }.intersection(intent.issue_filters):
+            boost += 0.9
+        if "phan_biet_doi_xu" in intent.issue_filters:
+            if article_number == "3" and clause_ref == "8":
+                boost += 1.0
+            if article_number in {"8", "11", "135", "16"}:
+                boost += 0.7
+            if article_number == "8" and document_id != "45-2019-qh14":
+                boost -= 1.2
+        if "bao_ve_thai_san" in intent.issue_filters and article_number == "137":
+            boost += 0.8
+        if "lam_ban_dem" in intent.issue_filters and article_number == "106":
+            boost += 0.8
+        if "quay_roi_tinh_duc" in intent.issue_filters and article_number in {"3", "8", "35", "118"}:
+            boost += 0.65
+        if "xu_ly_ky_luat_lao_dong" in intent.issue_filters and article_number == "127":
+            boost += 0.65
+        if "ep_nghi_viec" in intent.issue_filters and article_number in {"7", "15", "34", "36", "39", "41"}:
+            boost += 0.45
+        if "han_che_viec_lam_sau_nghi" in intent.issue_filters and article_number in {"10", "21", "15"}:
+            boost += 0.45
+        if "bao_mat_bi_mat_kinh_doanh" in intent.issue_filters and article_number in {"21", "10", "15"}:
+            boost += 0.35
+        if "dieu_khoan_bat_cong" in intent.issue_filters and article_number in {"15", "49", "51"}:
+            boost += 0.35
+        if (
+            {"du_lieu_ca_nhan", "thong_tin_suc_khoe"}.intersection(intent.issue_filters)
+            and article_number in {"16", "21", "6"}
+        ):
+            boost += 0.25
+        if "quyen_nghia_vu_nguoi_lao_dong" in intent.issue_filters and article_number == "5":
+            boost += 0.9
+        if "quyen_nghia_vu_nguoi_su_dung_lao_dong" in intent.issue_filters and article_number == "6":
+            boost += 0.9
         if prioritized_issue_filters and issue_values.intersection(prioritized_issue_filters):
             boost += 0.15
         if intent.topic_filters and topic_values.intersection(intent.topic_filters):
             boost += 0.05
-        specific_actor_filters = filter_specific_actor_labels(intent.actor_filters)
+        specific_actor_filters = actor_labels_for_sparse(intent)
         if specific_actor_filters and actor_values.intersection(specific_actor_filters):
             boost += 0.04
         if "time_limit" in intent.query_types and contains_normalized_phrase(

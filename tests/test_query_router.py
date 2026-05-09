@@ -184,7 +184,32 @@ class QueryRouterTests(unittest.TestCase):
         self.assertEqual(intent.actor_filters, ("nguoi_lao_dong",))
         self.assertEqual(intent.topic_filters, ("tien_luong",))
         self.assertNotIn("bao_ve_thai_san", intent.topic_filters)
-        self.assertEqual(intent.inferred_article_numbers, ())
+        self.assertIn("97", intent.inferred_article_numbers)
+        self.assertTrue(intent.query_expansions)
+
+    def test_query_intent_from_metadata_merges_rule_based_article_anchors(self) -> None:
+        metadata = QueryMetadata.model_validate(
+            {
+                "actor": "nguoi_lao_dong",
+                "actors": ["nguoi_lao_dong"],
+                "topics": ["hop_dong_lao_dong"],
+                "issues": [],
+                "document_ids": [],
+                "query_types": ["yes_no"],
+                "article_numbers": [],
+                "clause_refs": [],
+                "point_refs": [],
+            }
+        )
+
+        intent = query_intent_from_metadata(
+            "Cong ty giu CCCD ban goc cua toi co duoc khong?",
+            metadata,
+        )
+
+        self.assertIn("17", intent.inferred_article_numbers)
+        self.assertIn("giu_giay_to_goc", intent.issue_filters)
+        self.assertTrue(any("giay to tuy than" in value for value in intent.query_expansions))
 
     def test_hybrid_retriever_uses_llm_router_when_enabled(self) -> None:
         metadata = QueryMetadata.model_validate(

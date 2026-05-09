@@ -10,7 +10,14 @@ from typing import Any, Callable, Literal, Mapping, Sequence, get_args
 from pydantic import BaseModel, ConfigDict, Field
 
 from .corpus_pipeline import normalize_for_matching
-from .heuristic_router import QueryIntent
+from .heuristic_router import (
+    DOCUMENT_KEYWORDS,
+    QueryIntent,
+    collect_keyword_matches,
+    collect_mapped_article_expansions,
+    collect_rule_based_routing,
+    dedupe_preserve_order,
+)
 
 
 ActorLabel = Literal[
@@ -24,6 +31,7 @@ ActorLabel = Literal[
 ]
 
 TopicLabel = Literal[
+    "general_provisions",
     "cham_dut_hop_dong_lao_dong",
     "don_phuong_cham_dut",
     "bao_truoc",
@@ -37,9 +45,25 @@ TopicLabel = Literal[
     "tien_luong",
     "thu_viec",
     "bao_hiem",
+    "tuyen_dung_lao_dong",
+    "thoi_gio_lam_viec",
+    "lao_dong_chua_thanh_nien",
+    "cho_thue_lai_lao_dong",
+    "tranh_chap_lao_dong",
+    "binh_dang_phan_biet_doi_xu",
 ]
 
 IssueLabel = Literal[
+    "giai_thich_tu_ngu",
+    "quyen_nghia_vu_nguoi_lao_dong",
+    "quyen_nghia_vu_nguoi_su_dung_lao_dong",
+    "hanh_vi_bi_cam",
+    "hanh_vi_cam_khi_giao_ket",
+    "giu_giay_to_goc",
+    "dat_coc_bao_dam",
+    "phan_biet_doi_xu",
+    "quay_roi_tinh_duc",
+    "tuyen_dung_lao_dong",
     "can_cu_cham_dut",
     "quyen_don_phuong_cham_dut",
     "thoi_han_bao_truoc",
@@ -63,8 +87,20 @@ IssueLabel = Literal[
     "doi_thoai_tai_noi_lam_viec",
     "xu_ly_ky_luat_lao_dong",
     "tien_luong",
+    "thoi_gio_lam_viec",
+    "lam_them_gio",
+    "lam_ban_dem",
     "thu_viec",
     "bao_hiem_xa_hoi",
+    "lao_dong_chua_thanh_nien",
+    "cho_thue_lai_lao_dong",
+    "tranh_chap_lao_dong",
+    "du_lieu_ca_nhan",
+    "thong_tin_suc_khoe",
+    "ep_nghi_viec",
+    "dieu_khoan_bat_cong",
+    "han_che_viec_lam_sau_nghi",
+    "bao_mat_bi_mat_kinh_doanh",
 ]
 
 DocumentLabel = Literal[
@@ -97,6 +133,21 @@ LABEL_ALIASES = {
     "ky_luat": "ky_luat_sa_thai",
     "dao_tao": "dao_tao_nghe",
     "bhxh": "bao_hiem_xa_hoi",
+    "cam_ket_bao_dam": "dat_coc_bao_dam",
+    "giu_giay_to": "giu_giay_to_goc",
+    "giay_to_goc": "giu_giay_to_goc",
+    "phan_biet": "phan_biet_doi_xu",
+    "discrimination": "phan_biet_doi_xu",
+    "sexual_harassment": "quay_roi_tinh_duc",
+    "overtime": "lam_them_gio",
+    "night_work": "lam_ban_dem",
+    "privacy": "du_lieu_ca_nhan",
+    "personal_data": "du_lieu_ca_nhan",
+    "health_information": "thong_tin_suc_khoe",
+    "forced_resignation": "ep_nghi_viec",
+    "unfair_term": "dieu_khoan_bat_cong",
+    "non_compete": "han_che_viec_lam_sau_nghi",
+    "confidentiality": "bao_mat_bi_mat_kinh_doanh",
     "45_2019_qh14": "45-2019-qh14",
     "nghi_dinh_145_2020_nd_cp": "nghi-dinh-145-2020-nd-cp",
 }
@@ -112,6 +163,7 @@ ACTOR_DESCRIPTIONS = {
 }
 
 TOPIC_DESCRIPTIONS = {
+    "general_provisions": "definitions, prohibited acts, basic rights and obligations in the Labor Code",
     "cham_dut_hop_dong_lao_dong": "termination or ending of an employment contract",
     "don_phuong_cham_dut": "unilateral termination, resigning, quitting, or one party ending the contract",
     "bao_truoc": "advance notice period or no-notice termination",
@@ -125,9 +177,25 @@ TOPIC_DESCRIPTIONS = {
     "tien_luong": "salary, wage payment, late salary, overtime pay, bonus, or deduction",
     "thu_viec": "probation or probationary employment",
     "bao_hiem": "social insurance or unemployment insurance context",
+    "tuyen_dung_lao_dong": "recruitment, job application, candidate screening, or hiring information",
+    "thoi_gio_lam_viec": "working hours, overtime, night work, rest periods, or working time limits",
+    "lao_dong_chua_thanh_nien": "minor workers, under-15 workers, or underage labor protections",
+    "cho_thue_lai_lao_dong": "labor outsourcing or leased labor arrangements",
+    "tranh_chap_lao_dong": "labor disputes, mediation, court claims, or limitation periods",
+    "binh_dang_phan_biet_doi_xu": "equality, discrimination, harassment, or biased treatment in employment",
 }
 
 ISSUE_DESCRIPTIONS = {
+    "giai_thich_tu_ngu": "definition of a statutory term such as employee, employer, labor relationship, or labor contract",
+    "quyen_nghia_vu_nguoi_lao_dong": "employee rights and obligations",
+    "quyen_nghia_vu_nguoi_su_dung_lao_dong": "employer rights and obligations",
+    "hanh_vi_bi_cam": "prohibited acts under the Labor Code",
+    "hanh_vi_cam_khi_giao_ket": "acts employers must not do when entering into or performing employment contracts",
+    "giu_giay_to_goc": "retaining original identity documents, diplomas, certificates, or personal papers",
+    "dat_coc_bao_dam": "requiring a deposit, money, or property as security for employment",
+    "phan_biet_doi_xu": "discrimination based on sex, family responsibility, HIV status, maternity, or other protected status",
+    "quay_roi_tinh_duc": "sexual harassment at work or related disciplinary/termination consequences",
+    "tuyen_dung_lao_dong": "recruitment rights, hiring notices, candidate information, or discriminatory hiring",
     "can_cu_cham_dut": "legal grounds or permitted cases for contract termination",
     "quyen_don_phuong_cham_dut": "right to unilaterally terminate or resign",
     "thoi_han_bao_truoc": "how many days of notice are required",
@@ -151,8 +219,20 @@ ISSUE_DESCRIPTIONS = {
     "doi_thoai_tai_noi_lam_viec": "workplace dialogue",
     "xu_ly_ky_luat_lao_dong": "disciplinary process, limitation period, meeting, or suspension",
     "tien_luong": "salary, wage payment, late payment, or deduction issue",
+    "thoi_gio_lam_viec": "normal working hours, night work, overtime, or rest-time rules",
+    "lam_them_gio": "overtime work or overtime pay",
+    "lam_ban_dem": "night work, night-shift assignment, or night-work pay",
     "thu_viec": "probation issue",
     "bao_hiem_xa_hoi": "social insurance or unemployment insurance issue",
+    "lao_dong_chua_thanh_nien": "minor worker conditions, prohibited jobs, working hours, or night-work limits",
+    "cho_thue_lai_lao_dong": "labor outsourcing rules, leased-worker rights, or prohibited outsourcing cases",
+    "tranh_chap_lao_dong": "individual labor dispute, mediation, court claim, or statute of limitation",
+    "du_lieu_ca_nhan": "personal data, personal profile, or privacy-like information in recruitment or employment",
+    "thong_tin_suc_khoe": "health information, medical records, HIV status, or medical screening information",
+    "ep_nghi_viec": "pressure, coercion, or forcing an employee to sign a resignation or leave voluntarily",
+    "dieu_khoan_bat_cong": "unfair, unlawful, or below-minimum employment contract terms",
+    "han_che_viec_lam_sau_nghi": "non-compete or post-employment work restriction clause",
+    "bao_mat_bi_mat_kinh_doanh": "confidentiality, trade secret, or technology secret protection agreement",
 }
 
 DOCUMENT_DESCRIPTIONS = {
@@ -418,19 +498,34 @@ def analyze_query_smart(
 def query_intent_from_metadata(query: str, metadata: QueryMetadata) -> QueryIntent:
     normalized_query = normalize_for_matching(f" {query} ")
     actors = tuple(value for value in (metadata.actor, *metadata.actors) if value)
+    rule_routing = collect_rule_based_routing(normalized_query)
+    topic_filters = dedupe_preserve_order((*metadata.topics, *rule_routing.topics))
+    issue_filters = dedupe_preserve_order((*metadata.issues, *rule_routing.issues))
+    mapped_articles, mapped_expansions = collect_mapped_article_expansions(
+        topic_filters=topic_filters,
+        issue_filters=issue_filters,
+    )
+    article_numbers = dedupe_preserve_order(tuple(metadata.article_numbers))
     return QueryIntent(
         raw_query=query,
         normalized_query=normalized_query,
-        actor_filters=tuple(_dedupe_preserve_order(actors)),
-        topic_filters=tuple(_dedupe_preserve_order(tuple(metadata.topics))),
-        issue_filters=tuple(_dedupe_preserve_order(tuple(metadata.issues))),
-        document_filters=tuple(_dedupe_preserve_order(tuple(metadata.document_ids))),
-        article_numbers=tuple(_dedupe_preserve_order(tuple(metadata.article_numbers))),
-        inferred_article_numbers=(),
-        clause_refs=tuple(_dedupe_preserve_order(tuple(metadata.clause_refs))),
-        point_refs=tuple(_dedupe_preserve_order(tuple(metadata.point_refs))),
-        query_expansions=(),
-        query_types=tuple(_dedupe_preserve_order(tuple(metadata.query_types))),
+        actor_filters=dedupe_preserve_order(actors),
+        topic_filters=topic_filters,
+        issue_filters=issue_filters,
+        document_filters=dedupe_preserve_order(
+            (*metadata.document_ids, *collect_keyword_matches(normalized_query, DOCUMENT_KEYWORDS))
+        ),
+        article_numbers=article_numbers,
+        inferred_article_numbers=dedupe_preserve_order(
+            (*rule_routing.inferred_articles, *mapped_articles)
+        ),
+        force_reference_article_numbers=dedupe_preserve_order(
+            (*article_numbers, *rule_routing.force_reference_articles)
+        ),
+        clause_refs=dedupe_preserve_order(tuple(metadata.clause_refs)),
+        point_refs=dedupe_preserve_order(tuple(metadata.point_refs)),
+        query_expansions=dedupe_preserve_order((*rule_routing.expansions, *mapped_expansions)),
+        query_types=dedupe_preserve_order(tuple(metadata.query_types)),
     )
 
 
