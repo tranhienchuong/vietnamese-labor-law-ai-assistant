@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import sqlite3
 import re
-from typing import Sequence
+from typing import Any, Sequence
 
 from .corpus_pipeline import normalize_for_matching
 from .embeddings import embed_query_via_http, is_custom_http_embedding_provider
@@ -23,22 +23,8 @@ from .indexing import (
 )
 from .heuristic_router import (
     ARTICLE_REF_RE,
-    BENEFIT_COMPUTATION_QUERY_HINTS,
-    CALCULATION_CONTEXT_HINTS,
-    CALCULATION_QUERY_HINTS,
-    DELEGATION_CONTEXT_HINTS,
-    ENUMERATION_PARENT_CONTEXT_HINTS,
-    IMPLEMENTATION_DETAIL_HINTS,
-    LEGAL_ISSUE_ARTICLE_MAP,
-    MATERNITY_CONTEXT_HINTS,
-    MAX_ENUMERATION_CONTEXT_RECORDS,
-    NO_NOTICE_QUERY_HINTS,
+    LegalReference,
     QueryIntent,
-    RETIREMENT_CONTEXT_HINTS,
-    TERMINATION_ARTICLE_MAP,
-    TERMINATION_BENEFIT_CONTEXT_HINTS,
-    TERMINATION_QUERY_HINTS,
-    TERMINATION_SECTION_HINTS,
     YEAR_COUNT_RE,
     build_query_variants,
     contains_normalized_phrase,
@@ -54,6 +40,17 @@ from .heuristic_router import (
     route_query_heuristic,
 )
 from .query_router import query_intent_from_metadata, route_query_with_llm
+from .rule_loader import DEFAULT_RULE_CONFIG
+
+
+RULE_CONFIG = DEFAULT_RULE_CONFIG
+_RULE_CONFIG_EXPORTS = frozenset(("LEGAL_ISSUE_ARTICLE_MAP", "TERMINATION_ARTICLE_MAP"))
+
+
+def __getattr__(name: str) -> object:
+    if name in _RULE_CONFIG_EXPORTS:
+        return getattr(RULE_CONFIG, name)
+    raise AttributeError(name)
 
 DEFAULT_MAX_CONTEXT_CHARS = 8000
 DEFAULT_MAX_CONTEXT_TOKENS = 1400
@@ -63,6 +60,7 @@ RECORD_SOURCE_SQLITE = "sqlite"
 RECORD_SOURCE_QDRANT_PAYLOAD = "qdrant_payload"
 SUPPORTED_RECORD_SOURCES = {RECORD_SOURCE_SQLITE, RECORD_SOURCE_QDRANT_PAYLOAD}
 RRF_K = 60.0
+FORCED_REFERENCE_SCORE_MARGIN = 10.0
 TRUE_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 FALSE_ENV_VALUES = frozenset({"0", "false", "no", "off"})
 POINT_REF_ALPHABET = (
@@ -296,7 +294,7 @@ def context_looks_like_enumeration_parent(context: RetrievalContext) -> bool:
         return False
     return contains_normalized_phrase(
         normalize_for_matching(context.text),
-        ENUMERATION_PARENT_CONTEXT_HINTS,
+        RULE_CONFIG.ENUMERATION_PARENT_CONTEXT_HINTS,
     )
 
 
@@ -404,10 +402,13 @@ def select_contexts_for_prompt(
 
 
 def actor_labels_for_sparse(intent: QueryIntent) -> tuple[str, ...]:
+    query_context = RULE_CONFIG.QUERY_CONTEXT
     if (
-        "definition" in intent.query_types
-        or "quyen va nghia vu" in intent.normalized_query
-        or "quyen nghia vu" in intent.normalized_query
+        set(intent.query_types).intersection(query_context.get("full_actor_filter_query_types", ()))
+        or contains_normalized_phrase(
+            intent.normalized_query,
+            query_context.get("full_actor_filter_query_phrases", ()),
+        )
     ):
         return tuple(intent.actor_filters)
     return filter_specific_actor_labels(intent.actor_filters)
@@ -530,7 +531,7 @@ class HybridRetriever:
 
     def _route_query(self, query: str) -> QueryIntent:
         if not self._query_router_enabled:
-            return route_query_heuristic(query)
+            return route_query_heuristic(query, RULE_CONFIG)
 
         try:
             return route_query_with_llm(
@@ -541,7 +542,7 @@ class HybridRetriever:
         except Exception:
             if not self._query_router_fallback_to_heuristic:
                 raise
-            return route_query_heuristic(query)
+            return route_query_heuristic(query, RULE_CONFIG)
 
     def _encode_dense_query(self, query: str) -> list[float]:
         if is_custom_http_embedding_provider():
@@ -910,6 +911,103 @@ class HybridRetriever:
             payload=record.payload,
         )
 
+    @staticmethod
+    def _reference_label(reference: LegalReference) -> str:
+        return ":".join(
+            part
+            for part in (
+                reference.document_id,
+                f"article={reference.article}" if reference.article else "",
+                f"clause={reference.clause}" if reference.clause else "",
+                f"point={reference.point}" if reference.point else "",
+            )
+            if part
+        )
+
+    @staticmethod
+    def _payload_matches_reference(payload: dict[str, object], reference: LegalReference) -> bool:
+        if reference.document_id and str(payload.get("document_id") or "") != reference.document_id:
+            return False
+        if reference.article and str(payload.get("article_number") or "") != reference.article:
+            return False
+        if reference.clause and str(payload.get("clause_ref") or "") != reference.clause:
+            return False
+        if reference.point and str(payload.get("point_ref") or "") != reference.point:
+            return False
+        return bool(reference.article)
+
+    def _hit_matches_forced_reference(self, hit: SearchHit, intent: QueryIntent) -> bool:
+        return any(
+            self._payload_matches_reference(hit.payload, reference)
+            for reference in intent.forced_references
+        )
+
+    def _forced_reference_records(
+        self,
+        intent: QueryIntent,
+        *,
+        limit: int,
+    ) -> tuple[tuple[LegalReference, RetrievedRecord], ...]:
+        if not intent.forced_references:
+            return ()
+
+        records: list[tuple[LegalReference, RetrievedRecord]] = []
+        excluded_chunk_ids: set[str] = set()
+        per_reference_limit = max(1, int(limit) // max(1, len(intent.forced_references)))
+        for reference in intent.forced_references:
+            if not reference.article:
+                continue
+            document_ids = (reference.document_id,) if reference.document_id else intent.document_filters
+            clause_refs = (reference.clause,) if reference.clause else ()
+            point_refs = (reference.point,) if reference.point else ()
+            fetch_limit = 1 if clause_refs or point_refs else max(1, min(4, per_reference_limit))
+            fetched_records = self._fetch_records_by_reference(
+                document_ids=document_ids,
+                article_numbers=(reference.article,),
+                clause_refs=clause_refs,
+                point_refs=point_refs,
+                exclude_chunk_ids=tuple(excluded_chunk_ids),
+                limit=fetch_limit,
+            )
+            for record in fetched_records:
+                records.append((reference, record))
+                excluded_chunk_ids.add(record.chunk_id)
+        return tuple(records)
+
+    def _append_forced_reference_hits(
+        self,
+        hits: Sequence[SearchHit],
+        intent: QueryIntent,
+        *,
+        limit: int,
+    ) -> tuple[SearchHit, ...]:
+        forced_records = self._forced_reference_records(intent, limit=limit)
+        if not forced_records:
+            return tuple(hits)
+
+        max_existing_score = max((hit.score for hit in hits), default=0.0)
+        forced_hits: list[SearchHit] = []
+        seen_forced_chunk_ids: set[str] = set()
+        for rank, (reference, record) in enumerate(forced_records):
+            if record.chunk_id in seen_forced_chunk_ids:
+                continue
+            seen_forced_chunk_ids.add(record.chunk_id)
+            payload = dict(record.payload)
+            payload["retrieval_forced_reference"] = True
+            payload["retrieval_forced_reference_label"] = self._reference_label(reference)
+            forced_hits.append(
+                SearchHit(
+                    chunk_id=record.chunk_id,
+                    qdrant_point_id=str(record.payload.get("qdrant_point_id") or record.chunk_id),
+                    score=max_existing_score + FORCED_REFERENCE_SCORE_MARGIN - (rank * 1e-4),
+                    citation_text=record.citation_text,
+                    payload=payload,
+                )
+            )
+
+        remaining_hits = tuple(hit for hit in hits if hit.chunk_id not in seen_forced_chunk_ids)
+        return tuple((*forced_hits, *remaining_hits))
+
     def _append_reference_fallback_hits(
         self,
         hits: Sequence[SearchHit],
@@ -951,13 +1049,17 @@ class HybridRetriever:
         if article_numbers_to_fetch and not intent.clause_refs and not intent.point_refs:
             fallback_records_list: list[RetrievedRecord] = []
             excluded_chunk_ids: set[str] = set()
+            query_context = RULE_CONFIG.QUERY_CONTEXT
             primary_article_limit = max(
                 limit,
                 8
                 if (
-                    "definition" in intent.query_types
-                    or "giai_thich_tu_ngu" in intent.issue_filters
-                    or "loai_hop_dong" in intent.issue_filters
+                    set(intent.query_types).intersection(
+                        query_context.get("primary_article_limit_query_types", ())
+                    )
+                    or set(intent.issue_filters).intersection(
+                        query_context.get("primary_article_limit_issues", ())
+                    )
                 )
                 else 4,
             )
@@ -1009,13 +1111,197 @@ class HybridRetriever:
         )
         return tuple(promoted_hits)
 
+    def _pin_forced_reference_hits(
+        self,
+        hits: Sequence[SearchHit],
+        intent: QueryIntent,
+    ) -> tuple[SearchHit, ...]:
+        if not intent.forced_references:
+            return tuple(hits)
+
+        pinned: list[SearchHit] = []
+        remaining: list[SearchHit] = []
+        seen_chunk_ids: set[str] = set()
+        for hit in hits:
+            if hit.chunk_id in seen_chunk_ids:
+                continue
+            seen_chunk_ids.add(hit.chunk_id)
+            if bool(hit.payload.get("retrieval_forced_reference")) or self._hit_matches_forced_reference(hit, intent):
+                pinned.append(hit)
+            else:
+                remaining.append(hit)
+        return tuple((*pinned, *remaining))
+
+    @staticmethod
+    def _boost_values(value: object) -> tuple[str, ...]:
+        if value is None:
+            return ()
+        if isinstance(value, str):
+            return (value,)
+        if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+            return tuple(str(item) for item in value)
+        return (str(value),)
+
+    @staticmethod
+    def _hint_values(name: object) -> tuple[str, ...]:
+        return HybridRetriever._boost_values(getattr(RULE_CONFIG, str(name).upper(), ()))
+
+    @staticmethod
+    def _has_any(text: str, phrases: object) -> bool:
+        values = HybridRetriever._boost_values(phrases)
+        return bool(values) and contains_normalized_phrase(text, values)
+
+    @staticmethod
+    def _has_all(text: str, phrases: object) -> bool:
+        values = HybridRetriever._boost_values(phrases)
+        return bool(values) and all(phrase in text for phrase in values)
+
+    def _boost_flags(self, intent: QueryIntent) -> dict[str, bool]:
+        context = RULE_CONFIG.BOOST_CONTEXT
+        benefit_issues = set(context.get("benefit_computation_issues", ()))
+        termination_topics = set(context.get("termination_topics", ()))
+        termination_issues = set(context.get("termination_issues", ()))
+        benefit_topics = set(context.get("termination_benefit_topics", ()))
+        benefit_issue_labels = set(context.get("termination_benefit_issues", ()))
+        wants_implementation_detail = contains_normalized_phrase(
+            intent.normalized_query,
+            RULE_CONFIG.IMPLEMENTATION_DETAIL_HINTS,
+        )
+        is_calculation_query = (
+            contains_normalized_phrase(intent.normalized_query, RULE_CONFIG.CALCULATION_QUERY_HINTS)
+            or (
+                benefit_issues.intersection(intent.issue_filters)
+                and (
+                    contains_normalized_phrase(
+                        intent.normalized_query,
+                        RULE_CONFIG.BENEFIT_COMPUTATION_QUERY_HINTS,
+                    )
+                    or YEAR_COUNT_RE.search(intent.normalized_query) is not None
+                )
+            )
+        )
+        is_termination_query = (
+            termination_topics.intersection(intent.topic_filters)
+            or termination_issues.intersection(intent.issue_filters)
+            or contains_normalized_phrase(intent.normalized_query, RULE_CONFIG.TERMINATION_QUERY_HINTS)
+        )
+        implementation_hints = tuple(context.get("implementation_document_query_hints", ()))
+        return {
+            "is_calculation_query": bool(is_calculation_query),
+            "wants_implementation_detail": wants_implementation_detail,
+            "is_termination_query": bool(is_termination_query),
+            "is_termination_benefit_query": bool(
+                is_termination_query
+                and (
+                    benefit_topics.intersection(intent.topic_filters)
+                    or benefit_issue_labels.intersection(intent.issue_filters)
+                )
+            ),
+            "query_has_maternity_hint": contains_normalized_phrase(
+                intent.normalized_query,
+                RULE_CONFIG.MATERNITY_CONTEXT_HINTS,
+            ),
+            "query_has_retirement_hint": contains_normalized_phrase(
+                intent.normalized_query,
+                RULE_CONFIG.RETIREMENT_CONTEXT_HINTS,
+            ),
+            "prefers_primary_law": bool(
+                is_termination_query
+                and not wants_implementation_detail
+                and not contains_normalized_phrase(intent.normalized_query, implementation_hints)
+            ),
+            "query_without_notice": query_asks_without_notice(intent),
+        }
+
+    def _boost_condition_matches(
+        self,
+        condition: dict[str, Any],
+        *,
+        intent: QueryIntent,
+        article_number: str,
+        clause_ref: str,
+        point_ref: str,
+        document_id: str,
+        level: str,
+        actor_values: set[str],
+        topic_values: set[str],
+        issue_values: set[str],
+        section_heading: str,
+        heading_text: str,
+        normalized_text: str,
+        prioritized_issue_filters: tuple[str, ...],
+        specific_actor_filters: tuple[str, ...],
+        flags: dict[str, bool],
+    ) -> bool:
+        for key, current in (
+            ("article", article_number),
+            ("clause", clause_ref),
+            ("point", point_ref),
+            ("document_id", document_id),
+            ("level", level),
+        ):
+            if key in condition and current != str(condition[key]):
+                return False
+        if condition.get("article_in_intent_articles") and article_number not in intent.all_article_numbers:
+            return False
+        if condition.get("clause_in_intent_clauses") and clause_ref not in intent.clause_refs:
+            return False
+        if "articles" in condition and article_number not in self._boost_values(condition["articles"]):
+            return False
+        if "document_not" in condition and document_id == str(condition["document_not"]):
+            return False
+        if "issue_any" in condition and not set(self._boost_values(condition["issue_any"])).intersection(intent.issue_filters):
+            return False
+        if "topic_any" in condition and not set(self._boost_values(condition["topic_any"])).intersection(intent.topic_filters):
+            return False
+        if "query_type_any" in condition and not set(self._boost_values(condition["query_type_any"])).intersection(intent.query_types):
+            return False
+        if "prioritized_issue_any" in condition and not set(self._boost_values(condition["prioritized_issue_any"])).intersection(prioritized_issue_filters):
+            return False
+        if "record_topic_any" in condition and not topic_values.intersection(self._boost_values(condition["record_topic_any"])):
+            return False
+        if "record_issue_any" in condition and not issue_values.intersection(self._boost_values(condition["record_issue_any"])):
+            return False
+        if condition.get("record_issue_intersects_prioritized_issues") and not issue_values.intersection(prioritized_issue_filters):
+            return False
+        if condition.get("record_topic_intersects_intent_topics") and not topic_values.intersection(intent.topic_filters):
+            return False
+        if condition.get("record_actor_intersects_specific_actors") and not actor_values.intersection(specific_actor_filters):
+            return False
+        if "flag" in condition and not flags.get(str(condition["flag"]), False):
+            return False
+        if "not_flag" in condition and flags.get(str(condition["not_flag"]), False):
+            return False
+        if condition.get("no_point_refs") and intent.point_refs:
+            return False
+        if condition.get("no_clause_refs") and intent.clause_refs:
+            return False
+        if "query_contains" in condition and not self._has_any(intent.normalized_query, condition["query_contains"]):
+            return False
+        if "query_contains_all" in condition and not self._has_all(intent.normalized_query, condition["query_contains_all"]):
+            return False
+        if "query_not_contains" in condition and self._has_any(intent.normalized_query, condition["query_not_contains"]):
+            return False
+        if "normalized_text_contains" in condition and not self._has_any(normalized_text, condition["normalized_text_contains"]):
+            return False
+        if "normalized_text_contains_hint" in condition and not self._has_any(normalized_text, self._hint_values(condition["normalized_text_contains_hint"])):
+            return False
+        if "heading_contains" in condition and not self._has_any(heading_text, condition["heading_contains"]):
+            return False
+        if "heading_not_contains" in condition and self._has_any(heading_text, condition["heading_not_contains"]):
+            return False
+        if "heading_contains_hint" in condition and not self._has_any(heading_text, self._hint_values(condition["heading_contains_hint"])):
+            return False
+        if "section_heading_contains_hint" in condition and not self._has_any(section_heading, self._hint_values(condition["section_heading_contains_hint"])):
+            return False
+        return True
+
     def _score_hit_relevance(
         self,
         hit: SearchHit,
         record: RetrievedRecord,
         intent: QueryIntent,
     ) -> float:
-        boost = 0.0
         prioritized_issue_filters = prioritize_issue_filters(intent.issue_filters)
         article_number = str(record.payload.get("article_number") or "").lower()
         clause_ref = str(record.payload.get("clause_ref") or "").lower()
@@ -1038,182 +1324,30 @@ class HybridRetriever:
             )
         )
         normalized_text = normalize_for_matching(f" {record.citation_text} {record.text} ")
-        is_calculation_query = (
-            contains_normalized_phrase(intent.normalized_query, CALCULATION_QUERY_HINTS)
-            or (
-                "tro_cap_thoi_viec" in intent.issue_filters
-                and (
-                    contains_normalized_phrase(intent.normalized_query, BENEFIT_COMPUTATION_QUERY_HINTS)
-                    or YEAR_COUNT_RE.search(intent.normalized_query) is not None
-                )
-            )
-        )
-        wants_implementation_detail = contains_normalized_phrase(
-            intent.normalized_query,
-            IMPLEMENTATION_DETAIL_HINTS,
-        )
-        is_termination_query = (
-            "cham_dut_hop_dong_lao_dong" in intent.topic_filters
-            or "tro_cap_thoi_viec" in intent.issue_filters
-            or "tro_cap_mat_viec" in intent.issue_filters
-            or "nghia_vu_khi_cham_dut" in intent.issue_filters
-            or contains_normalized_phrase(intent.normalized_query, TERMINATION_QUERY_HINTS)
-        )
-        is_termination_benefit_query = (
-            is_termination_query
-            and (
-                "tro_cap" in intent.topic_filters
-                or "tro_cap_thoi_viec" in intent.issue_filters
-                or "tro_cap_mat_viec" in intent.issue_filters
-            )
-        )
-        query_has_maternity_hint = contains_normalized_phrase(intent.normalized_query, MATERNITY_CONTEXT_HINTS)
-        query_has_retirement_hint = contains_normalized_phrase(intent.normalized_query, RETIREMENT_CONTEXT_HINTS)
-        prefers_primary_law = (
-            is_termination_query
-            and not wants_implementation_detail
-            and "nghi dinh" not in intent.normalized_query
-        )
-
-        if intent.all_article_numbers and article_number in intent.all_article_numbers:
-            boost += 0.2
-        if intent.clause_refs and clause_ref in intent.clause_refs:
-            boost += 0.25
-        if article_number == "20" and "loai_hop_dong" in intent.issue_filters:
-            if point_ref == "a" and "khong xac dinh thoi han" in intent.normalized_query:
-                boost += 0.75
-            elif (
-                point_ref == "b"
-                and "xac dinh thoi han" in intent.normalized_query
-                and "khong xac dinh thoi han" not in intent.normalized_query
-            ):
-                boost += 0.75
-        if article_number == "17" and {
-            "giu_giay_to_goc",
-            "dat_coc_bao_dam",
-            "hanh_vi_cam_khi_giao_ket",
-        }.intersection(intent.issue_filters):
-            boost += 0.9
-        if "phan_biet_doi_xu" in intent.issue_filters:
-            if article_number == "3" and clause_ref == "8":
-                boost += 1.0
-            if article_number in {"8", "11", "135", "16"}:
-                boost += 0.7
-            if article_number == "8" and document_id != "45-2019-qh14":
-                boost -= 1.2
-        if "bao_ve_thai_san" in intent.issue_filters and article_number == "137":
-            boost += 0.8
-        if "lam_ban_dem" in intent.issue_filters and article_number == "106":
-            boost += 0.8
-        if "quay_roi_tinh_duc" in intent.issue_filters and article_number in {"3", "8", "35", "118"}:
-            boost += 0.65
-        if "xu_ly_ky_luat_lao_dong" in intent.issue_filters and article_number == "127":
-            boost += 0.65
-        if "ep_nghi_viec" in intent.issue_filters and article_number in {"7", "15", "34", "36", "39", "41"}:
-            boost += 0.45
-        if "han_che_viec_lam_sau_nghi" in intent.issue_filters and article_number in {"10", "21", "15"}:
-            boost += 0.45
-        if "bao_mat_bi_mat_kinh_doanh" in intent.issue_filters and article_number in {"21", "10", "15"}:
-            boost += 0.35
-        if "dieu_khoan_bat_cong" in intent.issue_filters and article_number in {"15", "49", "51"}:
-            boost += 0.35
-        if (
-            {"du_lieu_ca_nhan", "thong_tin_suc_khoe"}.intersection(intent.issue_filters)
-            and article_number in {"16", "21", "6"}
-        ):
-            boost += 0.25
-        if "quyen_nghia_vu_nguoi_lao_dong" in intent.issue_filters and article_number == "5":
-            boost += 0.9
-        if "quyen_nghia_vu_nguoi_su_dung_lao_dong" in intent.issue_filters and article_number == "6":
-            boost += 0.9
-        if prioritized_issue_filters and issue_values.intersection(prioritized_issue_filters):
-            boost += 0.15
-        if intent.topic_filters and topic_values.intersection(intent.topic_filters):
-            boost += 0.05
         specific_actor_filters = actor_labels_for_sparse(intent)
-        if specific_actor_filters and actor_values.intersection(specific_actor_filters):
-            boost += 0.04
-        if "time_limit" in intent.query_types and contains_normalized_phrase(
-            normalized_text,
-            ("ngay", "thang", "nam", "thoi han", "khong qua", "it nhat"),
-        ):
-            boost += 0.08
-        if "money_percentage" in intent.query_types and contains_normalized_phrase(
-            normalized_text,
-            ("%", "phan tram", "tien luong", "it nhat", "bang", "muc luong"),
-        ):
-            boost += 0.08
-        if "procedure" in intent.query_types and contains_normalized_phrase(
-            normalized_text,
-            ("thong bao", "tham khao y kien", "bien ban", "thoi han", "to chuc dai dien"),
-        ):
-            boost += 0.08
-        if "classification" in intent.query_types and contains_normalized_phrase(
-            normalized_text,
-            ("hinh thuc", "don phuong cham dut", "cac truong hop", "ap dung"),
-        ):
-            boost += 0.08
-        if query_asks_without_notice(intent):
-            if article_number == "35" and clause_ref == "2":
-                boost += 0.75
-            if article_number in {"37", "45"}:
-                boost -= 0.45
-
-        if is_termination_query:
-            if contains_normalized_phrase(section_heading, TERMINATION_SECTION_HINTS):
-                boost += 0.25
-            if "cham_dut_hop_dong_lao_dong" in topic_values:
-                boost += 0.15
-            if "nghia_vu_khi_cham_dut" in issue_values:
-                boost += 0.1
-
-        if is_termination_benefit_query:
-            if issue_values.intersection({"tro_cap_thoi_viec", "tro_cap_mat_viec"}):
-                boost += 0.35
-            if contains_normalized_phrase(normalized_text, TERMINATION_BENEFIT_CONTEXT_HINTS):
-                boost += 0.15
-            if "bao hiem that nghiep" in intent.normalized_query and "bao hiem that nghiep" in normalized_text:
-                boost += 0.25
-            if contains_normalized_phrase(heading_text, MATERNITY_CONTEXT_HINTS) and not query_has_maternity_hint:
-                boost -= 0.7
-            if contains_normalized_phrase(heading_text, RETIREMENT_CONTEXT_HINTS) and not query_has_retirement_hint:
-                boost -= 0.45
-            if "tro_cap_thoi_viec" in prioritized_issue_filters:
-                if "tro cap thoi viec" in heading_text:
-                    boost += 0.4
-                if "tro cap mat viec" in heading_text and "tro cap thoi viec" not in heading_text:
-                    boost -= 0.2
-                if "nghia vu" in heading_text or "trach nhiem" in heading_text:
-                    boost -= 0.15
-            if "tro_cap_mat_viec" in prioritized_issue_filters:
-                if "tro cap mat viec" in heading_text:
-                    boost += 0.4
-                if "tro cap thoi viec" in heading_text and "tro cap mat viec" not in heading_text:
-                    boost -= 0.2
-
-        if not wants_implementation_detail and not intent.point_refs and not intent.clause_refs:
-            if level == "clause":
-                boost += 0.12
-            elif level == "point":
-                boost -= 0.35
-
-        if prefers_primary_law:
-            if document_id == "45-2019-qh14":
-                boost += 0.22
-            elif document_id == "nghi-dinh-145-2020-nd-cp":
-                boost -= 0.08
-                if level == "point":
-                    boost -= 0.18
-
-        if is_calculation_query:
-            if contains_normalized_phrase(normalized_text, CALCULATION_CONTEXT_HINTS):
-                boost += 0.25
-            if (
-                contains_normalized_phrase(normalized_text, DELEGATION_CONTEXT_HINTS)
-                and not wants_implementation_detail
-            ):
-                boost -= 0.9
-
+        flags = self._boost_flags(intent)
+        boost = sum(
+            float(rule.get("boost", 0.0))
+            for rule in RULE_CONFIG.BOOST_RULES
+            if self._boost_condition_matches(
+                rule.get("when", {}),
+                intent=intent,
+                article_number=article_number,
+                clause_ref=clause_ref,
+                point_ref=point_ref,
+                document_id=document_id,
+                level=level,
+                actor_values=actor_values,
+                topic_values=topic_values,
+                issue_values=issue_values,
+                section_heading=section_heading,
+                heading_text=heading_text,
+                normalized_text=normalized_text,
+                prioritized_issue_filters=prioritized_issue_filters,
+                specific_actor_filters=specific_actor_filters,
+                flags=flags,
+            )
+        )
         return hit.score + boost
 
     def _rerank_hits(
@@ -1355,31 +1489,11 @@ class HybridRetriever:
             return True
         if intent.clause_refs or intent.point_refs:
             return True
-        if set(intent.query_types).intersection(
-            {
-                "procedure",
-                "remedy",
-                "definition",
-                "classification",
-                "enumeration",
-                "money_percentage",
-                "time_limit",
-            }
-        ):
+        query_context = RULE_CONFIG.QUERY_CONTEXT
+        if set(intent.query_types).intersection(query_context.get("article_sibling_query_types", ())):
             return True
         return bool(
-            set(intent.issue_filters).intersection(
-                {
-                    "can_cu_cham_dut",
-                    "boi_thuong",
-                    "tro_cap_thoi_viec",
-                    "tro_cap_mat_viec",
-                    "nghia_vu_khi_cham_dut",
-                    "quyen_don_phuong_cham_dut",
-                    "trai_phap_luat",
-                    "thoi_han_bao_truoc",
-                }
-            )
+            set(intent.issue_filters).intersection(query_context.get("article_sibling_issues", ()))
         )
 
     def _add_article_sibling_contexts(
@@ -1440,8 +1554,14 @@ class HybridRetriever:
                 or context_looks_like_enumeration_parent(context)
             )
             notice_clause_refs, notice_point_refs = infer_employee_notice_period_reference(intent)
-            if article_number == "35" and notice_clause_refs:
-                notice_limit = 4 if notice_point_refs else MAX_ENUMERATION_CONTEXT_RECORDS
+            notice_article = RULE_CONFIG.QUERY_CONTEXT.get(
+                "employee_notice_period_reference",
+                {},
+            ).get("article")
+            if article_number == notice_article and notice_clause_refs:
+                notice_limit = (
+                    4 if notice_point_refs else RULE_CONFIG.MAX_ENUMERATION_CONTEXT_RECORDS
+                )
                 siblings = self._fetch_records_by_reference(
                     document_ids=(document_id,),
                     article_numbers=(article_number,),
@@ -1472,14 +1592,14 @@ class HybridRetriever:
                         article_numbers=(article_number,),
                         clause_refs=(clause_ref,),
                         exclude_chunk_ids=tuple(added_sibling_ids),
-                        limit=MAX_ENUMERATION_CONTEXT_RECORDS,
+                        limit=RULE_CONFIG.MAX_ENUMERATION_CONTEXT_RECORDS,
                     )
                 else:
                     siblings = self._fetch_article_siblings(
                         document_id=document_id,
                         article_number=article_number,
                         exclude_chunk_ids=tuple(added_sibling_ids),
-                        limit=MAX_ENUMERATION_CONTEXT_RECORDS,
+                        limit=RULE_CONFIG.MAX_ENUMERATION_CONTEXT_RECORDS,
                     )
                 expanded_context = extend_context_with_records(
                     context,
@@ -1670,10 +1790,12 @@ class HybridRetriever:
             )
             for point in response.points
         )
+        hits = self._append_forced_reference_hits(hits, intent, limit=max(4, top_k))
         hits = self._append_reference_fallback_hits(hits, intent, limit=max(4, top_k))
         direct_records = self._fetch_records_from_hits(hits)
         hits = self._rerank_hits(hits, intent, direct_records)
-        hits = self._semantic_rerank_hits(query, hits, direct_records)[:top_k]
+        hits = self._semantic_rerank_hits(query, hits, direct_records)
+        hits = self._pin_forced_reference_hits(hits, intent)[:top_k]
         contexts = self._assemble_contexts(hits, intent=intent)
         return RetrievalResult(
             query=query,

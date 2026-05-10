@@ -15,6 +15,7 @@ dependencies = [
   "pydantic>=2.0.0",
   "pypdf>=6.9.2",
   "PyMuPDF>=1.27.2",
+  "PyYAML>=6.0",
   "pyvi>=0.1.1",
   "qdrant-client>=1.17.1",
   "sentence-transformers>=5.3.0",
@@ -23,3 +24,6 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+vn_labor_law_ai_assistant = ["rules/*.yaml"]

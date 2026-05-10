@@ -211,6 +211,29 @@ class QueryRouterTests(unittest.TestCase):
         self.assertIn("giu_giay_to_goc", intent.issue_filters)
         self.assertTrue(any("giay to tuy than" in value for value in intent.query_expansions))
 
+    def test_query_intent_from_metadata_preserves_direct_reference_over_llm_article(self) -> None:
+        metadata = QueryMetadata.model_validate(
+            {
+                "actor": None,
+                "actors": [],
+                "topics": [],
+                "issues": [],
+                "document_ids": [],
+                "query_types": [],
+                "article_numbers": ["6"],
+                "clause_refs": [],
+                "point_refs": [],
+            }
+        )
+
+        intent = query_intent_from_metadata("Nguoi su dung lao dong la ai?", metadata)
+
+        self.assertEqual(intent.article_numbers, ("6",))
+        self.assertIn("3", intent.force_reference_article_numbers)
+        self.assertEqual(intent.forced_references[0].document_id, "45-2019-qh14")
+        self.assertEqual(intent.forced_references[0].article, "3")
+        self.assertEqual(intent.forced_references[0].clause, "2")
+
     def test_hybrid_retriever_uses_llm_router_when_enabled(self) -> None:
         metadata = QueryMetadata.model_validate(
             {

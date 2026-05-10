@@ -6,6 +6,53 @@ from vn_labor_law_ai_assistant.heuristic_router import route_query
 
 
 class QueryRouterGeneralizationTests(unittest.TestCase):
+    def test_direct_reference_rules_match_paraphrased_legal_concepts(self) -> None:
+        cases = (
+            (
+                "Nguoi su dung lao dong duoc hieu nhu the nao?",
+                ("45-2019-qh14", "3", "2", ""),
+            ),
+            (
+                "The nao la hop dong lao dong theo quy dinh hien hanh?",
+                ("45-2019-qh14", "13", "1", ""),
+            ),
+            (
+                "Thoi gian thu viec khong duoc qua bao lau?",
+                ("45-2019-qh14", "25", "", ""),
+            ),
+            (
+                "Doanh nghiep can dap ung dieu kien nao khi yeu cau lam them gio?",
+                ("45-2019-qh14", "107", "", ""),
+            ),
+            (
+                "Luong thu viec chi bang 60 phan tram luong chinh thuc co hop phap khong?",
+                ("45-2019-qh14", "26", "", ""),
+            ),
+            (
+                "Hợp đồng lao động ghi lương thử việc chỉ bằng 60% lương chính thức có hợp pháp không?",
+                ("45-2019-qh14", "26", "", ""),
+            ),
+            (
+                "Hop dong lao dong phai co nhung noi dung chu yeu nao?",
+                ("45-2019-qh14", "21", "1", ""),
+            ),
+        )
+
+        for query, expected in cases:
+            with self.subTest(query=query):
+                intent = route_query(query)
+                actual = {
+                    (
+                        reference.document_id,
+                        reference.article,
+                        reference.clause,
+                        reference.point,
+                    )
+                    for reference in intent.forced_references
+                }
+
+                self.assertIn(expected, actual)
+
     def test_paraphrase_legal_concepts_route_to_expected_articles(self) -> None:
         cases = (
             (

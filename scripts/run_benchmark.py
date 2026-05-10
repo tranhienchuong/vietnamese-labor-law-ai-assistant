@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import datetime
 import os
 from pathlib import Path
@@ -167,6 +168,15 @@ def parse_args() -> argparse.Namespace:
         default="auto-benchmark",
         help="Evaluator label stored in output rows.",
     )
+    parser.add_argument(
+        "--resume-from",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a previous benchmark .jsonl or .csv. Completed case IDs are skipped, "
+            "and progress is appended by rewriting the same output stem."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -248,6 +258,23 @@ def slugify_model_version(text: str) -> str:
     return cleaned.strip("-") or "run"
 
 
+def load_existing_result_rows(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        raise FileNotFoundError(f"Resume file does not exist: {path}")
+    if path.suffix.lower() == ".jsonl":
+        rows: list[dict[str, object]] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                rows.append(json.loads(line))
+        return rows
+    if path.suffix.lower() == ".csv":
+        import csv
+
+        with path.open(encoding="utf-8", newline="") as handle:
+            return [dict(row) for row in csv.DictReader(handle)]
+    raise ValueError("--resume-from must point to a .jsonl or .csv file.")
+
+
 def resolve_judge_configuration(args: argparse.Namespace) -> tuple[str, str, bool]:
     if args.no_judge or not str(args.model or "").strip():
         return "", "", False
@@ -303,13 +330,25 @@ def main() -> None:
         reranker_model=args.reranker_model,
         reranker_top_n=args.reranker_top_n,
     )
-    rows: list[dict[str, object]] = []
     model_version = provider_model_label(args.provider, args.model) if args.model else "retrieval-only"
-    output_stem = f"benchmark_{slugify_model_version(model_version)}_{timestamp}"
-    output_jsonl = args.output_dir / f"{output_stem}.jsonl"
-    output_csv = args.output_dir / f"{output_stem}.csv"
+    if args.resume_from:
+        resume_path = args.resume_from
+        output_stem = resume_path.stem
+        output_jsonl = resume_path.with_suffix(".jsonl")
+        output_csv = resume_path.with_suffix(".csv")
+        rows = load_existing_result_rows(resume_path)
+        completed_ids = {str(row.get("id") or "") for row in rows if row.get("id")}
+        cases = [case for case in cases if case.id not in completed_ids]
+        print(f"Resuming from {resume_path}: {len(completed_ids)} completed, {len(cases)} remaining")
+    else:
+        rows: list[dict[str, object]] = []
+        output_stem = f"benchmark_{slugify_model_version(model_version)}_{timestamp}"
+        output_jsonl = args.output_dir / f"{output_stem}.jsonl"
+        output_csv = args.output_dir / f"{output_stem}.csv"
+    del output_stem
     reciprocal_ranks: list[float | None] = []
     retrieval_hit_column = f"retrieval_hit_at_{args.top_k}"
+    fieldnames = result_columns(retrieval_hit_column)
     allowed_document_families = document_families_from_chunk_paths(
         retriever.manifest.get("chunk_paths", [])
     )
@@ -321,6 +360,13 @@ def main() -> None:
         judge_model=judge_model,
     )
 
+    def save_progress() -> None:
+        if not rows:
+            return
+        write_results_jsonl(rows, output_jsonl)
+        write_results_csv(rows, output_csv, fieldnames=fieldnames)
+
+    completed = False
     try:
         if retriever.reranker_enabled:
             print(f"Semantic reranker: {retriever.reranker_model_name} (top {args.reranker_top_n})")
@@ -332,6 +378,7 @@ def main() -> None:
                 print(f"Judge model: {provider_model_label(judge_provider, judge_model)}")
             else:
                 print("Judge model: disabled")
+        remaining_count = len(cases)
         for index, case in enumerate(cases, start=1):
             retrieval_result = retriever.retrieve(
                 case.question,
@@ -552,20 +599,20 @@ def main() -> None:
                 row["comments"] = " | ".join(comment for comment in comments if comment)
 
             rows.append(row)
+            save_progress()
             print(
-                f"[{index}/{len(cases)}] {case.id}: "
+                f"[{index}/{remaining_count}] {case.id}: "
                 f"{retrieval_hit_column}={row[retrieval_hit_column]}"
             )
+        completed = True
 
     finally:
         retriever.close()
+        save_progress()
+        if rows and not completed:
+            print(f"Saved partial benchmark JSONL: {output_jsonl.resolve()}")
+            print(f"Saved partial benchmark CSV: {output_csv.resolve()}")
 
-    write_results_jsonl(rows, output_jsonl)
-    write_results_csv(
-        rows,
-        output_csv,
-        fieldnames=result_columns(retrieval_hit_column),
-    )
     scored_hit_cases = [
         row for row in rows if row[retrieval_hit_column] in {"Yes", "No"}
     ]
