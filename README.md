@@ -146,6 +146,13 @@ Create a `.env` file in the repository root:
 GROQ_API_KEY=your_groq_api_key
 GROQ_MODEL=qwen/qwen3-32b
 
+# Optional: Azure OpenAI Responses API for LLM-as-a-judge
+AZURE_OPENAI_RESPONSES_ENDPOINT=https://your-resource.cognitiveservices.azure.com/openai/responses?api-version=2025-04-01-preview
+AZURE_OPENAI_API_KEY=your_azure_openai_api_key
+AZURE_OPENAI_MODEL=GPT-5.4-MINI
+BENCHMARK_JUDGE_PROVIDER=azure_openai
+BENCHMARK_JUDGE_MODEL=GPT-5.4-MINI
+
 QDRANT_URL=
 QDRANT_API_KEY=
 QDRANT_COLLECTION=vietnamese_labor_law_chunks
@@ -255,6 +262,12 @@ Run retrieval and answer-quality benchmark:
 
 ```powershell
 .venv\Scripts\python.exe scripts\run_benchmark.py --provider groq --model qwen/qwen3-32b --limit 10
+```
+
+Use Azure OpenAI Responses API as the LLM-as-a-judge:
+
+```powershell
+.venv\Scripts\python.exe scripts\run_benchmark.py --provider groq --model qwen/qwen3-32b --judge-provider azure_openai --judge-model GPT-5.4-MINI --limit 10
 ```
 
 Run unit tests:

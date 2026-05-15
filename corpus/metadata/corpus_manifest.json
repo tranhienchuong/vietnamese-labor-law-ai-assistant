@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-16T19:25:06.362167+00:00",
+  "generated_at": "2026-05-15T15:47:38.535331+00:00",
   "document_count": 2,
   "ready_documents": 2,
   "needs_ocr_documents": 0,
@@ -17,10 +17,10 @@
       "cleaned_text_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/cleaned/45_2019_QH14.txt",
       "chunks_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/chunks/45-2019-qh14.jsonl",
       "section_count": 221,
-      "chunk_count": 985,
+      "chunk_count": 700,
       "warnings": [],
       "pages_with_text": [],
-      "generated_at": "2026-04-16T19:25:06.339164+00:00"
+      "generated_at": "2026-05-15T15:47:38.523261+00:00"
     },
     {
       "document_id": "nghi-dinh-145-2020-nd-cp",
@@ -35,10 +35,10 @@
       "cleaned_text_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/cleaned/nghi-dinh-145-2020-nd-cp.txt",
       "chunks_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/chunks/nghi-dinh-145-2020-nd-cp.jsonl",
       "section_count": 3,
-      "chunk_count": 28,
+      "chunk_count": 16,
       "warnings": [],
       "pages_with_text": [],
-      "generated_at": "2026-04-16T19:25:06.361168+00:00"
+      "generated_at": "2026-05-15T15:47:38.535331+00:00"
     }
   ],
   "warnings": []

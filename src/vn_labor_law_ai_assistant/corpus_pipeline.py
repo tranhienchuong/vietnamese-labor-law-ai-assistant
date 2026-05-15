@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
+from typing import Sequence
 import unicodedata
 
 import fitz
@@ -26,6 +27,7 @@ CLAUSE_START_RE = re.compile(r"^(?P<label>\d+)\.\s")
 SUBPOINT_START_RE = re.compile(r"^(?P<label>[a-zđ]\.\d+)\)\s", re.IGNORECASE)
 POINT_START_RE = re.compile(r"^(?P<label>[a-zđ])\)\s", re.IGNORECASE)
 LEGAL_MARKER_BOUNDARY_RE = re.compile(r"(?m)^(?:[a-zđ]\.\d+\)\s|[a-zđ]\)\s|\d+\.\s)", re.IGNORECASE)
+SEQUENTIAL_CHUNK_ARTICLES = {"219"}
 
 TOPIC_RULES = {
     "cham_dut_hop_dong_lao_dong": ["cham dut hop dong lao dong"],
@@ -157,6 +159,19 @@ class SectionRecord:
     section_heading: str | None
     source_pages: list[int]
     text: str
+
+
+@dataclass
+class LegalPointGroup:
+    point_ref: str
+    parts: list[str]
+
+
+@dataclass
+class LegalClauseGroup:
+    clause_ref: str | None
+    intro_parts: list[str]
+    points: list[LegalPointGroup]
 
 
 @dataclass(frozen=True)
@@ -363,6 +378,26 @@ def list_pages_for_citation(source_pages: list[int]) -> str | None:
     return f"tr. {source_pages[0]}-{source_pages[-1]}"
 
 
+def normalize_point_refs(point_ref: str | None = None, point_refs: Sequence[object] | None = None) -> list[str]:
+    refs: list[str] = []
+    for value in [point_ref, *(point_refs or [])]:
+        if value is None:
+            continue
+        ref = str(value).strip()
+        if ref and ref not in refs:
+            refs.append(ref)
+    return refs
+
+
+def format_point_refs_for_citation(point_refs: Sequence[str]) -> str | None:
+    refs = normalize_point_refs(point_refs=point_refs)
+    if not refs:
+        return None
+    if len(refs) == 1:
+        return f"điểm {refs[0]}"
+    return "các điểm " + ", ".join(refs)
+
+
 def build_citation_text(
     document_title: str,
     article_number: str | None,
@@ -370,6 +405,7 @@ def build_citation_text(
     clause_ref: str | None,
     point_ref: str | None,
     source_pages: list[int],
+    point_refs: Sequence[str] | None = None,
 ) -> str:
     parts = [document_title]
     reference_parts: list[str] = []
@@ -380,8 +416,8 @@ def build_citation_text(
         reference_parts.append(article_label)
     if clause_ref:
         reference_parts.append(f"khoản {clause_ref}")
-    if point_ref:
-        reference_parts.append(f"điểm {point_ref}")
+    if point_label := format_point_refs_for_citation(normalize_point_refs(point_ref, point_refs)):
+        reference_parts.append(point_label)
     if reference_parts:
         parts.append(", ".join(reference_parts))
     page_label = list_pages_for_citation(source_pages)
@@ -566,10 +602,12 @@ def enrich_chunk(
     chapter_heading = chunk["chapter_heading"]
     clause_ref = str(chunk["clause_ref"]) if chunk.get("clause_ref") else None
     point_ref = str(chunk["point_ref"]) if chunk.get("point_ref") else None
+    point_refs = normalize_point_refs(point_ref, chunk.get("point_refs") if isinstance(chunk.get("point_refs"), list) else None)
 
     source_pages = list(chunk["source_pages"]) if source_kind == "raw_pdf" else []
     body_text = extract_chunk_body(text, heading)
-    level = infer_chunk_level(clause_ref=clause_ref, point_ref=point_ref)
+    level = str(chunk.get("level") or infer_chunk_level(clause_ref=clause_ref, point_ref=point_ref))
+    chunk_type = str(chunk.get("chunk_type") or level)
     topic, actor, issue_type = infer_chunk_taxonomy(
         document_title=document_title,
         section_heading=str(section_heading) if section_heading else None,
@@ -583,6 +621,7 @@ def enrich_chunk(
         clause_ref=clause_ref,
         point_ref=point_ref,
         source_pages=source_pages,
+        point_refs=point_refs,
     )
     retrieval_text = build_retrieval_text(
         document_title=document_title,
@@ -601,9 +640,12 @@ def enrich_chunk(
     enriched = {
         **chunk,
         "level": level,
+        "chunk_type": chunk_type,
+        "point_refs": point_refs,
         "parent_chunk_id": parent_chunk_id,
         "citation_text": citation_text,
         "retrieval_text": retrieval_text,
+        "page_content": retrieval_text,
         "topic": topic,
         "actor": actor,
         "issue_type": issue_type,
@@ -864,6 +906,223 @@ def split_sections(page_records: list[PageRecord], document_id: str, document_ti
     ]
 
 
+def compose_section_chunk_text(heading: str, parts: Sequence[str]) -> str:
+    clean_parts = [part.strip() for part in parts if part and part.strip()]
+    if not clean_parts:
+        return heading
+    return "\n\n".join([heading, *clean_parts]).strip()
+
+
+def flatten_point_parts(points: Sequence[LegalPointGroup]) -> list[str]:
+    parts: list[str] = []
+    for point in points:
+        parts.extend(point.parts)
+    return parts
+
+
+def parse_clause_groups(body_paragraphs: Sequence[str]) -> tuple[list[str], list[LegalClauseGroup]]:
+    article_intro_parts: list[str] = []
+    clauses: list[LegalClauseGroup] = []
+    current_clause: LegalClauseGroup | None = None
+    current_point: LegalPointGroup | None = None
+
+    for paragraph in body_paragraphs:
+        for segment in split_legal_marker_segments(paragraph):
+            marker_kind, marker_label = match_legal_marker(segment)
+
+            if marker_kind == "clause":
+                current_clause = LegalClauseGroup(
+                    clause_ref=marker_label,
+                    intro_parts=[segment],
+                    points=[],
+                )
+                clauses.append(current_clause)
+                current_point = None
+                continue
+
+            if marker_kind == "point":
+                if current_clause is None:
+                    current_clause = LegalClauseGroup(
+                        clause_ref=None,
+                        intro_parts=[],
+                        points=[],
+                    )
+                    clauses.append(current_clause)
+                current_point = LegalPointGroup(point_ref=str(marker_label), parts=[segment])
+                current_clause.points.append(current_point)
+                continue
+
+            if current_clause is None:
+                article_intro_parts.append(segment)
+            elif current_point is not None:
+                current_point.parts.append(segment)
+            else:
+                current_clause.intro_parts.append(segment)
+
+    return article_intro_parts, clauses
+
+
+def split_parts_for_chunking(
+    *,
+    heading: str,
+    prefix_parts: Sequence[str],
+    body_text: str,
+    max_chars: int,
+) -> list[list[str]]:
+    prefix_text = compose_section_chunk_text(heading, prefix_parts)
+    body_limit = max(max_chars - len(prefix_text) - 2, 100)
+    if not body_text.strip():
+        return [list(prefix_parts)]
+    return [[*prefix_parts, piece] for piece in split_text_for_chunking(body_text, body_limit)]
+
+
+def make_section_chunk(
+    *,
+    section: SectionRecord,
+    index: int,
+    text: str,
+    clause_ref: str | None,
+    point_refs: Sequence[str] = (),
+    chunk_type: str,
+) -> dict[str, object]:
+    point_ref_values = normalize_point_refs(point_refs=point_refs)
+    return {
+        "chunk_id": f"{section.section_id}-chunk-{index:02d}",
+        "section_id": section.section_id,
+        "article_number": section.article_number,
+        "article_title": section.article_title,
+        "heading": section.heading,
+        "chapter_heading": section.chapter_heading,
+        "section_heading": section.section_heading,
+        "source_pages": section.source_pages,
+        "chunk_index": index,
+        "char_count": len(text),
+        "text": text,
+        "clause_ref": clause_ref,
+        "point_ref": None,
+        "point_refs": point_ref_values,
+        "chunk_type": chunk_type,
+    }
+
+
+def build_article_only_chunk_records(
+    *,
+    heading: str,
+    body_parts: Sequence[str],
+    max_chars: int,
+    chunk_type: str,
+) -> list[dict[str, object]]:
+    body_text = "\n\n".join(part.strip() for part in body_parts if part and part.strip()).strip()
+    if not body_text:
+        return [{"text": heading, "clause_ref": None, "point_refs": [], "chunk_type": chunk_type}]
+
+    composed = compose_section_chunk_text(heading, [body_text])
+    if len(composed) <= max_chars:
+        return [{"text": composed, "clause_ref": None, "point_refs": [], "chunk_type": chunk_type}]
+
+    body_limit = max(max_chars - len(heading) - 2, 100)
+    return [
+        {
+            "text": compose_section_chunk_text(heading, [piece]),
+            "clause_ref": None,
+            "point_refs": [],
+            "chunk_type": chunk_type,
+        }
+        for piece in split_text_for_chunking(body_text, body_limit)
+    ]
+
+
+def build_clause_chunk_records(
+    *,
+    heading: str,
+    article_intro_parts: Sequence[str],
+    clause: LegalClauseGroup,
+    max_chars: int,
+) -> list[dict[str, object]]:
+    prefix_parts = [*article_intro_parts, *clause.intro_parts]
+
+    if not clause.points:
+        clause_text = "\n\n".join(part.strip() for part in clause.intro_parts if part and part.strip())
+        prefix = list(article_intro_parts)
+        part_groups = split_parts_for_chunking(
+            heading=heading,
+            prefix_parts=prefix,
+            body_text=clause_text,
+            max_chars=max_chars,
+        )
+        return [
+            {
+                "text": compose_section_chunk_text(heading, parts),
+                "clause_ref": clause.clause_ref,
+                "point_refs": [],
+                "chunk_type": "clause" if len(part_groups) == 1 else "clause_part",
+            }
+            for parts in part_groups
+        ]
+
+    all_point_refs = [point.point_ref for point in clause.points]
+    all_parts = [*prefix_parts, *flatten_point_parts(clause.points)]
+    if len(compose_section_chunk_text(heading, all_parts)) <= max_chars:
+        return [
+            {
+                "text": compose_section_chunk_text(heading, all_parts),
+                "clause_ref": clause.clause_ref,
+                "point_refs": all_point_refs,
+                "chunk_type": "clause",
+            }
+        ]
+
+    chunk_records: list[dict[str, object]] = []
+    pending_points: list[LegalPointGroup] = []
+
+    def append_pending() -> None:
+        nonlocal pending_points
+        if not pending_points:
+            return
+        point_refs = [point.point_ref for point in pending_points]
+        parts = [*prefix_parts, *flatten_point_parts(pending_points)]
+        chunk_records.append(
+            {
+                "text": compose_section_chunk_text(heading, parts),
+                "clause_ref": clause.clause_ref,
+                "point_refs": point_refs,
+                "chunk_type": "clause_part",
+            }
+        )
+        pending_points = []
+
+    for point in clause.points:
+        candidate_points = [*pending_points, point]
+        candidate_parts = [*prefix_parts, *flatten_point_parts(candidate_points)]
+        if pending_points and len(compose_section_chunk_text(heading, candidate_parts)) > max_chars:
+            append_pending()
+
+        single_point_parts = [*prefix_parts, *point.parts]
+        if len(compose_section_chunk_text(heading, single_point_parts)) > max_chars:
+            append_pending()
+            point_text = "\n\n".join(part.strip() for part in point.parts if part and part.strip())
+            for parts in split_parts_for_chunking(
+                heading=heading,
+                prefix_parts=prefix_parts,
+                body_text=point_text,
+                max_chars=max_chars,
+            ):
+                chunk_records.append(
+                    {
+                        "text": compose_section_chunk_text(heading, parts),
+                        "clause_ref": clause.clause_ref,
+                        "point_refs": [point.point_ref],
+                        "chunk_type": "clause_part",
+                    }
+                )
+            continue
+
+        pending_points.append(point)
+
+    append_pending()
+    return chunk_records
+
+
 def chunk_sections(sections: list[SectionRecord], max_chars: int = 1200) -> list[dict[str, object]]:
     chunks: list[dict[str, object]] = []
 
@@ -880,85 +1139,59 @@ def chunk_sections(sections: list[SectionRecord], max_chars: int = 1200) -> list
         if raw_paragraphs and raw_paragraphs[0] == heading:
             body_paragraphs = raw_paragraphs[1:]
 
-        body_limit = max(max_chars - len(heading) - 2, 100)
-        legal_units = build_legal_units(body_paragraphs, body_limit) if body_paragraphs else []
-
-        def compose_chunk(parts: list[str]) -> str:
-            if not parts:
-                return heading
-            return "\n\n".join([heading, *parts]).strip()
-
-        pending_parts: list[str] = []
-        pending_clause_ref: str | None = None
-        pending_point_ref: str | None = None
-
+        article_intro_parts, clauses = parse_clause_groups(body_paragraphs)
         chunk_records: list[dict[str, object]] = []
 
-        if not legal_units:
-            chunk_records.append({"clause_ref": None, "point_ref": None, "text": heading})
-
-        def flush_pending() -> None:
-            nonlocal pending_parts, pending_clause_ref, pending_point_ref
-            if not pending_parts and pending_clause_ref is None and pending_point_ref is None:
-                return
-
-            text = compose_chunk(pending_parts)
-            chunk_records.append(
-                {
-                    "clause_ref": pending_clause_ref,
-                    "point_ref": pending_point_ref,
-                    "text": text,
-                }
+        if section.article_number in SEQUENTIAL_CHUNK_ARTICLES:
+            chunk_records.extend(
+                build_article_only_chunk_records(
+                    heading=heading,
+                    body_parts=body_paragraphs,
+                    max_chars=max_chars,
+                    chunk_type="article_sequential",
+                )
             )
-            pending_parts = []
-            pending_clause_ref = None
-            pending_point_ref = None
+        elif not clauses:
+            chunk_records.extend(
+                build_article_only_chunk_records(
+                    heading=heading,
+                    body_parts=body_paragraphs,
+                    max_chars=max_chars,
+                    chunk_type="article_full",
+                )
+            )
+        else:
+            if article_intro_parts:
+                chunk_records.extend(
+                    build_article_only_chunk_records(
+                        heading=heading,
+                        body_parts=article_intro_parts,
+                        max_chars=max_chars,
+                        chunk_type="article_intro",
+                    )
+                )
 
-        for unit in legal_units:
-            unit_text = str(unit["text"]).strip()
-            unit_clause_ref = str(unit["clause_ref"]) if unit.get("clause_ref") else None
-            unit_point_ref = str(unit["point_ref"]) if unit.get("point_ref") else None
-
-            if not pending_parts:
-                pending_parts = [unit_text] if unit_text else []
-                pending_clause_ref = unit_clause_ref
-                pending_point_ref = unit_point_ref
-                continue
-
-            same_signature = pending_clause_ref == unit_clause_ref and pending_point_ref == unit_point_ref
-            candidate_parts = [*pending_parts, unit_text] if unit_text else [*pending_parts]
-            candidate_text = compose_chunk(candidate_parts)
-
-            if not same_signature or len(candidate_text) > max_chars:
-                flush_pending()
-                pending_parts = [unit_text] if unit_text else []
-                pending_clause_ref = unit_clause_ref
-                pending_point_ref = unit_point_ref
-                continue
-
-            if unit_text:
-                pending_parts.append(unit_text)
-
-        flush_pending()
+            for clause in clauses:
+                chunk_records.extend(
+                    build_clause_chunk_records(
+                        heading=heading,
+                        article_intro_parts=article_intro_parts,
+                        clause=clause,
+                        max_chars=max_chars,
+                    )
+                )
 
         section_chunks: list[dict[str, object]] = []
         for index, record in enumerate(chunk_records, start=1):
             section_chunks.append(
-                {
-                    "chunk_id": f"{section.section_id}-chunk-{index:02d}",
-                    "section_id": section.section_id,
-                    "article_number": section.article_number,
-                    "article_title": section.article_title,
-                    "heading": section.heading,
-                    "chapter_heading": section.chapter_heading,
-                    "section_heading": section.section_heading,
-                    "source_pages": section.source_pages,
-                    "chunk_index": index,
-                    "char_count": len(str(record["text"])),
-                    "text": record["text"],
-                    "clause_ref": record["clause_ref"],
-                    "point_ref": record["point_ref"],
-                }
+                make_section_chunk(
+                    section=section,
+                    index=index,
+                    text=str(record["text"]),
+                    clause_ref=str(record["clause_ref"]) if record.get("clause_ref") else None,
+                    point_refs=record.get("point_refs") if isinstance(record.get("point_refs"), list) else [],
+                    chunk_type=str(record["chunk_type"]),
+                )
             )
 
         chunks.extend(assign_parent_chunk_ids(section_chunks))

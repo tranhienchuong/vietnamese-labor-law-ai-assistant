@@ -194,7 +194,8 @@ def record_reference_sort_key(
     level_order = {"article": 0, "clause": 1, "point": 2}
     level = str(record.payload.get("level") or "")
     clause_ref = str(record.payload.get("clause_ref") or "")
-    point_ref = str(record.payload.get("point_ref") or "")
+    point_refs = tuple(str(value) for value in record.payload.get("point_refs") or [])
+    point_ref = str(record.payload.get("point_ref") or (point_refs[0] if point_refs else ""))
     try:
         clause_order = int(clause_ref)
     except ValueError:
@@ -767,7 +768,7 @@ class HybridRetriever:
         add_match_any("document_id", document_ids)
         add_match_any("article_number", article_numbers)
         add_match_any("clause_ref", clause_refs)
-        add_match_any("point_ref", point_refs)
+        add_match_any("point_refs", point_refs)
 
         excluded_ids = dedupe_preserve_order(tuple(value for value in exclude_chunk_ids if value))
         if excluded_ids:
@@ -852,7 +853,15 @@ class HybridRetriever:
         add_in_filter("document_id", document_ids)
         add_in_filter("article_number", article_numbers)
         add_in_filter("clause_ref", clause_refs)
-        add_in_filter("point_ref", point_refs)
+        ordered_point_refs = dedupe_preserve_order(tuple(value for value in point_refs if value))
+        if ordered_point_refs:
+            placeholders = ", ".join("?" for _ in ordered_point_refs)
+            point_conditions = [f"point_ref IN ({placeholders})"]
+            params.extend(ordered_point_refs)
+            for point_ref in ordered_point_refs:
+                point_conditions.append("point_refs LIKE ?")
+                params.append(f"%|{point_ref}|%")
+            where_parts.append("(" + " OR ".join(point_conditions) + ")")
 
         excluded_ids = dedupe_preserve_order(tuple(value for value in exclude_chunk_ids if value))
         if excluded_ids:
@@ -879,6 +888,7 @@ class HybridRetriever:
                 CAST(NULLIF(clause_ref, '') AS INTEGER),
                 clause_ref,
                 point_ref,
+                point_refs,
                 chunk_id
             LIMIT ?
             """,
@@ -932,8 +942,11 @@ class HybridRetriever:
             return False
         if reference.clause and str(payload.get("clause_ref") or "") != reference.clause:
             return False
-        if reference.point and str(payload.get("point_ref") or "") != reference.point:
-            return False
+        if reference.point:
+            payload_point_refs = {str(value) for value in payload.get("point_refs") or []}
+            payload_point_ref = str(payload.get("point_ref") or "")
+            if payload_point_ref != reference.point and reference.point not in payload_point_refs:
+                return False
         return bool(reference.article)
 
     def _hit_matches_forced_reference(self, hit: SearchHit, intent: QueryIntent) -> bool:
@@ -1221,6 +1234,7 @@ class HybridRetriever:
         article_number: str,
         clause_ref: str,
         point_ref: str,
+        point_refs: set[str],
         document_id: str,
         level: str,
         actor_values: set[str],
@@ -1236,12 +1250,13 @@ class HybridRetriever:
         for key, current in (
             ("article", article_number),
             ("clause", clause_ref),
-            ("point", point_ref),
             ("document_id", document_id),
             ("level", level),
         ):
             if key in condition and current != str(condition[key]):
                 return False
+        if "point" in condition and str(condition["point"]) not in ({point_ref} | point_refs):
+            return False
         if condition.get("article_in_intent_articles") and article_number not in intent.all_article_numbers:
             return False
         if condition.get("clause_in_intent_clauses") and clause_ref not in intent.clause_refs:
@@ -1306,6 +1321,7 @@ class HybridRetriever:
         article_number = str(record.payload.get("article_number") or "").lower()
         clause_ref = str(record.payload.get("clause_ref") or "").lower()
         point_ref = str(record.payload.get("point_ref") or "").lower()
+        point_refs = {str(value).lower() for value in record.payload.get("point_refs") or []}
         document_id = str(record.payload.get("document_id") or "")
         level = str(record.payload.get("level") or "")
         actor_values = {str(value) for value in (record.payload.get("actor") or [])}
@@ -1335,6 +1351,7 @@ class HybridRetriever:
                 article_number=article_number,
                 clause_ref=clause_ref,
                 point_ref=point_ref,
+                point_refs=point_refs,
                 document_id=document_id,
                 level=level,
                 actor_values=actor_values,

@@ -43,6 +43,7 @@ from vn_labor_law_ai_assistant.llm import (
     default_benchmark_judge_model,
     default_benchmark_judge_provider,
     default_model_for_provider,
+    is_azure_openai_content_filter_error,
     normalize_provider,
     provider_model_label,
     resolve_model_name,
@@ -487,50 +488,61 @@ def main() -> None:
                     abstention_correct = "no" if parsed.insufficient_context else "n/a"
 
                 if judge_enabled:
-                    judge_response = chat_completion(
-                        provider=judge_provider,
-                        model=judge_model,
-                        messages=build_judge_messages(
-                            case,
-                            generated_answer=generated_answer,
-                            generated_legal_basis=generated_legal_basis,
-                            insufficient_context=insufficient_context,
-                            expected_citations_scoped=expected_scoped,
-                            retrieved_citations=top_hit_citations,
-                            case_scope=case_scope,
-                        ),
-                        temperature=0,
-                        json_schema=JUDGE_JSON_SCHEMA,
-                        json_schema_name="benchmark_judge",
-                    )
-                    judged = parse_judge_payload(judge_response.content)
-                    if judged is not None:
-                        answer_correct = judged.answer_correct
-                        legal_issue_classification_correct = (
-                            judged.legal_issue_classification_correct
+                    try:
+                        judge_response = chat_completion(
+                            provider=judge_provider,
+                            model=judge_model,
+                            messages=build_judge_messages(
+                                case,
+                                generated_answer=generated_answer,
+                                generated_legal_basis=generated_legal_basis,
+                                insufficient_context=insufficient_context,
+                                expected_citations_scoped=expected_scoped,
+                                retrieved_citations=top_hit_citations,
+                                case_scope=case_scope,
+                                azure_safe=judge_provider == "azure_openai",
+                            ),
+                            temperature=0,
+                            json_schema=JUDGE_JSON_SCHEMA,
+                            json_schema_name="benchmark_judge",
                         )
-                        legal_reasoning_score = judged.legal_reasoning_score_1_5
-                        missing_information_score = judged.missing_information_score_0_2
-                        citation_supports_answer = judged.citation_supports_answer
-                        groundedness_score = judged.groundedness_score_1_5
-                        clarity_score = judged.clarity_score_1_5
-                        format_score = judged.format_score_1_5
-                        hallucination_types = " | ".join(judged.hallucination_types) or "none"
-                        final_score = compute_final_score_10(
-                            case=case,
-                            answer_correct=answer_correct,
-                            legal_issue_classification_correct=legal_issue_classification_correct,
-                            legal_reasoning_score_1_5=legal_reasoning_score,
-                            missing_information_score_0_2=missing_information_score,
-                            citation_article_correct=citation_provision_correct,
-                            citation_supports_answer=citation_supports_answer,
-                            groundedness_score_1_5=groundedness_score,
-                            clarity_score_1_5=clarity_score,
-                            format_score_1_5=format_score,
-                        )
-                        judge_comment = judged.comments
+                    except Exception as exc:
+                        if not is_azure_openai_content_filter_error(exc):
+                            raise
+                        judge_comment = "Judge blocked by Azure content filter; scores left blank."
                     else:
-                        judge_comment = "Judge model did not return valid JSON."
+                        judged = parse_judge_payload(judge_response.content)
+                        if judged is not None:
+                            answer_correct = judged.answer_correct
+                            legal_issue_classification_correct = (
+                                judged.legal_issue_classification_correct
+                            )
+                            legal_reasoning_score = judged.legal_reasoning_score_1_5
+                            missing_information_score = judged.missing_information_score_0_2
+                            citation_supports_answer = judged.citation_supports_answer
+                            groundedness_score = judged.groundedness_score_1_5
+                            clarity_score = judged.clarity_score_1_5
+                            format_score = judged.format_score_1_5
+                            hallucination_types = (
+                                " | ".join(judged.hallucination_types) or "none"
+                            )
+                            final_score = compute_final_score_10(
+                                case=case,
+                                answer_correct=answer_correct,
+                                legal_issue_classification_correct=(
+                                    legal_issue_classification_correct
+                                ),
+                                legal_reasoning_score_1_5=legal_reasoning_score,
+                                missing_information_score_0_2=missing_information_score,
+                                citation_article_correct=citation_provision_correct,
+                                citation_supports_answer=citation_supports_answer,
+                                groundedness_score_1_5=groundedness_score,
+                                clarity_score_1_5=clarity_score,
+                                format_score_1_5=format_score,
+                            )
+                            judge_comment = judged.comments
+                        else:
+                            judge_comment = "Judge model did not return valid JSON."
 
                 if citation_correct == "na":
                     hallucination_flag = "na"
