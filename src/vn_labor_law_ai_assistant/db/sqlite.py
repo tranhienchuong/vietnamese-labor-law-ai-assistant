@@ -61,6 +61,39 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE INDEX IF NOT EXISTS idx_sessions_token_hash
     ON sessions(token_hash);
+
+CREATE TABLE IF NOT EXISTS chat_traces (
+    id TEXT PRIMARY KEY,
+    request_id TEXT,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT,
+    message_id TEXT,
+    question TEXT NOT NULL,
+    provider TEXT,
+    model TEXT,
+    retrieve_only INTEGER NOT NULL DEFAULT 0,
+    insufficient_context INTEGER NOT NULL DEFAULT 0,
+    latency_ms INTEGER,
+    retrieval_latency_ms INTEGER,
+    generation_latency_ms INTEGER,
+    intent_json TEXT,
+    retrieved_hits_json TEXT,
+    selected_contexts_json TEXT,
+    citations_json TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_traces_created_at
+    ON chat_traces(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_chat_traces_user_created
+    ON chat_traces(user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_chat_traces_conversation
+    ON chat_traces(conversation_id);
+
 """
 
 
@@ -86,3 +119,31 @@ class SQLiteDatabase:
     def initialize(self) -> None:
         with self.connect() as connection:
             connection.executescript(SCHEMA_SQL)
+            ensure_columns(
+                connection,
+                "chat_traces",
+                {
+                    "request_id": "TEXT",
+                },
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_chat_traces_request_id
+                    ON chat_traces(request_id)
+                """
+            )
+
+
+def ensure_columns(
+    connection: sqlite3.Connection,
+    table_name: str,
+    columns: dict[str, str],
+) -> None:
+    existing = {
+        str(row["name"])
+        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    for column_name, column_type in columns.items():
+        if column_name in existing:
+            continue
+        connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")

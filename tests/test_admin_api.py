@@ -14,6 +14,7 @@ from vn_labor_law_ai_assistant.admin.service import AdminService
 from vn_labor_law_ai_assistant.api import app
 from vn_labor_law_ai_assistant.auth_store import AuthStore
 from vn_labor_law_ai_assistant.core.config import Settings, get_settings
+from vn_labor_law_ai_assistant.observability import ChatTraceService
 
 
 class AdminApiTest(TestCase):
@@ -67,6 +68,13 @@ class AdminApiTest(TestCase):
             role="assistant",
             content="Answer",
         )
+        ChatTraceService(self.store.database).record_chat_trace(
+            user_id=user.id,
+            question="Question",
+            conversation_id=conversation["id"],
+            insufficient_context=True,
+            error="trace error",
+        )
 
         response = self.client.get(
             "/admin/stats",
@@ -82,8 +90,71 @@ class AdminApiTest(TestCase):
         self.assertEqual(payload["stats"]["totalConversations"], 1)
         self.assertEqual(payload["stats"]["totalMessages"], 2)
         self.assertEqual(payload["stats"]["activeSessions"], 1)
+        self.assertEqual(payload["stats"]["totalTraces"], 1)
+        self.assertEqual(payload["stats"]["tracesWithErrors"], 1)
+        self.assertEqual(payload["stats"]["insufficientContextTraces"], 1)
         self.assertIn("runtime", payload)
         self.assertNotIn("conversations", payload)
+
+    def test_admin_traces_requires_admin(self) -> None:
+        token = self._token_for("user@example.com", "user12345")
+
+        response = self.client.get(
+            "/admin/traces",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_traces_list_returns_recent_traces(self) -> None:
+        admin_token = self._token_for("admin@example.com", "admin12345")
+        user = self.store.get_user_by_email("user@example.com")
+        self.assertIsNotNone(user)
+        assert user is not None
+        ChatTraceService(self.store.database).record_chat_trace(
+            user_id=user.id,
+            question="Recent trace",
+            request_id="request-recent",
+            selected_contexts=[{"chunkId": "chunk-1"}],
+            citations={"legal_basis": ["citation"], "evidence_quotes": []},
+        )
+
+        response = self.client.get(
+            "/admin/traces?limit=10",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["traces"]), 1)
+        self.assertEqual(payload["traces"][0]["requestId"], "request-recent")
+        self.assertEqual(payload["traces"][0]["selectedContextCount"], 1)
+        self.assertEqual(payload["traces"][0]["citationCount"], 1)
+
+    def test_admin_trace_detail_does_not_expose_secrets(self) -> None:
+        with self._fake_secret_env():
+            admin_token = self._token_for("admin@example.com", "admin12345")
+            user = self.store.get_user_by_email("user@example.com")
+            self.assertIsNotNone(user)
+            assert user is not None
+            trace = ChatTraceService(self.store.database).record_chat_trace(
+                user_id=user.id,
+                question="Detail trace",
+                intent={"article_numbers": ["35"]},
+                retrieved_hits=[{"chunkId": "chunk-1"}],
+                selected_contexts=[{"chunkId": "chunk-1", "textPreview": "preview"}],
+                citations={"legal_basis": ["citation"], "evidence_quotes": []},
+            )
+            response = self.client.get(
+                f"/admin/traces/{trace['id']}",
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["trace"]["id"], trace["id"])
+        payload_text = json.dumps(payload, sort_keys=True)
+        self.assert_no_secret_leak(payload_text)
 
     def test_admin_health_does_not_expose_secrets(self) -> None:
         with self._fake_secret_env():

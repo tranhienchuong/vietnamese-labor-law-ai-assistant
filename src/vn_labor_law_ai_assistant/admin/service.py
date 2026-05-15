@@ -10,6 +10,7 @@ from ..auth.service import user_payload
 from ..auth_store import AuthStore
 from ..conversations.repository import ConversationRepository
 from ..core.config import Settings, get_settings
+from ..observability import ChatTraceService
 
 
 class AdminService:
@@ -18,6 +19,7 @@ class AdminService:
         self.settings = settings or get_settings()
         self.auth_repository = AuthRepository(store.database)
         self.conversation_repository = ConversationRepository(store.database)
+        self.trace_service = ChatTraceService(store.database)
 
     def get_stats(self, current_user: AuthUser) -> dict[str, Any]:
         return {
@@ -29,6 +31,9 @@ class AdminService:
                 "totalConversations": self.conversation_repository.count_conversations(),
                 "totalMessages": self.conversation_repository.count_messages(),
                 "activeSessions": self.auth_repository.count_active_sessions(),
+                "totalTraces": self.trace_service.count_traces(),
+                "tracesWithErrors": self.trace_service.count_traces_with_errors(),
+                "insufficientContextTraces": self.trace_service.count_insufficient_context_traces(),
             },
             "runtime": self.settings.public_runtime_config(
                 qdrant_collection=self._effective_qdrant_collection(),
@@ -53,6 +58,29 @@ class AdminService:
             retriever_record_source=self._effective_retriever_record_source(),
             dense_model=self._effective_dense_model(),
         )
+
+    def list_recent_traces(
+        self,
+        *,
+        limit: int = 50,
+        user_id: str | None = None,
+        conversation_id: str | None = None,
+        insufficient_only: bool = False,
+        error_only: bool = False,
+    ) -> dict[str, Any]:
+        return {
+            "traces": self.trace_service.list_recent_traces(
+                limit=limit,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                insufficient_only=insufficient_only,
+                error_only=error_only,
+            )
+        }
+
+    def get_trace(self, trace_id: str) -> dict[str, Any] | None:
+        trace = self.trace_service.get_trace(trace_id)
+        return {"trace": trace} if trace is not None else None
 
     def _database_check(self) -> dict[str, str]:
         try:

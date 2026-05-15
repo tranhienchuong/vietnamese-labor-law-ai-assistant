@@ -1,7 +1,9 @@
 import type {
   AdminHealthResponse,
   AdminRetrievalConfigResponse,
-  AdminStatsResponse
+  AdminStatsResponse,
+  AdminTraceDetailResponse,
+  AdminTracesResponse
 } from "@/lib/types"
 
 async function getJson<T>(url: string): Promise<T> {
@@ -25,4 +27,15 @@ export function getAdminHealth() {
 
 export function getAdminRetrievalConfig() {
   return getJson<AdminRetrievalConfigResponse>("/api/admin/retrieval-config")
+}
+
+export function getAdminTraces(params?: URLSearchParams) {
+  const query = params?.toString()
+  return getJson<AdminTracesResponse>(`/api/admin/traces${query ? `?${query}` : ""}`)
+}
+
+export function getAdminTrace(traceId: string) {
+  return getJson<AdminTraceDetailResponse>(
+    `/api/admin/traces/${encodeURIComponent(traceId)}`
+  )
 }

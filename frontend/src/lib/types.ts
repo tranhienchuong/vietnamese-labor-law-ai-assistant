@@ -79,6 +79,9 @@ export type AdminStatsResponse = {
     totalConversations: number
     totalMessages: number
     activeSessions: number
+    totalTraces: number
+    tracesWithErrors: number
+    insufficientContextTraces: number
   }
   runtime: {
     appEnv: string
@@ -142,4 +145,45 @@ export type AdminRetrievalConfigResponse = {
   queryRouterFallbackToHeuristic: boolean
   embeddingProvider: string
   denseModel: string
+}
+
+export type AdminTraceSummary = {
+  id: string
+  requestId?: string | null
+  userId: string
+  conversationId?: string | null
+  messageId?: string | null
+  question: string
+  provider?: string | null
+  model?: string | null
+  retrieveOnly: boolean
+  insufficientContext: boolean
+  latencyMs?: number | null
+  retrievalLatencyMs?: number | null
+  generationLatencyMs?: number | null
+  citationCount: number
+  selectedContextCount: number
+  error?: string | null
+  createdAt: string
+}
+
+export type AdminTraceDetail = AdminTraceSummary & {
+  intent: Record<string, unknown>
+  retrievedHits: Array<Record<string, unknown>>
+  selectedContexts: Array<Record<string, unknown>>
+  citations: {
+    legal_basis?: string[]
+    evidence_quotes?: Array<{
+      citation: string
+      quote: string
+    }>
+  }
+}
+
+export type AdminTracesResponse = {
+  traces: AdminTraceSummary[]
+}
+
+export type AdminTraceDetailResponse = {
+  trace: AdminTraceDetail
 }

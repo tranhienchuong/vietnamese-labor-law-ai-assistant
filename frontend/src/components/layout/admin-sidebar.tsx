@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   ClipboardCheck,
+  FileSearch,
   FileText,
   LayoutDashboard,
   MessagesSquare,
@@ -72,6 +73,19 @@ export function AdminSidebar({ className }: AdminSidebarProps) {
             </Button>
           )
         })}
+        <Button
+          asChild
+          className={cn(
+            "w-full justify-start",
+            pathname.startsWith("/admin/traces") && "bg-muted text-foreground"
+          )}
+          variant="ghost"
+        >
+          <Link href="/admin/traces">
+            <FileSearch className="h-4 w-4" />
+            Retrieval traces
+          </Link>
+        </Button>
       </nav>
 
       <div className="mt-auto border-t border-border p-4 text-xs leading-5 text-muted-foreground">
