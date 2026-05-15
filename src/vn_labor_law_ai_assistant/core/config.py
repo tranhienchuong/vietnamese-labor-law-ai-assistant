@@ -208,6 +208,46 @@ class Settings(BaseSettings):
     def field_was_configured(self, field_name: str) -> bool:
         return field_name in self.model_fields_set
 
+    def public_runtime_config(
+        self,
+        *,
+        qdrant_collection: str | None = None,
+        retriever_record_source: str | None = None,
+    ) -> dict[str, object]:
+        return {
+            "appEnv": self.app_env,
+            "databasePath": str(self.app_db_path),
+            "qdrantCollection": qdrant_collection or self.qdrant_collection,
+            "retrieverRecordSource": retriever_record_source or self.retriever_record_source,
+            "indexPath": str(self.index_path),
+            "rerankerEnabled": bool(self.reranker_model.strip()),
+            "queryRouterEnabled": self.query_router_enabled,
+            "llmProvider": self.llm_provider,
+            "groqModel": self.groq_model,
+        }
+
+    def public_retrieval_config(
+        self,
+        *,
+        qdrant_collection: str | None = None,
+        retriever_record_source: str | None = None,
+        dense_model: str | None = None,
+    ) -> dict[str, object]:
+        return {
+            "qdrantCollection": qdrant_collection or self.qdrant_collection,
+            "retrieverRecordSource": retriever_record_source or self.retriever_record_source,
+            "indexPath": str(self.index_path),
+            "rerankerModel": self.reranker_model,
+            "rerankerEnabled": bool(self.reranker_model.strip()),
+            "rerankerTopN": self.reranker_top_n,
+            "queryRouterEnabled": self.query_router_enabled,
+            "queryRouterProvider": self.query_router_provider,
+            "queryRouterModel": self.query_router_model,
+            "queryRouterFallbackToHeuristic": self.query_router_fallback_to_heuristic,
+            "embeddingProvider": self.embedding_provider,
+            "denseModel": dense_model or self.dense_model,
+        }
+
 
 def load_settings() -> Settings:
     return Settings(_env_file=None)

@@ -69,3 +69,77 @@ export type ConversationSummary = {
   last_message_at?: string | null
   message_count: number
 }
+
+export type AdminStatsResponse = {
+  user: CurrentUser
+  stats: {
+    totalUsers: number
+    activeUsers: number
+    adminUsers: number
+    totalConversations: number
+    totalMessages: number
+    activeSessions: number
+  }
+  runtime: {
+    appEnv: string
+    databasePath: string
+    qdrantCollection: string
+    retrieverRecordSource: string
+    indexPath: string
+    rerankerEnabled: boolean
+    queryRouterEnabled: boolean
+    llmProvider: string
+    groqModel: string
+  }
+}
+
+export type AdminCheckStatus =
+  | "ok"
+  | "error"
+  | "missing"
+  | "configured"
+  | "local"
+
+export type AdminHealthResponse = {
+  status: "ok" | "degraded"
+  checks: {
+    database: {
+      status: AdminCheckStatus
+      message: string
+    }
+    settings: {
+      status: AdminCheckStatus
+      message: string
+    }
+    index: {
+      status: AdminCheckStatus
+      message: string
+      path: string
+    }
+    qdrantConfig: {
+      status: AdminCheckStatus
+      collection: string
+      usesCloud: boolean
+    }
+    llmConfig: {
+      status: AdminCheckStatus
+      provider: string
+      model: string
+    }
+  }
+}
+
+export type AdminRetrievalConfigResponse = {
+  qdrantCollection: string
+  retrieverRecordSource: string
+  indexPath: string
+  rerankerModel: string
+  rerankerEnabled: boolean
+  rerankerTopN: number
+  queryRouterEnabled: boolean
+  queryRouterProvider: string
+  queryRouterModel: string
+  queryRouterFallbackToHeuristic: boolean
+  embeddingProvider: string
+  denseModel: string
+}

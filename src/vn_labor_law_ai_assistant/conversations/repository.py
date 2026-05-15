@@ -168,3 +168,13 @@ class ConversationRepository:
                 }
             )
         return messages
+
+    def count_conversations(self) -> int:
+        with self.database.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM conversations").fetchone()
+        return int(row["count"]) if row is not None else 0
+
+    def count_messages(self) -> int:
+        with self.database.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM messages").fetchone()
+        return int(row["count"]) if row is not None else 0

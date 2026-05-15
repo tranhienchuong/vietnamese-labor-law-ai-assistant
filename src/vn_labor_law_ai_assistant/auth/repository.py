@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from typing import Any
 
 from ..db.sqlite import SQLiteDatabase
@@ -141,3 +142,34 @@ class AuthRepository:
 
     def user_from_row(self, row: sqlite3.Row | None) -> AuthUser | None:
         return self.row_to_user(row)
+
+    def count_users(self) -> int:
+        with self.database.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM users").fetchone()
+        return int(row["count"]) if row is not None else 0
+
+    def count_active_users(self) -> int:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS count FROM users WHERE is_active = 1"
+            ).fetchone()
+        return int(row["count"]) if row is not None else 0
+
+    def count_admin_users(self) -> int:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS count FROM users WHERE role = 'admin'"
+            ).fetchone()
+        return int(row["count"]) if row is not None else 0
+
+    def count_active_sessions(self) -> int:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM sessions
+                WHERE revoked_at IS NULL AND expires_at >= ?
+                """,
+                (int(time.time()),),
+            ).fetchone()
+        return int(row["count"]) if row is not None else 0
