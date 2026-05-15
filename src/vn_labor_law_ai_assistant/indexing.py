@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
-import os
 from pathlib import Path
 import re
 import shutil
@@ -15,7 +14,7 @@ from typing import Sequence
 import uuid
 import warnings
 
-from .config import REPO_ROOT, load_repo_env
+from .core.config import REPO_ROOT, load_repo_env, load_settings
 from .corpus_pipeline import extract_chunk_body, normalize_for_matching
 from .embeddings import embed_texts_via_http, is_custom_http_embedding_provider
 
@@ -171,12 +170,13 @@ def require_qdrant():
 
 
 def qdrant_storage_mode() -> str:
-    return "cloud" if os.getenv("QDRANT_URL", "").strip() else "local"
+    return "cloud" if load_settings().qdrant_url.strip() else "local"
 
 
 def build_qdrant_client(qdrant_client_cls, qdrant_path: Path | None = None):
-    qdrant_url = os.getenv("QDRANT_URL", "").strip()
-    qdrant_api_key = os.getenv("QDRANT_API_KEY", "").strip()
+    settings = load_settings()
+    qdrant_url = settings.qdrant_url.strip()
+    qdrant_api_key = settings.optional_secret_value(settings.qdrant_api_key)
 
     if qdrant_url:
         return qdrant_client_cls(

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-import os
 from pathlib import Path
 import sqlite3
 import re
 from typing import Any, Sequence
 
+from .core.config import load_settings
 from .corpus_pipeline import normalize_for_matching
 from .embeddings import embed_query_via_http, is_custom_http_embedding_provider
 from .indexing import (
@@ -92,13 +92,11 @@ POINT_REF_ORDER = {value: index for index, value in enumerate(POINT_REF_ALPHABET
 
 
 def env_flag(name: str, default: bool) -> bool:
-    value = os.getenv(name, "").strip().lower()
-    if not value:
-        return default
-    if value in TRUE_ENV_VALUES:
-        return True
-    if value in FALSE_ENV_VALUES:
-        return False
+    settings = load_settings()
+    if name == "QUERY_ROUTER_ENABLED":
+        return settings.query_router_enabled
+    if name == "QUERY_ROUTER_FALLBACK_TO_HEURISTIC":
+        return settings.query_router_fallback_to_heuristic
     return default
 
 
@@ -142,8 +140,9 @@ class RetrievalResult:
 
 
 def resolve_record_source(manifest: dict[str, object]) -> str:
+    settings = load_settings()
     configured = (
-        os.getenv("RETRIEVER_RECORD_SOURCE", "").strip()
+        settings.retriever_record_source.strip()
         or str(manifest.get("record_source") or "").strip()
         or RECORD_SOURCE_SQLITE
     )
@@ -462,10 +461,13 @@ class HybridRetriever:
         qdrant_path = str(self._manifest.get("qdrant_path") or "").strip()
         self._records_db_path = Path(records_db_path) if records_db_path else None
         self._qdrant_path = Path(qdrant_path) if qdrant_path else None
-        self._collection_name = (
-            os.getenv("QDRANT_COLLECTION", "").strip()
-            or str(self._manifest["collection_name"])
+        settings = load_settings()
+        collection_override = (
+            settings.qdrant_collection.strip()
+            if settings.qdrant_collection_was_configured()
+            else ""
         )
+        self._collection_name = collection_override or str(self._manifest["collection_name"])
         self._dense_model_name = str(self._manifest["dense_model_name"])
         self._dense_vector_name = str(self._manifest["dense_vector_name"])
         self._sparse_vector_name = str(self._manifest["sparse_vector_name"])
@@ -488,8 +490,8 @@ class HybridRetriever:
             if query_router_enabled is None
             else bool(query_router_enabled)
         )
-        self._query_router_provider = os.getenv("QUERY_ROUTER_PROVIDER", "").strip() or None
-        self._query_router_model = os.getenv("QUERY_ROUTER_MODEL", "").strip() or None
+        self._query_router_provider = settings.query_router_provider.strip() or None
+        self._query_router_model = settings.query_router_model.strip() or None
         self._query_router_fallback_to_heuristic = env_flag(
             "QUERY_ROUTER_FALLBACK_TO_HEURISTIC",
             True,

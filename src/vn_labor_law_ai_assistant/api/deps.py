@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from threading import Lock
 
 from fastapi import Depends, Header, HTTPException
 
 from ..auth_store import AuthStore, AuthUser
+from ..core.config import get_settings
 from ..retriever import DEFAULT_RERANKER_TOP_N, HybridRetriever
 
 
@@ -23,12 +22,13 @@ def get_retriever() -> HybridRetriever:
 
     with _retriever_lock:
         if _retriever is None:
+            settings = get_settings()
             _retriever = HybridRetriever(
-                index_path=Path(os.getenv("INDEX_PATH", "artifacts/index")),
-                reranker_model=os.getenv("RERANKER_MODEL", "").strip(),
+                index_path=settings.index_path,
+                reranker_model=settings.reranker_model.strip(),
                 reranker_top_n=max(
                     1,
-                    int(os.getenv("RERANKER_TOP_N", str(DEFAULT_RERANKER_TOP_N))),
+                    int(settings.reranker_top_n or DEFAULT_RERANKER_TOP_N),
                 ),
             )
     return _retriever

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import unicodedata
 from typing import Any, Callable, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .core.config import load_settings
 from .corpus_pipeline import normalize_for_matching
 from .heuristic_router import (
     QueryIntent,
@@ -271,9 +271,20 @@ def analyze_query_smart(
 
         completion_fn = chat_completion
 
+    settings = load_settings()
+    provider_name = (
+        settings.query_router_provider
+        if settings.field_was_configured("query_router_provider")
+        else DEFAULT_ROUTER_PROVIDER
+    )
+    model_name = (
+        settings.query_router_model
+        if settings.field_was_configured("query_router_model")
+        else DEFAULT_ROUTER_MODEL
+    )
     response = completion_fn(
-        provider=provider or os.getenv(DEFAULT_ROUTER_PROVIDER_ENV, DEFAULT_ROUTER_PROVIDER),
-        model=model if model is not None else os.getenv(DEFAULT_ROUTER_MODEL_ENV, DEFAULT_ROUTER_MODEL),
+        provider=provider or provider_name,
+        model=model if model is not None else model_name,
         messages=build_query_router_messages(query),
         temperature=0,
         json_schema=query_metadata_json_schema(),

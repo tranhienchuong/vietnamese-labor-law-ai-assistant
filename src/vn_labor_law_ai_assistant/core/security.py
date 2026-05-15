@@ -4,10 +4,11 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import secrets
 import time
 from typing import Any, TYPE_CHECKING
+
+from .config import DEV_ONLY_AUTH_SECRET, load_settings
 
 if TYPE_CHECKING:
     from ..auth.models import AuthUser
@@ -15,14 +16,10 @@ if TYPE_CHECKING:
 
 DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 24 * 7
 PASSWORD_ITERATIONS = 260_000
-DEV_ONLY_AUTH_SECRET = "dev-only-change-me-vietnamese-labor-law-ai"
 
 
 def is_production() -> bool:
-    return (
-        os.getenv("ENVIRONMENT", "").strip().lower() == "production"
-        or os.getenv("APP_ENV", "").strip().lower() == "production"
-    )
+    return load_settings().is_production
 
 
 def _b64_encode(data: bytes) -> str:
@@ -39,13 +36,7 @@ def _json_dumps(value: Any) -> str:
 
 
 def _token_secret() -> bytes:
-    secret = os.getenv("AUTH_SECRET", "").strip()
-    if not secret:
-        if is_production():
-            raise RuntimeError("AUTH_SECRET must be set in production.")
-        # Dev/local fallback only. Production must provide AUTH_SECRET.
-        secret = DEV_ONLY_AUTH_SECRET
-    return secret.encode("utf-8")
+    return load_settings().require_auth_secret().encode("utf-8")
 
 
 def hash_password(password: str) -> str:

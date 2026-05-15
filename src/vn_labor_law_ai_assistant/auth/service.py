@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import os
 import time
 import uuid
 from typing import Any
 
+from ..core.config import load_settings
 from ..core.security import (
     create_access_token,
     hash_password,
@@ -22,19 +22,20 @@ class AuthService:
         self.repository = repository
 
     def seed_default_users(self) -> None:
-        if os.getenv("AUTH_SEED_DEFAULT_USERS", "1").strip() in {"0", "false", "False"}:
+        settings = load_settings()
+        if not settings.auth_seed_default_users:
             return
 
         self.create_user_if_missing(
-            name=os.getenv("DEFAULT_USER_NAME", "Nguoi dung"),
-            email=os.getenv("DEFAULT_USER_EMAIL", "user@example.com"),
-            password=os.getenv("DEFAULT_USER_PASSWORD", "user12345"),
+            name=settings.default_user_name,
+            email=settings.default_user_email,
+            password=settings.default_user_password.get_secret_value(),
             role="user",
         )
         self.create_user_if_missing(
-            name=os.getenv("DEFAULT_ADMIN_NAME", "Quan tri vien"),
-            email=os.getenv("DEFAULT_ADMIN_EMAIL", "admin@example.com"),
-            password=os.getenv("DEFAULT_ADMIN_PASSWORD", "admin12345"),
+            name=settings.default_admin_name,
+            email=settings.default_admin_email,
+            password=settings.default_admin_password.get_secret_value(),
             role="admin",
         )
 

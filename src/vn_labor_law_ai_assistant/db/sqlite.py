@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import os
 import sqlite3
 import time
 from pathlib import Path
+
+from ..core.config import load_settings
 
 
 SCHEMA_SQL = """
@@ -64,7 +65,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_token_hash
 
 
 def default_database_path() -> Path:
-    return Path(os.getenv("APP_DB_PATH", "artifacts/app.db"))
+    return load_settings().app_db_path
 
 
 def utc_timestamp() -> str:

@@ -1,29 +1,23 @@
 from __future__ import annotations
 
-import os
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from ..config import load_repo_env
+from ..core.config import get_settings, load_repo_env
 from .deps import close_retriever
 from .routes import admin, auth, chat, conversations, health
 
 
 load_repo_env()
+settings = get_settings()
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Vietnamese Labor Law AI Assistant")
 
-    allow_origins = [
-        origin.strip()
-        for origin in os.getenv("CORS_ALLOW_ORIGINS", "*").split(",")
-        if origin.strip()
-    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=allow_origins or ["*"],
+        allow_origins=settings.cors_origins_list(),
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],

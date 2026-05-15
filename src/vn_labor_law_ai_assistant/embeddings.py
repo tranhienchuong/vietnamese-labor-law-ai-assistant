@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Sequence
 from urllib import error, request
 from urllib.parse import urlparse
 
-from .config import load_repo_env
+from .core.config import load_repo_env, load_settings
 
 
 load_repo_env()
@@ -17,7 +16,7 @@ EMBEDDING_API_TIMEOUT_SECONDS = 60.0
 
 
 def embedding_provider() -> str:
-    provider = os.getenv("EMBEDDING_PROVIDER", LOCAL_EMBEDDING_PROVIDER).strip().lower()
+    provider = load_settings().embedding_provider.strip().lower()
     if provider in {"", "local"}:
         return LOCAL_EMBEDDING_PROVIDER
     if provider in {LOCAL_EMBEDDING_PROVIDER, CUSTOM_HTTP_EMBEDDING_PROVIDER}:
@@ -32,7 +31,7 @@ def is_custom_http_embedding_provider() -> bool:
 
 
 def embedding_api_url() -> str:
-    api_url = os.getenv("EMBEDDING_API_URL", "").strip()
+    api_url = load_settings().embedding_api_url.strip()
     if not api_url:
         raise RuntimeError("EMBEDDING_API_URL is required when EMBEDDING_PROVIDER=custom_http.")
     return normalize_embedding_api_url(api_url)
@@ -53,22 +52,11 @@ def normalize_embedding_api_url(api_url: str) -> str:
 
 
 def embedding_api_token() -> str:
-    for key in ("EMBEDDING_API_TOKEN", "HF_TOKEN", "HUGGINGFACE_HUB_TOKEN"):
-        token = os.getenv(key, "").strip()
-        if token:
-            return token
-    return ""
+    return load_settings().embedding_api_token_value()
 
 
 def embedding_api_timeout_seconds() -> float:
-    raw_value = os.getenv("EMBEDDING_API_TIMEOUT_SECONDS", "").strip()
-    if not raw_value:
-        return EMBEDDING_API_TIMEOUT_SECONDS
-
-    try:
-        timeout_seconds = float(raw_value)
-    except ValueError as exc:
-        raise RuntimeError("EMBEDDING_API_TIMEOUT_SECONDS must be a number.") from exc
+    timeout_seconds = float(load_settings().embedding_api_timeout_seconds)
 
     if timeout_seconds <= 0:
         raise RuntimeError("EMBEDDING_API_TIMEOUT_SECONDS must be greater than 0.")

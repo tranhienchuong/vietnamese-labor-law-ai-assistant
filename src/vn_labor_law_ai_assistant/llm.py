@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-import os
 import re
 import time
 from typing import Mapping, Sequence
@@ -11,16 +10,17 @@ from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 from .answering import ANSWER_JSON_SCHEMA
-from .config import load_repo_env
+from .core.config import load_repo_env, load_settings
 
 
 load_repo_env()
+_SETTINGS = load_settings()
 
 SUPPORTED_PROVIDERS = ("groq", "azure_openai")
 DEFAULT_PROVIDER = "groq"
-DEFAULT_GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3-32b")
+DEFAULT_GROQ_MODEL = _SETTINGS.groq_model
 DEFAULT_GROQ_BENCHMARK_JUDGE_MODEL = "openai/gpt-oss-120b"
-DEFAULT_AZURE_OPENAI_MODEL = os.getenv("AZURE_OPENAI_MODEL", "GPT-5.4-MINI")
+DEFAULT_AZURE_OPENAI_MODEL = _SETTINGS.azure_openai_model
 GROQ_STRICT_JSON_MODELS = frozenset(
     {
         "openai/gpt-oss-20b",
@@ -29,16 +29,16 @@ GROQ_STRICT_JSON_MODELS = frozenset(
 )
 DEFAULT_AZURE_OPENAI_TIMEOUT_SECONDS = max(
     1.0,
-    float(os.getenv("AZURE_OPENAI_TIMEOUT_SECONDS", "120.0")),
+    float(_SETTINGS.azure_openai_timeout_seconds),
 )
-DEFAULT_GROQ_RATE_LIMIT_RETRIES = max(0, int(os.getenv("GROQ_RATE_LIMIT_RETRIES", "6")))
+DEFAULT_GROQ_RATE_LIMIT_RETRIES = max(0, int(_SETTINGS.groq_rate_limit_retries))
 DEFAULT_GROQ_RATE_LIMIT_BACKOFF_SECONDS = max(
     0.0,
-    float(os.getenv("GROQ_RATE_LIMIT_BACKOFF_SECONDS", "1.0")),
+    float(_SETTINGS.groq_rate_limit_backoff_seconds),
 )
 DEFAULT_GROQ_RATE_LIMIT_MAX_SLEEP_SECONDS = max(
     DEFAULT_GROQ_RATE_LIMIT_BACKOFF_SECONDS,
-    float(os.getenv("GROQ_RATE_LIMIT_MAX_SLEEP_SECONDS", "10.0")),
+    float(_SETTINGS.groq_rate_limit_max_sleep_seconds),
 )
 RATE_LIMIT_RETRY_AFTER_RE = re.compile(
     r"try again in\s*(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>ms|s|sec|second|seconds)\b",
@@ -92,12 +92,12 @@ def default_model_for_provider(provider: str) -> str:
 
 
 def default_benchmark_judge_provider() -> str:
-    configured = os.getenv("BENCHMARK_JUDGE_PROVIDER", "groq")
+    configured = load_settings().benchmark_judge_provider
     return normalize_provider(configured)
 
 
 def default_benchmark_judge_model(provider: str | None = None) -> str:
-    configured = os.getenv("BENCHMARK_JUDGE_MODEL", "").strip()
+    configured = load_settings().benchmark_judge_model.strip()
     provider_name = normalize_provider(provider or default_benchmark_judge_provider())
     if configured:
         return configured
@@ -136,7 +136,8 @@ def groq_response_format_for_model(
 
 
 def build_groq_client():
-    api_key = os.getenv("GROQ_API_KEY", "").strip()
+    settings = load_settings()
+    api_key = settings.optional_secret_value(settings.groq_api_key)
     if not api_key:
         raise RuntimeError("GROQ_API_KEY is not set.")
     Groq = require_groq_client_class()
@@ -144,7 +145,8 @@ def build_groq_client():
 
 
 def build_azure_openai_responses_endpoint() -> str:
-    endpoint = os.getenv("AZURE_OPENAI_RESPONSES_ENDPOINT", "").strip()
+    settings = load_settings()
+    endpoint = settings.azure_openai_responses_endpoint.strip()
     if not endpoint:
         raise RuntimeError("AZURE_OPENAI_RESPONSES_ENDPOINT is not set.")
 
@@ -152,7 +154,7 @@ def build_azure_openai_responses_endpoint() -> str:
     if not parsed.scheme or not parsed.netloc:
         raise RuntimeError("AZURE_OPENAI_RESPONSES_ENDPOINT must be an absolute URL.")
 
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "").strip()
+    api_version = settings.azure_openai_api_version.strip()
     if api_version and "api-version=" not in endpoint.lower():
         separator = "&" if parsed.query else "?"
         endpoint = f"{endpoint}{separator}api-version={quote(api_version)}"
@@ -160,7 +162,8 @@ def build_azure_openai_responses_endpoint() -> str:
 
 
 def require_azure_openai_api_key() -> str:
-    api_key = os.getenv("AZURE_OPENAI_API_KEY", "").strip()
+    settings = load_settings()
+    api_key = settings.optional_secret_value(settings.azure_openai_api_key)
     if not api_key:
         raise RuntimeError("AZURE_OPENAI_API_KEY is not set.")
     return api_key
