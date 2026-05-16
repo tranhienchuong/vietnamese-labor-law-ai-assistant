@@ -8,7 +8,7 @@ import secrets
 import time
 from typing import Any, TYPE_CHECKING
 
-from .config import DEV_ONLY_AUTH_SECRET, load_settings
+from .config import load_settings
 
 if TYPE_CHECKING:
     from ..auth.models import AuthUser

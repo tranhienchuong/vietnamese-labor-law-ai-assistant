@@ -1,0 +1,117 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Benchmark question limit"
+        required: false
+        default: "20"
+      provider:
+        description: "LLM provider"
+        required: false
+        default: "groq"
+      model:
+        description: "LLM model"
+        required: false
+        default: "qwen/qwen3-32b"
+      retrieve_only:
+        description: "Run retrieval-only if supported"
+        required: false
+        default: "true"
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+
+    env:
+      APP_ENV: test
+      AUTH_SECRET: test-secret-for-benchmark
+      AUTH_SEED_DEFAULT_USERS: "0"
+      APP_DB_PATH: artifacts/benchmark-app.db
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+      AZURE_OPENAI_RESPONSES_ENDPOINT: ${{ secrets.AZURE_OPENAI_RESPONSES_ENDPOINT }}
+      QDRANT_URL: ${{ secrets.QDRANT_URL }}
+      QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+      QUERY_ROUTER_ENABLED: "0"
+      RERANKER_MODEL: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Prepare output directory
+        run: mkdir -p eval/results
+
+      - name: Run benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          manifest_path = Path("artifacts/index/current.json")
+          if not manifest_path.exists():
+              print("::error::artifacts/index/current.json is required for benchmark runs.")
+              sys.exit(1)
+
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          qdrant_path = Path(str(manifest.get("qdrant_path") or ""))
+          if not qdrant_path.exists() and not os.getenv("QDRANT_URL", "").strip():
+              print("::error::Benchmark requires a QDRANT_URL secret because local Qdrant files are not present in the checkout.")
+              sys.exit(1)
+          PY
+
+          if [[ "${{ inputs.retrieve_only }}" == "true" ]]; then
+            python scripts/run_benchmark.py \
+              --limit "${{ inputs.limit }}" \
+              --output-dir eval/results
+            exit 0
+          fi
+
+          if [[ "${{ inputs.provider }}" == "groq" && -z "${GROQ_API_KEY}" ]]; then
+            echo "::error::GROQ_API_KEY secret is required when retrieve_only=false and provider=groq."
+            exit 1
+          fi
+
+          if [[ "${{ inputs.provider }}" == "azure_openai" ]]; then
+            if [[ -z "${AZURE_OPENAI_API_KEY}" || -z "${AZURE_OPENAI_RESPONSES_ENDPOINT}" ]]; then
+              echo "::error::AZURE_OPENAI_API_KEY and AZURE_OPENAI_RESPONSES_ENDPOINT secrets are required when retrieve_only=false and provider=azure_openai."
+              exit 1
+            fi
+          fi
+
+          python scripts/run_benchmark.py \
+            --provider "${{ inputs.provider }}" \
+            --model "${{ inputs.model }}" \
+            --limit "${{ inputs.limit }}" \
+            --output-dir eval/results
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: |
+            eval/results/*.jsonl
+            eval/results/*.csv
+          if-no-files-found: warn

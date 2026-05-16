@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from typing import Sequence
 
 from ...corpus_pipeline import normalize_for_matching
 from .citation_guard import answer_mentions_any_citation

@@ -593,7 +593,6 @@ def enrich_chunk(
     document_title: str,
     source_kind: str,
 ) -> dict[str, object]:
-    chunk_index = int(chunk["chunk_index"])
     heading = str(chunk["heading"])
     text = str(chunk["text"])
     article_number = chunk["article_number"]

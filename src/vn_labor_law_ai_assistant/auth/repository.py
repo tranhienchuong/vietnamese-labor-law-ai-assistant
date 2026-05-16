@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sqlite3
 import time
-from typing import Any
 
 from ..db.sqlite import SQLiteDatabase
 from .models import AuthUser, Role

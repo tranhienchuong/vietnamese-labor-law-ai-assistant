@@ -68,6 +68,7 @@ Groq answer generation
 - [Getting Started](#getting-started)
 - [API Endpoints](#api-endpoints)
 - [Evaluation](#evaluation)
+- [CI and Benchmark Checks](#ci-and-benchmark-checks)
 - [Project Structure](#project-structure)
 - [Acknowledgements](#acknowledgements)
 
@@ -119,7 +120,7 @@ Trợ cấp thôi việc tính thế nào theo Điều 46?
 - [X] Next.js chat interface.
 - [X] Benchmark import, evaluation and LLM-as-a-judge scoring.
 - [ ] Add production monitoring dashboard.
-- [ ] Add CI/CD pipeline for automated checks and deployment.
+- [X] Add CI checks and manual benchmark workflow.
 
 ## Getting Started
 
@@ -277,6 +278,30 @@ Run unit tests:
 ```
 
 Benchmark outputs are written to `eval/results/*.jsonl` and `eval/results/*.csv`.
+
+## CI and Benchmark Checks
+
+Automation details are documented in [docs/CI.md](docs/CI.md).
+
+Backend checks:
+
+```powershell
+python -m pip install -e ".[dev]"
+ruff check .
+mypy src/vn_labor_law_ai_assistant/core src/vn_labor_law_ai_assistant/api src/vn_labor_law_ai_assistant/auth src/vn_labor_law_ai_assistant/db
+python -m unittest discover -s tests -v
+```
+
+Frontend checks:
+
+```powershell
+cd frontend
+npm install
+npm run lint
+npm run build
+```
+
+Benchmark workflow runs manually in GitHub Actions and defaults to retrieval-only mode. Answer-generation benchmark runs may require provider API key secrets.
 
 ## Project Structure
 
