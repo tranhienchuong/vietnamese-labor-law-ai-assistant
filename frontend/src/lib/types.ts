@@ -61,6 +61,24 @@ export type CurrentUser = {
   avatarUrl?: string | null
 }
 
+export type CurrentUserResponse = {
+  user?: CurrentUser
+}
+
+export type LoginResponse = {
+  user: CurrentUser
+}
+
+export type ChatMessage = {
+  id: string
+  role: "user" | "assistant"
+  content: string
+}
+
+export type ChatRequestBody = Record<string, unknown> & {
+  messages: Array<Pick<ChatMessage, "role" | "content">>
+}
+
 export type ConversationSummary = {
   id: string
   title: string
@@ -68,6 +86,28 @@ export type ConversationSummary = {
   updated_at: string
   last_message_at?: string | null
   message_count: number
+}
+
+export type ConversationMessage = ChatMessage & {
+  conversation_id?: string
+  created_at?: string
+}
+
+export type ConversationsResponse = {
+  conversations: ConversationSummary[]
+}
+
+export type ConversationCreateResponse = {
+  conversation: ConversationSummary
+}
+
+export type ConversationDetailResponse = {
+  conversation: ConversationSummary
+  messages: ConversationMessage[]
+}
+
+export type ConversationMessagesResponse = {
+  messages: ConversationMessage[]
 }
 
 export type AdminStatsResponse = {

@@ -7,7 +7,8 @@ import { AppSidebar } from "@/components/layout/app-sidebar"
 import { Button } from "@/components/ui/button"
 import { ChatInput } from "@/components/chat/chat-input"
 import { MessageList } from "@/components/chat/message-list"
-import { useStreamingChat, type ChatMessage } from "@/hooks/use-streaming-chat"
+import { useStreamingChat } from "@/hooks/use-streaming-chat"
+import { getConversation, listConversations } from "@/lib/api/conversations"
 import type { ConversationSummary } from "@/lib/types"
 
 export function ChatInterface() {
@@ -16,12 +17,12 @@ export function ChatInterface() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
 
   const loadConversations = useCallback(async () => {
-    const response = await fetch("/api/conversations", { cache: "no-store" })
-    if (!response.ok) return
-    const payload = (await response.json()) as {
-      conversations?: ConversationSummary[]
+    try {
+      const payload = await listConversations()
+      setConversations(payload.conversations ?? [])
+    } catch {
+      return
     }
-    setConversations(payload.conversations ?? [])
   }, [])
 
   const chatBody = useMemo(
@@ -82,14 +83,9 @@ export function ChatInterface() {
 
   async function selectConversation(nextConversationId: string) {
     stop()
-    const response = await fetch(`/api/conversations/${nextConversationId}`, {
-      cache: "no-store"
-    })
-    if (!response.ok) return
+    const payload = await getConversation(nextConversationId).catch(() => null)
+    if (!payload) return
 
-    const payload = (await response.json()) as {
-      messages?: Array<ChatMessage & { created_at?: string }>
-    }
     const nextMessages =
       payload.messages
         ?.filter((message) => message.role === "user" || message.role === "assistant")

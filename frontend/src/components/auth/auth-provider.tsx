@@ -8,6 +8,11 @@ import {
   useMemo,
   useState
 } from "react"
+import {
+  getCurrentUser,
+  login as loginRequest,
+  logout as logoutRequest
+} from "@/lib/api/auth"
 import type { CurrentUser } from "@/lib/types"
 
 type AuthContextValue = {
@@ -26,15 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch("/api/auth/me", {
-        cache: "no-store"
-      })
-      if (!response.ok) {
-        setUser(null)
-        return
-      }
-      const payload = (await response.json()) as { user?: CurrentUser }
-      setUser(payload.user ?? null)
+      setUser(await getCurrentUser())
     } catch {
       setUser(null)
     } finally {
@@ -47,25 +44,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refresh])
 
   const login = useCallback(async (email: string, password: string) => {
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ email, password })
-    })
-
-    if (!response.ok) {
-      throw new Error("Đăng nhập không thành công.")
-    }
-
-    const payload = (await response.json()) as { user: CurrentUser }
-    setUser(payload.user)
-    return payload.user
+    const nextUser = await loginRequest(email, password)
+    setUser(nextUser)
+    return nextUser
   }, [])
 
   const logout = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined)
+    await logoutRequest().catch(() => undefined)
     setUser(null)
   }, [])
 
