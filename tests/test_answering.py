@@ -3,7 +3,10 @@ from __future__ import annotations
 import unittest
 
 from vn_labor_law_ai_assistant.answering import (
+    ANSWER_JSON_SCHEMA,
+    SYSTEM_PROMPT,
     EvidenceQuote,
+    ParsedAnswer,
     build_allowed_citations,
     build_messages,
     canonicalize_citation,
@@ -11,6 +14,7 @@ from vn_labor_law_ai_assistant.answering import (
     extract_json_candidate,
     format_answer_for_user,
     parse_answer_payload,
+    sanitize_evidence_quotes,
     sanitize_legal_basis,
 )
 from vn_labor_law_ai_assistant.retriever import RetrievalContext
@@ -29,6 +33,25 @@ def make_context(citation_text: str) -> RetrievalContext:
 
 
 class AnsweringTests(unittest.TestCase):
+    def test_answering_compat_exports(self) -> None:
+        self.assertTrue(callable(build_messages))
+        self.assertTrue(callable(parse_answer_payload))
+        self.assertTrue(callable(format_answer_for_user))
+        self.assertEqual(EvidenceQuote.__name__, "EvidenceQuote")
+        self.assertEqual(ParsedAnswer.__name__, "ParsedAnswer")
+        self.assertEqual(ANSWER_JSON_SCHEMA["type"], "object")
+
+    def test_prompt_unchanged_smoke(self) -> None:
+        contexts = (make_context("Bo luat so 45/2019/QH 14, Dieu 36, khoan 1"),)
+
+        messages = build_messages("Cau hoi mau?", contexts)
+
+        self.assertEqual(messages[0], {"role": "system", "content": SYSTEM_PROMPT})
+        self.assertEqual(messages[1]["role"], "user")
+        self.assertIn("ALLOWED_CITATIONS:", messages[1]["content"])
+        self.assertIn("CONTEXT:", messages[1]["content"])
+        self.assertIn("Bo luat so 45/2019/QH 14, Dieu 36, khoan 1", messages[1]["content"])
+
     def test_format_answer_for_user_wraps_short_answer_like_sample(self) -> None:
         parsed = parse_answer_payload(
             """
@@ -269,6 +292,21 @@ class AnsweringTests(unittest.TestCase):
         )
 
         self.assertEqual(legal_basis, ("Bo luat so 45/2019/QH 14, Dieu 46, khoan 2",))
+
+    def test_evidence_quote_must_appear_in_context(self) -> None:
+        contexts = (make_context("Bo luat so 45/2019/QH 14, Dieu 46, khoan 1"),)
+
+        evidence_quotes = sanitize_evidence_quotes(
+            [
+                {
+                    "citation": "Bo luat so 45/2019/QH 14, Dieu 46, khoan 1",
+                    "quote": "Noi dung khong co trong context",
+                }
+            ],
+            contexts,
+        )
+
+        self.assertEqual(evidence_quotes, ())
 
     def test_sanitize_legal_basis_respects_empty_response(self) -> None:
         contexts = (

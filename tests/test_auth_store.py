@@ -1,14 +1,64 @@
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
+from unittest.mock import patch
 
-from vn_labor_law_ai_assistant.auth_store import AuthStore
+from helpers import create_test_auth_store
+from vn_labor_law_ai_assistant.auth_store import (
+    AuthUser,
+    create_access_token,
+    decode_and_verify_token,
+    hash_password,
+    verify_password,
+)
 
 
 class AuthStoreTest(TestCase):
+    def test_security_helpers_remain_exported_from_auth_store(self) -> None:
+        password_hash = hash_password("secret")
+
+        self.assertTrue(verify_password("secret", password_hash))
+        self.assertFalse(verify_password("wrong", password_hash))
+
+    def test_dev_token_secret_fallback_still_works_outside_production(self) -> None:
+        user = AuthUser(
+            id="user-id",
+            name="Test User",
+            email="user@example.com",
+            role="user",
+            avatar_url=None,
+            is_active=True,
+        )
+        with patch.dict(os.environ, {"APP_ENV": "", "ENVIRONMENT": ""}, clear=False):
+            os.environ.pop("AUTH_SECRET", None)
+
+            token, _ = create_access_token(session_id="session-id", user=user)
+            payload = decode_and_verify_token(token)
+
+        self.assertIsNotNone(payload)
+        assert payload is not None
+        self.assertEqual(payload["sid"], "session-id")
+        self.assertEqual(payload["sub"], "user-id")
+
+    def test_auth_secret_is_required_in_production(self) -> None:
+        user = AuthUser(
+            id="user-id",
+            name="Test User",
+            email="user@example.com",
+            role="user",
+            avatar_url=None,
+            is_active=True,
+        )
+        with patch.dict(os.environ, {"APP_ENV": "production", "ENVIRONMENT": ""}, clear=False):
+            os.environ.pop("AUTH_SECRET", None)
+
+            with self.assertRaisesRegex(RuntimeError, "AUTH_SECRET"):
+                create_access_token(session_id="session-id", user=user)
+
     def test_login_session_and_user_scoped_conversation_history(self) -> None:
         with TemporaryDirectory() as tmpdir:
-            store = AuthStore(Path(tmpdir) / "app.db")
+            store = create_test_auth_store(Path(tmpdir) / "app.db")
             user = store.authenticate_user("user@example.com", "user12345")
             self.assertIsNotNone(user)
             assert user is not None

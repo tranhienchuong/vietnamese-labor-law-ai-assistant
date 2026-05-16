@@ -2,12 +2,10 @@
 
 import { useCallback, useRef, useState } from "react"
 import type { ChangeEvent, FormEvent } from "react"
+import { sendChatRequest } from "@/lib/api/chat"
+import type { ChatMessage } from "@/lib/types"
 
-export type ChatMessage = {
-  id: string
-  role: "user" | "assistant"
-  content: string
-}
+export type { ChatMessage }
 
 type UseStreamingChatOptions = {
   api: string
@@ -57,17 +55,14 @@ export function useStreamingChat({
       ])
 
       try {
-        const response = await fetch(api, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
+        const response = await sendChatRequest(
+          {
             messages: nextMessages.map(({ role, content }) => ({ role, content })),
             ...body
-          }),
-          signal: controller.signal
-        })
+          },
+          controller.signal,
+          api
+        )
 
         if (!response.ok || !response.body) {
           throw new Error(`Chat request failed with ${response.status}`)

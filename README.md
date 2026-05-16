@@ -68,6 +68,7 @@ Groq answer generation
 - [Getting Started](#getting-started)
 - [API Endpoints](#api-endpoints)
 - [Evaluation](#evaluation)
+- [CI and Benchmark Checks](#ci-and-benchmark-checks)
 - [Project Structure](#project-structure)
 - [Acknowledgements](#acknowledgements)
 
@@ -119,7 +120,7 @@ Trợ cấp thôi việc tính thế nào theo Điều 46?
 - [X] Next.js chat interface.
 - [X] Benchmark import, evaluation and LLM-as-a-judge scoring.
 - [ ] Add production monitoring dashboard.
-- [ ] Add CI/CD pipeline for automated checks and deployment.
+- [X] Add CI checks and manual benchmark workflow.
 
 ## Getting Started
 
@@ -145,6 +146,13 @@ Create a `.env` file in the repository root:
 ```env
 GROQ_API_KEY=your_groq_api_key
 GROQ_MODEL=qwen/qwen3-32b
+
+# Optional: Azure OpenAI Responses API for LLM-as-a-judge
+AZURE_OPENAI_RESPONSES_ENDPOINT=https://your-resource.cognitiveservices.azure.com/openai/responses?api-version=2025-04-01-preview
+AZURE_OPENAI_API_KEY=your_azure_openai_api_key
+AZURE_OPENAI_MODEL=GPT-5.4-MINI
+BENCHMARK_JUDGE_PROVIDER=azure_openai
+BENCHMARK_JUDGE_MODEL=GPT-5.4-MINI
 
 QDRANT_URL=
 QDRANT_API_KEY=
@@ -257,6 +265,12 @@ Run retrieval and answer-quality benchmark:
 .venv\Scripts\python.exe scripts\run_benchmark.py --provider groq --model qwen/qwen3-32b --limit 10
 ```
 
+Use Azure OpenAI Responses API as the LLM-as-a-judge:
+
+```powershell
+.venv\Scripts\python.exe scripts\run_benchmark.py --provider groq --model qwen/qwen3-32b --judge-provider azure_openai --judge-model GPT-5.4-MINI --limit 10
+```
+
 Run unit tests:
 
 ```powershell
@@ -264,6 +278,30 @@ Run unit tests:
 ```
 
 Benchmark outputs are written to `eval/results/*.jsonl` and `eval/results/*.csv`.
+
+## CI and Benchmark Checks
+
+Automation details are documented in [docs/CI.md](docs/CI.md).
+
+Backend checks:
+
+```powershell
+python -m pip install -e ".[dev]"
+ruff check .
+mypy src/vn_labor_law_ai_assistant/core src/vn_labor_law_ai_assistant/api src/vn_labor_law_ai_assistant/auth src/vn_labor_law_ai_assistant/db
+python -m unittest discover -s tests -v
+```
+
+Frontend checks:
+
+```powershell
+cd frontend
+npm install
+npm run lint
+npm run build
+```
+
+Benchmark workflow runs manually in GitHub Actions and defaults to retrieval-only mode. Answer-generation benchmark runs may require provider API key secrets.
 
 ## Project Structure
 

@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
-import os
 from pathlib import Path
 import re
 import shutil
@@ -15,7 +14,7 @@ from typing import Sequence
 import uuid
 import warnings
 
-from .config import REPO_ROOT, load_repo_env
+from .core.config import REPO_ROOT, load_repo_env, load_settings
 from .corpus_pipeline import extract_chunk_body, normalize_for_matching
 from .embeddings import embed_texts_via_http, is_custom_http_embedding_provider
 
@@ -102,6 +101,8 @@ QDRANT_KEYWORD_PAYLOAD_INDEX_FIELDS = (
     "article_number",
     "clause_ref",
     "point_ref",
+    "point_refs",
+    "chunk_type",
     "issue_type",
     "topic",
     "actor",
@@ -169,12 +170,13 @@ def require_qdrant():
 
 
 def qdrant_storage_mode() -> str:
-    return "cloud" if os.getenv("QDRANT_URL", "").strip() else "local"
+    return "cloud" if load_settings().qdrant_url.strip() else "local"
 
 
 def build_qdrant_client(qdrant_client_cls, qdrant_path: Path | None = None):
-    qdrant_url = os.getenv("QDRANT_URL", "").strip()
-    qdrant_api_key = os.getenv("QDRANT_API_KEY", "").strip()
+    settings = load_settings()
+    qdrant_url = settings.qdrant_url.strip()
+    qdrant_api_key = settings.optional_secret_value(settings.qdrant_api_key)
 
     if qdrant_url:
         return qdrant_client_cls(
@@ -282,6 +284,7 @@ def is_sparse_stopword(token: str) -> bool:
 
 def build_dense_text(chunk: dict[str, object]) -> str:
     retrieval_text = str(chunk.get("retrieval_text") or "").strip()
+    page_content = str(chunk.get("page_content") or "").strip()
     heading = str(chunk.get("heading") or "").strip()
     text = str(chunk.get("text") or "").strip()
     body_text = extract_chunk_body(text, heading)
@@ -295,7 +298,7 @@ def build_dense_text(chunk: dict[str, object]) -> str:
         for part in [document_title, citation_text, article_title, issue_terms, topic_terms]
         if part
     )
-    parts = [part for part in [metadata_text, retrieval_text, body_text] if part]
+    parts = [part for part in [metadata_text, retrieval_text or page_content, body_text] if part]
     return "\n".join(parts).strip()
 
 
@@ -317,6 +320,11 @@ def build_sparse_tokens(
     ]
 
     tokens.extend(token for token in explicit_tokens if token)
+    tokens.extend(
+        token
+        for value in chunk.get("point_refs") or []
+        if (token := normalize_reference_token("diem", str(value)))
+    )
     tokens.extend(extract_legal_hint_tokens(text_for_sparse))
     tokens.extend(
         token
@@ -524,8 +532,10 @@ def build_index_records(
             "chapter_heading": chunk.get("chapter_heading"),
             "section_heading": chunk.get("section_heading"),
             "level": chunk.get("level"),
+            "chunk_type": chunk.get("chunk_type"),
             "clause_ref": chunk.get("clause_ref"),
             "point_ref": chunk.get("point_ref"),
+            "point_refs": list(chunk.get("point_refs") or []),
             "parent_chunk_id": chunk.get("parent_chunk_id"),
             "citation_text": chunk.get("citation_text"),
             "topic": list(chunk.get("topic") or []),
@@ -602,8 +612,10 @@ def write_records_sqlite(records: Sequence[IndexRecord], output_path: Path) -> N
                 chapter_heading TEXT,
                 section_heading TEXT,
                 level TEXT,
+                chunk_type TEXT,
                 clause_ref TEXT,
                 point_ref TEXT,
+                point_refs TEXT,
                 citation_text TEXT NOT NULL,
                 dense_text TEXT NOT NULL,
                 sparse_text TEXT NOT NULL,
@@ -630,8 +642,12 @@ def write_records_sqlite(records: Sequence[IndexRecord], output_path: Path) -> N
                 record.payload.get("chapter_heading"),
                 record.payload.get("section_heading"),
                 record.payload.get("level"),
+                record.payload.get("chunk_type"),
                 record.payload.get("clause_ref"),
                 record.payload.get("point_ref"),
+                "|" + "|".join(str(value) for value in record.payload.get("point_refs") or []) + "|"
+                if record.payload.get("point_refs")
+                else "",
                 record.citation_text,
                 record.dense_text,
                 record.sparse_text,
@@ -647,10 +663,10 @@ def write_records_sqlite(records: Sequence[IndexRecord], output_path: Path) -> N
             """
             INSERT INTO records (
                 chunk_id, document_id, document_title, section_id, article_number, article_title,
-                heading, chapter_heading, section_heading, level, clause_ref, point_ref,
+                heading, chapter_heading, section_heading, level, chunk_type, clause_ref, point_ref, point_refs,
                 citation_text, dense_text, sparse_text, text, parent_chunk_id, source_kind,
                 source_path, payload_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )

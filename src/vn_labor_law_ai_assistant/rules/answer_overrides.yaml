@@ -1,0 +1,147 @@
+answer_overrides:
+  - name: employment_contract_types
+    enabled: true
+    priority: 100
+    question_all:
+      - hop dong lao dong
+    question_any:
+      - bao nhieu loai
+      - co may loai
+    context_all:
+      - hop dong lao dong khong xac dinh thoi han
+      - hop dong lao dong xac dinh thoi han
+    answer: "Co 2 loai hop dong lao dong: hop dong lao dong khong xac dinh thoi han va hop dong lao dong xac dinh thoi han."
+    quote_terms:
+      - hop dong lao dong khong xac dinh thoi han
+      - hop dong lao dong xac dinh thoi han
+    citation_terms:
+      - dieu 20
+      - khoan 1
+    notes: ""
+
+  - name: indefinite_contract_notice_45_days
+    enabled: true
+    priority: 90
+    question_all:
+      - khong xac dinh thoi han
+      - bao truoc
+    question_any:
+      - bao lau
+      - thoi han
+      - nghi viec
+      - cham dut
+      - don phuong
+    context_all:
+      - 45 ngay
+      - hop dong lao dong khong xac dinh thoi han
+    answer: "Nguoi lao dong lam viec theo hop dong lao dong khong xac dinh thoi han phai bao truoc it nhat 45 ngay khi don phuong cham dut hop dong."
+    append_if_context_all:
+      - nganh nghe cong viec dac thu
+      - chinh phu
+    append_text: " Neu thuoc mot so nganh, nghe, cong viec dac thu thi thoi han bao truoc thuc hien theo quy dinh cua Chinh phu."
+    quote_terms:
+      - 45 ngay
+      - khong xac dinh thoi han
+    citation_terms:
+      - dieu 35
+      - khoan 1
+      - diem a
+    notes: ""
+
+  - name: fixed_contract_12_to_36_month_notice_30_days
+    enabled: true
+    priority: 80
+    question_all:
+      - xac dinh thoi han
+      - 12
+      - 36
+      - bao truoc
+    question_not:
+      - khong xac dinh thoi han
+    question_any:
+      - bao lau
+      - thoi han
+      - nghi viec
+      - cham dut
+      - don phuong
+    context_all:
+      - 30 ngay
+    answer: "Nguoi lao dong lam viec theo hop dong lao dong xac dinh thoi han tu 12 thang den 36 thang phai bao truoc it nhat 30 ngay."
+    quote_terms:
+      - 30 ngay
+      - 12 thang
+      - 36 thang
+    citation_terms:
+      - dieu 35
+      - khoan 1
+      - diem b
+    notes: ""
+
+  - name: fixed_contract_under_12_month_notice_3_working_days
+    enabled: true
+    priority: 80
+    question_all:
+      - duoi 12
+      - bao truoc
+    question_any:
+      - bao lau
+      - thoi han
+      - nghi viec
+      - cham dut
+      - don phuong
+    context_all:
+      - 03 ngay lam viec
+    answer: "Thoi han bao truoc la it nhat 03 ngay lam viec doi voi hop dong lao dong xac dinh thoi han co thoi han duoi 12 thang."
+    quote_terms:
+      - 03 ngay lam viec
+      - duoi 12 thang
+    citation_terms:
+      - dieu 35
+      - khoan 1
+      - diem c
+    notes: ""
+
+  - name: probation_college_60_days
+    enabled: true
+    priority: 70
+    question_all:
+      - thu viec
+      - cao dang
+    context_all:
+      - 60 ngay
+    answer: "Thoi gian thu viec toi da doi voi cong viec yeu cau trinh do tu cao dang tro len la khong qua 60 ngay."
+    quote_terms:
+      - 60 ngay
+    citation_terms:
+      - dieu 25
+    notes: ""
+
+  - name: probation_salary_85_percent
+    enabled: true
+    priority: 70
+    question_all:
+      - luong
+      - thu viec
+    context_percent_any:
+      - 85
+    answer: "Muc luong thu viec it nhat phai bang 85% muc luong cua cong viec do."
+    quote_terms:
+      - 85
+    citation_terms:
+      - dieu 26
+    notes: ""
+
+  - name: overtime_weekly_rest_day_200_percent
+    enabled: true
+    priority: 70
+    question_all:
+      - lam them
+      - ngay nghi hang tuan
+    context_percent_any:
+      - 200
+    answer: "Nguoi lao dong lam them gio vao ngay nghi hang tuan duoc tra luong it nhat bang 200% so voi ngay lam viec binh thuong."
+    quote_terms:
+      - 200
+    citation_terms:
+      - dieu 98
+    notes: ""

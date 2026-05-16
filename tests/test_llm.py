@@ -1,18 +1,23 @@
 from __future__ import annotations
 
+import json
 import unittest
 from unittest.mock import Mock, patch
 
 from vn_labor_law_ai_assistant.llm import (
+    build_azure_openai_payload,
     chat_completion,
     create_groq_chat_completion_with_retries,
+    DEFAULT_AZURE_OPENAI_MODEL,
     DEFAULT_GROQ_BENCHMARK_JUDGE_MODEL,
     default_benchmark_judge_model,
     default_benchmark_judge_provider,
     default_model_for_provider,
+    extract_azure_openai_response_content,
     groq_rate_limit_sleep_seconds,
     groq_response_format_fallbacks,
     groq_response_format_for_model,
+    is_azure_openai_content_filter_error,
     is_groq_json_validation_error,
     is_groq_rate_limit_error,
     normalize_provider,
@@ -36,14 +41,28 @@ class LLMTests(unittest.TestCase):
             super().__init__(message)
             self.status_code = status_code
 
+    class FakeHTTPError(Exception):
+        def __init__(
+            self,
+            message: str,
+            *,
+            status_code: int = 400,
+            response_body: str = "",
+        ) -> None:
+            super().__init__(message)
+            self.status_code = status_code
+            self.response_body = response_body
+
     def test_normalize_provider_validates_supported_values(self) -> None:
         self.assertEqual(normalize_provider("Groq"), "groq")
+        self.assertEqual(normalize_provider("azure_openai"), "azure_openai")
 
         with self.assertRaises(ValueError):
             normalize_provider("ollama")
 
     def test_resolve_model_name_uses_provider_defaults(self) -> None:
         self.assertEqual(resolve_model_name("groq", None), default_model_for_provider("groq"))
+        self.assertEqual(resolve_model_name("azure_openai", None), DEFAULT_AZURE_OPENAI_MODEL)
         self.assertEqual(resolve_model_name("groq", "llama-3.3-70b-versatile"), "llama-3.3-70b-versatile")
 
     def test_default_benchmark_judge_provider_defaults_to_groq(self) -> None:
@@ -55,11 +74,22 @@ class LLMTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 default_benchmark_judge_provider()
 
+    def test_default_benchmark_judge_provider_accepts_azure_openai(self) -> None:
+        with patch.dict("os.environ", {"BENCHMARK_JUDGE_PROVIDER": "azure_openai"}, clear=True):
+            self.assertEqual(default_benchmark_judge_provider(), "azure_openai")
+
     def test_default_benchmark_judge_model_defaults_to_groq_judge_model(self) -> None:
         with patch.dict("os.environ", {"BENCHMARK_JUDGE_MODEL": ""}, clear=True):
             self.assertEqual(
                 default_benchmark_judge_model("groq"),
                 DEFAULT_GROQ_BENCHMARK_JUDGE_MODEL,
+            )
+
+    def test_default_benchmark_judge_model_defaults_to_azure_model(self) -> None:
+        with patch.dict("os.environ", {"BENCHMARK_JUDGE_MODEL": ""}, clear=True):
+            self.assertEqual(
+                default_benchmark_judge_model("azure_openai"),
+                DEFAULT_AZURE_OPENAI_MODEL,
             )
 
     def test_default_benchmark_judge_model_reads_override(self) -> None:
@@ -118,6 +148,54 @@ class LLMTests(unittest.TestCase):
             )
         )
         self.assertFalse(is_groq_json_validation_error(self.FakeAPIError("Internal server error")))
+
+    def test_is_azure_openai_content_filter_error_detects_400_filter(self) -> None:
+        self.assertTrue(
+            is_azure_openai_content_filter_error(
+                self.FakeHTTPError(
+                    "Azure OpenAI request failed",
+                    response_body='{"error":{"code":"content_filter"}}',
+                )
+            )
+        )
+        self.assertFalse(
+            is_azure_openai_content_filter_error(
+                self.FakeHTTPError("Azure OpenAI request failed", status_code=500)
+            )
+        )
+
+    def test_build_azure_openai_payload_uses_responses_api_shape(self) -> None:
+        payload = build_azure_openai_payload(
+            model="GPT-5.4-MINI",
+            messages=[{"role": "user", "content": "Cham diem JSON"}],
+            temperature=0,
+            text_format={"type": "json_object"},
+        )
+
+        self.assertEqual(payload["model"], "GPT-5.4-MINI")
+        self.assertEqual(payload["input"], [{"role": "user", "content": "Cham diem JSON"}])
+        self.assertEqual(payload["text"], {"format": {"type": "json_object"}})
+
+    def test_extract_azure_openai_response_content_reads_output_text(self) -> None:
+        self.assertEqual(
+            extract_azure_openai_response_content({"output_text": '{"score":5}'}),
+            '{"score":5}',
+        )
+        self.assertEqual(
+            extract_azure_openai_response_content(
+                {
+                    "output": [
+                        {
+                            "type": "message",
+                            "content": [
+                                {"type": "output_text", "text": '{"score":4}'},
+                            ],
+                        }
+                    ]
+                }
+            ),
+            '{"score":4}',
+        )
 
     def test_groq_rate_limit_sleep_seconds_uses_retry_after_hint(self) -> None:
         delay = groq_rate_limit_sleep_seconds(
@@ -207,6 +285,52 @@ class LLMTests(unittest.TestCase):
         second_kwargs = fake_client.chat.completions.create.call_args_list[1].kwargs
         self.assertEqual(first_kwargs["response_format"], {"type": "json_object"})
         self.assertNotIn("response_format", second_kwargs)
+
+    @patch("vn_labor_law_ai_assistant.llm.urlopen")
+    def test_chat_completion_dispatches_to_azure_openai_responses(
+        self,
+        mock_urlopen: Mock,
+    ) -> None:
+        fake_http_response = Mock()
+        fake_http_response.read.return_value = json.dumps(
+            {"output": [{"content": [{"type": "output_text", "text": '{"score":5}'}]}]}
+        ).encode("utf-8")
+        fake_http_response.__enter__ = Mock(return_value=fake_http_response)
+        fake_http_response.__exit__ = Mock(return_value=None)
+        mock_urlopen.return_value = fake_http_response
+
+        with patch.dict(
+            "os.environ",
+            {
+                "AZURE_OPENAI_API_KEY": "test-key",
+                "AZURE_OPENAI_RESPONSES_ENDPOINT": (
+                    "https://example.openai.azure.com/openai/responses"
+                ),
+                "AZURE_OPENAI_API_VERSION": "2025-04-01-preview",
+            },
+            clear=True,
+        ):
+            response = chat_completion(
+                provider="azure_openai",
+                model="GPT-5.4-MINI",
+                messages=[{"role": "user", "content": "Cham diem"}],
+                temperature=0,
+                json_schema={"type": "object", "properties": {"score": {"type": "integer"}}},
+                json_schema_name="judge_score",
+            )
+
+        self.assertEqual(response.provider, "azure_openai")
+        self.assertEqual(response.model, "GPT-5.4-MINI")
+        self.assertEqual(response.content, '{"score":5}')
+        request = mock_urlopen.call_args.args[0]
+        self.assertEqual(
+            request.full_url,
+            "https://example.openai.azure.com/openai/responses?api-version=2025-04-01-preview",
+        )
+        request_payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(request_payload["model"], "GPT-5.4-MINI")
+        self.assertEqual(request_payload["text"]["format"]["type"], "json_schema")
+        self.assertEqual(request_payload["text"]["format"]["name"], "judge_score")
 
 
 if __name__ == "__main__":

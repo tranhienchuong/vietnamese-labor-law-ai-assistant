@@ -195,6 +195,59 @@ class CorpusPipelineTests(unittest.TestCase):
         self.assertTrue(any("địch họa hoặc di dời" in chunk["text"] for chunk in chunks))
         self.assertTrue(all("\n\nịch họa" not in chunk["text"] for chunk in chunks))
 
+    def test_chunk_sections_groups_clause_intro_with_points(self) -> None:
+        section = split_sections(
+            page_records=[
+                PageRecord(
+                    page_number=1,
+                    text=(
+                        "Điều 107. Làm thêm giờ\n"
+                        "2. Người sử dụng lao động được sử dụng người lao động làm thêm giờ khi đáp ứng đầy đủ các yêu cầu sau đây:\n"
+                        "a) Phải được sự đồng ý của người lao động;\n"
+                        "b) Bảo đảm số giờ làm thêm của người lao động không quá 50% số giờ làm việc bình thường trong 01 ngày;\n"
+                        "c) Bảo đảm số giờ làm thêm của người lao động không quá 200 giờ trong 01 năm."
+                    ),
+                )
+            ],
+            document_id="45-2019-qh14",
+            document_title="Bộ luật số 45/2019/QH14",
+        )[0]
+
+        chunks = chunk_sections([section], max_chars=1200)
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0]["clause_ref"], "2")
+        self.assertEqual(chunks[0]["point_refs"], ["a", "b", "c"])
+        self.assertIn("khi đáp ứng đầy đủ các yêu cầu", chunks[0]["text"])
+        self.assertIn("a) Phải được sự đồng ý", chunks[0]["text"])
+        self.assertIn("c) Bảo đảm số giờ làm thêm", chunks[0]["text"])
+
+    def test_chunk_sections_uses_sequential_chunks_for_complex_amendment_article(self) -> None:
+        section = split_sections(
+            page_records=[
+                PageRecord(
+                    page_number=1,
+                    text=(
+                        "Điều 219. Sửa đổi, bổ sung một số điều của các luật có liên quan đến lao động\n"
+                        "1. Sửa đổi, bổ sung một số điều của Luật Bảo hiểm xã hội:\n"
+                        "a) Sửa đổi, bổ sung Điều 54 như sau:\n"
+                        "“Điều 54. Điều kiện hưởng lương hưu\n"
+                        "1. Người lao động khi nghỉ việc có đủ 20 năm đóng bảo hiểm xã hội trở lên thì được hưởng lương hưu.\n"
+                        "a) Đủ tuổi theo quy định tại khoản 2 Điều 169 của Bộ luật Lao động;”"
+                    ),
+                )
+            ],
+            document_id="45-2019-qh14",
+            document_title="Bộ luật số 45/2019/QH14",
+        )[0]
+
+        chunks = chunk_sections([section], max_chars=400)
+
+        self.assertTrue(chunks)
+        self.assertTrue(all(chunk["chunk_type"] == "article_sequential" for chunk in chunks))
+        self.assertTrue(all(chunk["clause_ref"] is None for chunk in chunks))
+        self.assertTrue(all(chunk["point_refs"] == [] for chunk in chunks))
+
     def test_chunk_sections_preserves_clause_and_point_hierarchy(self) -> None:
         page_records = [
             PageRecord(
@@ -218,22 +271,16 @@ class CorpusPipelineTests(unittest.TestCase):
         )[0]
 
         chunks = chunk_sections([section], max_chars=500)
-        body_lookup = {
-            chunk["text"].split("\n\n", 1)[1]: chunk
-            for chunk in chunks
-            if "\n\n" in chunk["text"]
-        }
-
-        clause_chunk = next(chunk for body, chunk in body_lookup.items() if "Trường hợp người lao động có thời gian" in body)
-        point_chunk = next(chunk for body, chunk in body_lookup.items() if body.startswith("c.2)"))
-        subpoint_chunk = next(chunk for body, chunk in body_lookup.items() if body.startswith("c.3)"))
+        clause_chunk = next(chunk for chunk in chunks if chunk["clause_ref"] == "2")
+        clause_with_points = next(chunk for chunk in chunks if chunk["clause_ref"] == "4")
 
         self.assertEqual(clause_chunk["clause_ref"], "2")
         self.assertIsNone(clause_chunk["point_ref"])
-        self.assertEqual(point_chunk["clause_ref"], "4")
-        self.assertEqual(point_chunk["point_ref"], "c.2")
-        self.assertEqual(subpoint_chunk["clause_ref"], "4")
-        self.assertEqual(subpoint_chunk["point_ref"], "c.3")
+        self.assertEqual(clause_with_points["point_refs"], ["c", "c.2", "c.3"])
+        self.assertIsNone(clause_with_points["point_ref"])
+        self.assertIn("4. Xác định thời gian", clause_with_points["text"])
+        self.assertIn("c.2) Trường hợp hợp đồng lao động", clause_with_points["text"])
+        self.assertIn("c.3) Người sử dụng lao động", clause_with_points["text"])
 
     def test_chunk_sections_assigns_nearest_parent_chunk_id(self) -> None:
         page_records = [
@@ -258,18 +305,16 @@ class CorpusPipelineTests(unittest.TestCase):
         )[0]
 
         chunks = chunk_sections([section], max_chars=500)
-        article_chunk = next(chunk for chunk in chunks if chunk["clause_ref"] is None and chunk["point_ref"] is None)
+        article_chunk = next(chunk for chunk in chunks if chunk["chunk_type"] == "article_intro")
         clause_one_chunk = next(chunk for chunk in chunks if chunk["clause_ref"] == "1" and chunk["point_ref"] is None)
         clause_two_chunk = next(chunk for chunk in chunks if chunk["clause_ref"] == "2" and chunk["point_ref"] is None)
-        point_a_chunk = next(chunk for chunk in chunks if chunk["point_ref"] == "a")
-        point_c_chunk = next(chunk for chunk in chunks if chunk["point_ref"] == "c")
-        point_c2_chunk = next(chunk for chunk in chunks if chunk["point_ref"] == "c.2")
 
         self.assertEqual(clause_one_chunk["parent_chunk_id"], article_chunk["chunk_id"])
         self.assertEqual(clause_two_chunk["parent_chunk_id"], article_chunk["chunk_id"])
-        self.assertEqual(point_a_chunk["parent_chunk_id"], clause_one_chunk["chunk_id"])
-        self.assertEqual(point_c_chunk["parent_chunk_id"], clause_two_chunk["chunk_id"])
-        self.assertEqual(point_c2_chunk["parent_chunk_id"], point_c_chunk["chunk_id"])
+        self.assertEqual(clause_one_chunk["point_refs"], ["a"])
+        self.assertEqual(clause_two_chunk["point_refs"], ["c", "c.2"])
+        self.assertIn("Nội dung mở đầu điều luật.", clause_one_chunk["text"])
+        self.assertIn("Nội dung mở đầu điều luật.", clause_two_chunk["text"])
 
     def test_chunk_sections_whitespace_fallback_does_not_split_words(self) -> None:
         body = " ".join(["alpha", "beta", "gamma"] * 80)

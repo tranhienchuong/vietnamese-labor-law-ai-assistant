@@ -11,8 +11,8 @@
   "cleaned_text_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/cleaned/nghi-dinh-145-2020-nd-cp.txt",
   "chunks_path": "C:/Workspace/vietnamese-labor-law-ai-assistant/corpus/chunks/nghi-dinh-145-2020-nd-cp.jsonl",
   "section_count": 3,
-  "chunk_count": 28,
+  "chunk_count": 16,
   "warnings": [],
   "pages_with_text": [],
-  "generated_at": "2026-04-16T19:25:06.361168+00:00"
+  "generated_at": "2026-05-15T15:47:38.535331+00:00"
 }

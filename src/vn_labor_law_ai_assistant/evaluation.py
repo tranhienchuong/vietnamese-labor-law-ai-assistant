@@ -143,6 +143,24 @@ Lưu ý:
 - Không tự chấm final_score_10; hệ thống sẽ tính điểm tổng hợp bằng công thức riêng.
 - Trả đúng JSON theo schema."""
 
+AZURE_SAFE_JUDGE_SYSTEM_PROMPT = """You are a QA evaluator for a Vietnamese labor-law RAG benchmark.
+
+Compare the candidate answer with the reference answer, expected citations, and retrieved citations.
+Return one JSON object that matches the provided schema.
+
+Rubric:
+- answer_correct: yes when the main legal conclusion is correct, partial for incomplete or minor errors, no for material errors or off-topic answers.
+- legal_issue_classification_correct: yes when the central legal issue is correctly identified, partial for mixed classification, no for a wrong legal issue.
+- legal_reasoning_score_1_5: 5 is complete legal reasoning, 4 is mostly complete, 3 has important gaps, 2 is vague or partly confused, 1 is wrong.
+- missing_information_score_0_2: 2 handles missing facts well, 1 mentions missing facts vaguely, 0 overstates a conclusion or asks for unnecessary facts.
+- citation_supports_answer: yes when citations support the conclusion, partial when relevant but incomplete, no when unsupported or wrong.
+- groundedness_score_1_5: 5 is fully grounded in supplied citations, 3 has some unsupported expansion, 1 is mostly unsupported.
+- clarity_score_1_5 and format_score_1_5 evaluate readability and answer structure.
+- hallucination_types: include legal_basis, rule, or fact when the candidate adds unsupported citations, rules, or facts; use [] when none are clear.
+- comments: one short Vietnamese sentence with the main reason for the score.
+
+The aggregate final_score_10 is computed outside the model."""
+
 LEGAL_ARTICLE_RE = re.compile(r"\bdieu\s+(?P<value>\d+[a-z]?)")
 LEGAL_CLAUSE_RE = re.compile(r"\bkhoan\s+(?P<value>\d+)")
 LEGAL_POINT_GROUP_RE = re.compile(
@@ -990,29 +1008,54 @@ def build_judge_messages(
     expected_citations_scoped: Sequence[str],
     retrieved_citations: Sequence[str],
     case_scope: str,
+    azure_safe: bool = False,
 ) -> list[dict[str, str]]:
-    user_prompt = "\n\n".join(
-        [
-            f"QUESTION:\n{case.question.strip()}",
-            f"GOLD_ISSUE:\n{case.gold_issue.strip()}",
-            f"GOLD_ANSWER:\n{case.gold_answer_full.strip()}",
-            f"GOLD_ANSWER_SHORT:\n{case.gold_answer_short.strip()}",
-            f"ABSTAIN_REQUIRED:\n{case.abstain_required}",
-            f"GOLD_MISSING_INFORMATION:\n{(case.missing_information or '').strip()}",
-            f"CASE_SCOPE:\n{case_scope}",
-            "EXPECTED_CITATIONS_IN_SCOPE:",
-            "\n".join(f"- {citation}" for citation in expected_citations_scoped) or "-",
-            "Judge chi duoc dua tren evidence duoc cap trong prompt nay.",
-            "RETRIEVED_CITATIONS:",
-            "\n".join(f"- {citation}" for citation in retrieved_citations) or "-",
-            f"GENERATED_ANSWER:\n{generated_answer.strip()}",
-            "GENERATED_LEGAL_BASIS:",
-            "\n".join(f"- {citation}" for citation in generated_legal_basis) or "-",
-            f"INSUFFICIENT_CONTEXT:\n{insufficient_context}",
-        ]
-    )
+    if azure_safe:
+        user_prompt = "\n\n".join(
+            [
+                f"QUESTION:\n{case.question.strip()}",
+                f"REFERENCE_ISSUE:\n{case.gold_issue.strip()}",
+                f"REFERENCE_ANSWER:\n{case.gold_answer_full.strip()}",
+                f"REFERENCE_SHORT_ANSWER:\n{case.gold_answer_short.strip()}",
+                f"ABSTAIN_EXPECTED:\n{case.abstain_required}",
+                f"MISSING_FACTS_NOTE:\n{(case.missing_information or '').strip()}",
+                f"CASE_SCOPE:\n{case_scope}",
+                "EXPECTED_CITATIONS:",
+                "\n".join(f"- {citation}" for citation in expected_citations_scoped) or "-",
+                "RETRIEVED_CITATIONS:",
+                "\n".join(f"- {citation}" for citation in retrieved_citations) or "-",
+                f"CANDIDATE_ANSWER:\n{generated_answer.strip()}",
+                "CANDIDATE_LEGAL_BASIS:",
+                "\n".join(f"- {citation}" for citation in generated_legal_basis) or "-",
+                f"CANDIDATE_INSUFFICIENT_CONTEXT:\n{insufficient_context}",
+            ]
+        )
+    else:
+        user_prompt = "\n\n".join(
+            [
+                f"QUESTION:\n{case.question.strip()}",
+                f"GOLD_ISSUE:\n{case.gold_issue.strip()}",
+                f"GOLD_ANSWER:\n{case.gold_answer_full.strip()}",
+                f"GOLD_ANSWER_SHORT:\n{case.gold_answer_short.strip()}",
+                f"ABSTAIN_REQUIRED:\n{case.abstain_required}",
+                f"GOLD_MISSING_INFORMATION:\n{(case.missing_information or '').strip()}",
+                f"CASE_SCOPE:\n{case_scope}",
+                "EXPECTED_CITATIONS_IN_SCOPE:",
+                "\n".join(f"- {citation}" for citation in expected_citations_scoped) or "-",
+                "Judge chi duoc dua tren evidence duoc cap trong prompt nay.",
+                "RETRIEVED_CITATIONS:",
+                "\n".join(f"- {citation}" for citation in retrieved_citations) or "-",
+                f"GENERATED_ANSWER:\n{generated_answer.strip()}",
+                "GENERATED_LEGAL_BASIS:",
+                "\n".join(f"- {citation}" for citation in generated_legal_basis) or "-",
+                f"INSUFFICIENT_CONTEXT:\n{insufficient_context}",
+            ]
+        )
     return [
-        {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
+        {
+            "role": "system",
+            "content": AZURE_SAFE_JUDGE_SYSTEM_PROMPT if azure_safe else JUDGE_SYSTEM_PROMPT,
+        },
         {"role": "user", "content": user_prompt},
     ]
 
@@ -1139,6 +1182,7 @@ __all__ = [
     "RESULTS_COLUMNS",
     "WORKBOOK_RESULTS_SHEET_NAME",
     "WORKBOOK_SHEET_NAME",
+    "AZURE_SAFE_JUDGE_SYSTEM_PROMPT",
     "case_requires_missing_information_handling",
     "citation_matches_expected",
     "citation_document_matches_expected",

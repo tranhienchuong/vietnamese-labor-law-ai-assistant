@@ -66,7 +66,7 @@ class QueryRoutingTests(unittest.TestCase):
         self.assertEqual(intent.article_number, "41")
         self.assertEqual(intent.article_numbers, ("41",))
 
-    def test_route_query_adds_query_expansion_for_retrieval_miss_phrases(self) -> None:
+    def test_route_query_adds_query_expansion_for_legal_concept_phrases(self) -> None:
         cases = {
             "Cong ty tra luong cham thi co bi gi khong?": {"97", "35"},
             "Cong ty tra l\u01b0\u01a1ng ch\u1eadm thi co bi gi khong?": {"97", "35"},
@@ -99,7 +99,7 @@ class QueryRoutingTests(unittest.TestCase):
 
     def test_route_query_expands_common_plain_vietnamese_terms(self) -> None:
         cases = {
-            "Cong ty ep viet don nghi thi toi doi boi thuong duoc khong?": {"34", "35", "36", "41"},
+            "Cong ty ep viet don nghi thi toi doi boi thuong duoc khong?": {"7", "15", "34", "36", "39", "41"},
             "Luong thang 13 co bat buoc khong?": {"104"},
             "Cong ty can tru phep nam cua toi co dung khong?": {"113", "114", "48"},
             "Cong ty chuyen toi lam viec khac so voi hop dong duoc khong?": {"29"},
@@ -121,6 +121,19 @@ class QueryRoutingTests(unittest.TestCase):
         self.assertEqual(variants[0], "Cong ty no luong 1 thang toi nghi luon duoc khong?")
         self.assertTrue(any("khong duoc tra du luong" in variant for variant in variants))
         self.assertTrue(any("Dieu 97" in variant and "Dieu 35" in variant for variant in variants))
+
+    def test_direct_reference_definition_query_uses_exact_clause_target(self) -> None:
+        intent = route_query("Nguoi lao dong duoc hieu nhu the nao trong Bo luat Lao dong?")
+
+        self.assertEqual(intent.forced_references[0].document_id, "45-2019-qh14")
+        self.assertEqual(intent.forced_references[0].article, "3")
+        self.assertEqual(intent.forced_references[0].clause, "1")
+        self.assertIn("definition_nguoi_lao_dong", intent.matched_direct_reference_rules)
+
+        variants = build_query_variants(intent)
+
+        self.assertIn("Dieu 3 khoan 1 Bo luat Lao dong 2019", variants)
+        self.assertFalse(any("Dieu 5" in variant for variant in variants))
 
     def test_parse_reference_values_collects_all_matches(self) -> None:
         values = parse_reference_values(
@@ -220,6 +233,25 @@ class QueryRoutingTests(unittest.TestCase):
         self.assertIn("dieu_17", tokens)
         self.assertIn("bao", tokens)
         self.assertIn("hiem", tokens)
+
+    def test_sparse_query_keeps_generic_actor_for_definition_queries(self) -> None:
+        class FakeSegmenter:
+            def segment(self, text: str) -> list[str]:
+                return text.lower().split()
+
+        class FakeSparseEncoder:
+            def encode_query(self, tokens: list[str]) -> SimpleNamespace:
+                return SimpleNamespace(indices=[1], values=[1.0])
+
+        retriever = HybridRetriever.__new__(HybridRetriever)
+        retriever._segmenter = FakeSegmenter()
+        retriever._sparse_encoder = FakeSparseEncoder()
+        retriever._qdrant_models = models
+        intent = route_query("Nguoi lao dong duoc dinh nghia nhu the nao?")
+
+        tokens, _ = HybridRetriever._encode_sparse_query(retriever, intent)
+
+        self.assertIn("actor_nguoi_lao_dong", tokens)
 
     def test_dense_query_uses_custom_http_provider(self) -> None:
         retriever = HybridRetriever.__new__(HybridRetriever)
@@ -928,6 +960,182 @@ class RetrievalAssemblyTests(unittest.TestCase):
         )
 
         self.assertEqual([hit.chunk_id for hit in expanded_hits], ["dieu-35-k1", "dieu-35-k2"])
+
+    def test_forced_reference_fetches_exact_clause_and_promotes_it(self) -> None:
+        forced = RetrievedRecord(
+            chunk_id="dieu-3-k2",
+            parent_chunk_id=None,
+            citation_text="Bo luat so 45/2019/QH14, Dieu 3, khoan 2",
+            text="Nguoi su dung lao dong...",
+            dense_text="",
+            sparse_text="",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "3",
+                "clause_ref": "2",
+            },
+        )
+        retriever = HybridRetriever.__new__(HybridRetriever)
+        captured_kwargs: list[dict[str, object]] = []
+
+        def fake_fetch(**kwargs):
+            captured_kwargs.append(kwargs)
+            return (forced,)
+
+        retriever._fetch_records_by_reference = fake_fetch
+        intent = route_query("Nguoi su dung lao dong la ai?")
+        hits = (
+            SearchHit(
+                chunk_id="dieu-3-k6",
+                qdrant_point_id="point-wrong",
+                score=0.95,
+                citation_text="Bo luat so 45/2019/QH14, Dieu 3, khoan 6",
+                payload={"chunk_id": "dieu-3-k6", "article_number": "3", "clause_ref": "6"},
+            ),
+        )
+
+        expanded_hits = HybridRetriever._append_forced_reference_hits(
+            retriever,
+            hits,
+            intent,
+            limit=4,
+        )
+
+        self.assertEqual([hit.chunk_id for hit in expanded_hits], ["dieu-3-k2", "dieu-3-k6"])
+        self.assertTrue(expanded_hits[0].payload["retrieval_forced_reference"])
+        self.assertGreater(expanded_hits[0].score, hits[0].score)
+        self.assertEqual(captured_kwargs[0]["document_ids"], ("45-2019-qh14",))
+        self.assertEqual(captured_kwargs[0]["article_numbers"], ("3",))
+        self.assertEqual(captured_kwargs[0]["clause_refs"], ("2",))
+
+    def test_pin_forced_reference_keeps_exact_hit_before_reranked_candidates(self) -> None:
+        retriever = HybridRetriever.__new__(HybridRetriever)
+        intent = route_query("Hop dong lao dong la gi?")
+        forced_hit = SearchHit(
+            chunk_id="dieu-13-k1",
+            qdrant_point_id="point-forced",
+            score=0.5,
+            citation_text="Bo luat so 45/2019/QH14, Dieu 13, khoan 1",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "13",
+                "clause_ref": "1",
+            },
+        )
+        semantic_hit = SearchHit(
+            chunk_id="dieu-13-k2",
+            qdrant_point_id="point-semantic",
+            score=1.4,
+            citation_text="Bo luat so 45/2019/QH14, Dieu 13, khoan 2",
+            payload={
+                "document_id": "45-2019-qh14",
+                "article_number": "13",
+                "clause_ref": "2",
+            },
+        )
+
+        pinned = HybridRetriever._pin_forced_reference_hits(
+            retriever,
+            (semantic_hit, forced_hit),
+            intent,
+        )
+
+        self.assertEqual([hit.chunk_id for hit in pinned], ["dieu-13-k1", "dieu-13-k2"])
+
+    def test_reference_fallback_fetches_high_confidence_inferred_article(self) -> None:
+        fallback = RetrievedRecord(
+            chunk_id="dieu-17-k1",
+            parent_chunk_id=None,
+            citation_text="Bo luat so 45/2019/QH14, Dieu 17, khoan 1",
+            text="Khong duoc giu ban chinh giay to tuy than.",
+            dense_text="",
+            sparse_text="",
+            payload={"article_number": "17", "clause_ref": "1"},
+        )
+        retriever = HybridRetriever.__new__(HybridRetriever)
+        retriever._fetch_records = lambda chunk_ids: {}
+        retriever._fetch_records_by_reference = (
+            lambda **kwargs: (fallback,) if kwargs.get("article_numbers") == ("17",) else ()
+        )
+        intent = route_query("Cong ty giu CCCD ban goc cua toi co duoc khong?")
+        hits = (
+            SearchHit(
+                chunk_id="other",
+                qdrant_point_id="point-other",
+                score=0.9,
+                citation_text="Dieu 100",
+                payload={"chunk_id": "other"},
+            ),
+        )
+
+        expanded_hits = HybridRetriever._append_reference_fallback_hits(
+            retriever,
+            hits,
+            intent,
+            limit=4,
+        )
+
+        self.assertEqual([hit.chunk_id for hit in expanded_hits], ["other", "dieu-17-k1"])
+        self.assertLess(expanded_hits[-1].score, hits[0].score)
+
+    def test_reference_fallback_ignores_soft_hint_articles(self) -> None:
+        retriever = HybridRetriever.__new__(HybridRetriever)
+        retriever._fetch_records = lambda chunk_ids: {}
+
+        def fail_fetch(**kwargs):
+            raise AssertionError("soft-hint articles must not be fetched as fallback")
+
+        retriever._fetch_records_by_reference = fail_fetch
+        intent = route_query("Ca dem duoc tinh tu may gio?")
+        hits = (
+            SearchHit(
+                chunk_id="other",
+                qdrant_point_id="point-other",
+                score=0.9,
+                citation_text="Dieu 100",
+                payload={"chunk_id": "other"},
+            ),
+        )
+
+        expanded_hits = HybridRetriever._append_reference_fallback_hits(
+            retriever,
+            hits,
+            intent,
+            limit=4,
+        )
+
+        self.assertEqual(expanded_hits, hits)
+
+    def test_reference_fallback_skips_wide_high_confidence_article_sets(self) -> None:
+        retriever = HybridRetriever.__new__(HybridRetriever)
+
+        def fail_fetch_records(chunk_ids):
+            raise AssertionError("wide inferred article sets must not force fallback")
+
+        retriever._fetch_records = fail_fetch_records
+        retriever._fetch_records_by_reference = lambda **kwargs: ()
+        intent = route_query(
+            "Quan ly bat toi ky don tu nguyen nghi viec de cong ty khong phai ra quyet dinh cho nghi"
+        )
+        hits = (
+            SearchHit(
+                chunk_id="other",
+                qdrant_point_id="point-other",
+                score=0.9,
+                citation_text="Dieu 100",
+                payload={"chunk_id": "other"},
+            ),
+        )
+
+        expanded_hits = HybridRetriever._append_reference_fallback_hits(
+            retriever,
+            hits,
+            intent,
+            limit=4,
+        )
+
+        self.assertGreater(len(intent.force_reference_article_numbers), 4)
+        self.assertEqual(expanded_hits, hits)
 
     def test_rerank_hits_demotes_delegation_clause_for_calculation_query(self) -> None:
         retriever = HybridRetriever.__new__(HybridRetriever)
