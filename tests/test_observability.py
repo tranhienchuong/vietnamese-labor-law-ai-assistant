@@ -4,7 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
-from vn_labor_law_ai_assistant.auth_store import AuthStore
+from helpers import create_test_auth_store
 from vn_labor_law_ai_assistant.observability.models import ChatTraceCreate
 from vn_labor_law_ai_assistant.observability.repository import ChatTraceRepository
 
@@ -12,7 +12,7 @@ from vn_labor_law_ai_assistant.observability.repository import ChatTraceReposito
 class ChatTraceRepositoryTest(TestCase):
     def setUp(self) -> None:
         self.tmpdir = TemporaryDirectory()
-        self.store = AuthStore(Path(self.tmpdir.name) / "app.db")
+        self.store = create_test_auth_store(Path(self.tmpdir.name) / "app.db")
         self.repository = ChatTraceRepository(self.store.database)
         user = self.store.get_user_by_email("user@example.com")
         self.assertIsNotNone(user)

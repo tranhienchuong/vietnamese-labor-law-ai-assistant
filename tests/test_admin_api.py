@@ -12,15 +12,15 @@ from fastapi.testclient import TestClient
 import vn_labor_law_ai_assistant.api.deps as api_deps
 from vn_labor_law_ai_assistant.admin.service import AdminService
 from vn_labor_law_ai_assistant.api import app
-from vn_labor_law_ai_assistant.auth_store import AuthStore
 from vn_labor_law_ai_assistant.core.config import Settings, get_settings
 from vn_labor_law_ai_assistant.observability import ChatTraceService
+from helpers import create_test_auth_store
 
 
 class AdminApiTest(TestCase):
     def setUp(self) -> None:
         self.tmpdir = TemporaryDirectory()
-        self.store = AuthStore(Path(self.tmpdir.name) / "app.db")
+        self.store = create_test_auth_store(Path(self.tmpdir.name) / "app.db")
         self.previous_auth_store = api_deps._auth_store
         api_deps._auth_store = self.store
         self.client = TestClient(app)

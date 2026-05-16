@@ -4,8 +4,8 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 
+from helpers import create_test_auth_store
 from vn_labor_law_ai_assistant.auth_store import (
-    AuthStore,
     AuthUser,
     create_access_token,
     decode_and_verify_token,
@@ -58,7 +58,7 @@ class AuthStoreTest(TestCase):
 
     def test_login_session_and_user_scoped_conversation_history(self) -> None:
         with TemporaryDirectory() as tmpdir:
-            store = AuthStore(Path(tmpdir) / "app.db")
+            store = create_test_auth_store(Path(tmpdir) / "app.db")
             user = store.authenticate_user("user@example.com", "user12345")
             self.assertIsNotNone(user)
             assert user is not None
