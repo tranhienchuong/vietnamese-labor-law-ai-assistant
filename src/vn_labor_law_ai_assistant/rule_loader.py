@@ -11,6 +11,7 @@ import yaml
 from .corpus_pipeline import normalize_for_matching
 
 DEFAULT_RULES_PATH = Path(__file__).with_name("rules") / "routing_config.yaml"
+DEFAULT_ANSWER_OVERRIDES_PATH = Path(__file__).with_name("rules") / "answer_overrides.yaml"
 RuleConfig = SimpleNamespace
 _RULE_LISTS = ("expansion_rules", "legal_high_precision_rules", "legal_soft_hint_rules")
 _RULE_FIELDS = ("phrases", "articles", "topics", "issues", "expansions", "excluded_phrases", "context_phrases")
@@ -66,6 +67,26 @@ class DirectReferenceRule:
     topics: tuple[str, ...] = ()
     issues: tuple[str, ...] = ()
     expansions: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class AnswerOverrideRule:
+    name: str
+    enabled: bool
+    priority: int
+    question_all: tuple[str, ...]
+    question_any: tuple[str, ...]
+    question_not: tuple[str, ...]
+    context_all: tuple[str, ...]
+    context_any: tuple[str, ...]
+    context_not: tuple[str, ...]
+    context_percent_any: tuple[int, ...]
+    append_if_context_all: tuple[str, ...]
+    append_text: str
+    answer: str
+    quote_terms: tuple[str, ...]
+    citation_terms: tuple[str, ...]
+    notes: str
 
 
 def _seq(value: Any) -> tuple[str, ...]:
@@ -133,6 +154,71 @@ def _direct_reference_rule_from_yaml(data: dict[str, Any]) -> DirectReferenceRul
     )
 
 
+def _answer_override_percent_values(value: Any, *, rule_name: str) -> tuple[int, ...]:
+    if value is None:
+        return ()
+    raw_values = (value,) if isinstance(value, (str, int)) else value
+    values: list[int] = []
+    try:
+        iterator = iter(raw_values)
+    except TypeError as exc:
+        raise ValueError(
+            f"answer override rule {rule_name!r} field context_percent_any must be a sequence of integers"
+        ) from exc
+    for item in iterator:
+        try:
+            values.append(int(item))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"answer override rule {rule_name!r} has invalid context_percent_any value: {item!r}"
+            ) from exc
+    return tuple(values)
+
+
+def _answer_override_rule_from_yaml(data: dict[str, Any], *, index: int) -> AnswerOverrideRule:
+    if not isinstance(data, dict):
+        raise ValueError(f"answer override rule at index {index} must be a mapping")
+
+    name = str(data.get("name") or "").strip()
+    if not name:
+        raise ValueError(f"answer override rule at index {index} is missing required field: name")
+
+    answer = str(data.get("answer") or "")
+    if not answer.strip():
+        raise ValueError(f"answer override rule {name!r} is missing required field: answer")
+
+    enabled = data.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ValueError(f"answer override rule {name!r} field enabled must be a boolean")
+
+    priority = data.get("priority", 0)
+    if isinstance(priority, bool):
+        raise ValueError(f"answer override rule {name!r} field priority must be an integer")
+    try:
+        priority_value = int(priority)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"answer override rule {name!r} field priority must be an integer") from exc
+
+    return AnswerOverrideRule(
+        name=name,
+        enabled=enabled,
+        priority=priority_value,
+        question_all=_normalized_seq(data.get("question_all")),
+        question_any=_normalized_seq(data.get("question_any")),
+        question_not=_normalized_seq(data.get("question_not")),
+        context_all=_normalized_seq(data.get("context_all")),
+        context_any=_normalized_seq(data.get("context_any")),
+        context_not=_normalized_seq(data.get("context_not")),
+        context_percent_any=_answer_override_percent_values(data.get("context_percent_any"), rule_name=name),
+        append_if_context_all=_normalized_seq(data.get("append_if_context_all")),
+        append_text=str(data.get("append_text") or ""),
+        answer=answer,
+        quote_terms=_normalized_seq(data.get("quote_terms")),
+        citation_terms=_normalized_seq(data.get("citation_terms")),
+        notes=str(data.get("notes") or ""),
+    )
+
+
 class RuleLoader:
     """Load the routing YAML once and expose the familiar Python rule structures.
 
@@ -196,9 +282,47 @@ class RuleLoader:
         return RuleConfig(**config)
 
 
+class AnswerOverrideLoader:
+    """Load contextual answer override rules from YAML.
+
+    The loader is intentionally strict: malformed files or rules fail fast
+    instead of silently disabling answer guardrails.
+    """
+
+    def __init__(self, path: str | Path = DEFAULT_ANSWER_OVERRIDES_PATH) -> None:
+        self.path = Path(path)
+
+    def load(self) -> tuple[AnswerOverrideRule, ...]:
+        if not self.path.is_file():
+            raise FileNotFoundError(f"answer override rules file not found: {self.path}")
+
+        with self.path.open(encoding="utf-8") as rule_file:
+            raw = yaml.safe_load(rule_file)
+
+        if not isinstance(raw, dict):
+            raise ValueError(f"answer override rules file must contain a mapping: {self.path}")
+
+        raw_rules = raw.get("answer_overrides")
+        if not isinstance(raw_rules, list):
+            raise ValueError(f"answer override rules file must contain an answer_overrides list: {self.path}")
+
+        indexed_rules = [
+            (index, _answer_override_rule_from_yaml(rule, index=index))
+            for index, rule in enumerate(raw_rules)
+        ]
+        indexed_rules.sort(key=lambda item: (-item[1].priority, item[0]))
+        return tuple(rule for _, rule in indexed_rules)
+
+
 @lru_cache(maxsize=1)
 def get_default_rule_config() -> RuleConfig:
     return RuleLoader().load()
 
 
+@lru_cache(maxsize=8)
+def load_answer_override_rules(path: str | Path = DEFAULT_ANSWER_OVERRIDES_PATH) -> tuple[AnswerOverrideRule, ...]:
+    return AnswerOverrideLoader(path).load()
+
+
 DEFAULT_RULE_CONFIG = get_default_rule_config()
+DEFAULT_ANSWER_OVERRIDE_RULES = load_answer_override_rules()
