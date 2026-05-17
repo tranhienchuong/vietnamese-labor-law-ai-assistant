@@ -105,6 +105,7 @@ class Settings(BaseSettings):
 
     benchmark_judge_provider: str = Field(default="groq", alias="BENCHMARK_JUDGE_PROVIDER")
     benchmark_judge_model: str = Field(default="", alias="BENCHMARK_JUDGE_MODEL")
+    eval_citation_match_mode: str = Field(default="containment", alias="EVAL_CITATION_MATCH_MODE")
 
     qdrant_url: str = Field(default="", alias="QDRANT_URL")
     qdrant_api_key: SecretStr | None = Field(default=None, alias="QDRANT_API_KEY")
@@ -112,11 +113,17 @@ class Settings(BaseSettings):
         default="vietnamese_labor_law_chunks",
         alias="QDRANT_COLLECTION",
     )
+    qdrant_timeout: float = Field(default=120.0, alias="QDRANT_TIMEOUT")
 
     retriever_record_source: str = Field(default="", alias="RETRIEVER_RECORD_SOURCE")
     index_path: Path = Field(default=Path("artifacts/index"), alias="INDEX_PATH")
     reranker_model: str = Field(default="", alias="RERANKER_MODEL")
     reranker_top_n: int = Field(default=24, alias="RERANKER_TOP_N")
+    enable_article_sibling_contexts: bool = Field(
+        default=True,
+        alias="ENABLE_ARTICLE_SIBLING_CONTEXTS",
+    )
+    sibling_context_limit: int = Field(default=8, alias="SIBLING_CONTEXT_LIMIT")
 
     embedding_provider: str = Field(
         default="sentence_transformers",
@@ -164,6 +171,11 @@ class Settings(BaseSettings):
     @field_validator("query_router_fallback_to_heuristic", mode="before")
     @classmethod
     def _validate_query_router_fallback_to_heuristic(cls, value: Any) -> Any:
+        return _bool_with_default(value, True)
+
+    @field_validator("enable_article_sibling_contexts", mode="before")
+    @classmethod
+    def _validate_enable_article_sibling_contexts(cls, value: Any) -> Any:
         return _bool_with_default(value, True)
 
     @property
@@ -240,6 +252,9 @@ class Settings(BaseSettings):
             "rerankerModel": self.reranker_model,
             "rerankerEnabled": bool(self.reranker_model.strip()),
             "rerankerTopN": self.reranker_top_n,
+            "articleSiblingContextsEnabled": self.enable_article_sibling_contexts,
+            "siblingContextLimit": self.sibling_context_limit,
+            "qdrantTimeout": self.qdrant_timeout,
             "queryRouterEnabled": self.query_router_enabled,
             "queryRouterProvider": self.query_router_provider,
             "queryRouterModel": self.query_router_model,

@@ -8,6 +8,7 @@ from ...heuristic_router import (
     infer_employee_notice_period_reference,
     query_asks_for_enumeration,
 )
+from ...core.config import load_settings
 from .constants import RULE_CONFIG
 from .models import RetrievedRecord, RetrievalContext, SearchHit
 from .record_store import RecordStore
@@ -15,6 +16,7 @@ from .utils import (
     build_expanded_context_text,
     context_article_key,
     context_looks_like_enumeration_parent,
+    env_flag,
     extend_context_with_records,
 )
 
@@ -28,8 +30,13 @@ class ContextAssembler:
     ) -> None:
         self.record_store = record_store
         self.rule_config = rule_config
+        settings = load_settings()
+        self.sibling_context_limit = max(1, int(settings.sibling_context_limit))
+        self.enable_article_sibling_contexts = env_flag("ENABLE_ARTICLE_SIBLING_CONTEXTS", True)
 
     def query_needs_article_siblings(self, intent: QueryIntent) -> bool:
+        if not self.enable_article_sibling_contexts:
+            return False
         if query_asks_for_enumeration(intent):
             return True
         if intent.clause_refs or intent.point_refs:
@@ -40,6 +47,25 @@ class ContextAssembler:
         return bool(
             set(intent.issue_filters).intersection(query_context.get("article_sibling_issues", ()))
         )
+
+    def sibling_limit(self, requested_limit: int) -> int:
+        return max(1, min(max(1, int(requested_limit)), self.sibling_context_limit))
+
+    @staticmethod
+    def without_excluded_records(
+        records: Sequence[RetrievedRecord],
+        exclude_chunk_ids: set[str],
+        *,
+        limit: int,
+    ) -> tuple[RetrievedRecord, ...]:
+        selected: list[RetrievedRecord] = []
+        for record in records:
+            if record.chunk_id in exclude_chunk_ids:
+                continue
+            selected.append(record)
+            if len(selected) >= limit:
+                break
+        return tuple(selected)
 
     def add_article_sibling_contexts(
         self,
@@ -85,6 +111,51 @@ class ContextAssembler:
         if not records_by_article:
             return tuple(contexts)
 
+        article_sibling_cache: dict[tuple[str, str], tuple[RetrievedRecord, ...]] = {}
+        reference_sibling_cache: dict[
+            tuple[str, str, tuple[str, ...], tuple[str, ...], int],
+            tuple[RetrievedRecord, ...],
+        ] = {}
+
+        def fetch_article_siblings_cached(
+            document_id: str,
+            article_number: str,
+        ) -> tuple[RetrievedRecord, ...]:
+            key = (document_id, article_number)
+            if key not in article_sibling_cache:
+                article_sibling_cache[key] = self.record_store.fetch_article_siblings(
+                    document_id=document_id,
+                    article_number=article_number,
+                    limit=self.sibling_context_limit,
+                )
+            return article_sibling_cache[key]
+
+        def fetch_reference_siblings_cached(
+            *,
+            document_id: str,
+            article_number: str,
+            clause_refs: Sequence[str] = (),
+            point_refs: Sequence[str] = (),
+            limit: int,
+        ) -> tuple[RetrievedRecord, ...]:
+            capped_limit = self.sibling_limit(limit)
+            key = (
+                document_id,
+                article_number,
+                dedupe_preserve_order(tuple(clause_refs)),
+                dedupe_preserve_order(tuple(point_refs)),
+                capped_limit,
+            )
+            if key not in reference_sibling_cache:
+                reference_sibling_cache[key] = self.record_store.fetch_records_by_reference(
+                    document_ids=(document_id,),
+                    article_numbers=(article_number,),
+                    clause_refs=key[2],
+                    point_refs=key[3],
+                    limit=capped_limit,
+                )
+            return reference_sibling_cache[key]
+
         expanded_contexts: list[RetrievalContext] = []
         added_sibling_ids: set[str] = set()
         for context in contexts:
@@ -107,15 +178,17 @@ class ContextAssembler:
                 notice_limit = (
                     4 if notice_point_refs else self.rule_config.MAX_ENUMERATION_CONTEXT_RECORDS
                 )
-                siblings = self.record_store.fetch_records_by_reference(
-                    document_ids=(document_id,),
-                    article_numbers=(article_number,),
+                siblings = fetch_reference_siblings_cached(
+                    document_id=document_id,
+                    article_number=article_number,
                     clause_refs=notice_clause_refs,
                     point_refs=notice_point_refs,
-                    exclude_chunk_ids=tuple(
-                        (seen_chunk_ids if notice_point_refs else set()) | added_sibling_ids
-                    ),
                     limit=notice_limit,
+                )
+                siblings = self.without_excluded_records(
+                    siblings,
+                    (seen_chunk_ids if notice_point_refs else set()) | added_sibling_ids,
+                    limit=self.sibling_limit(notice_limit),
                 )
                 force_include_siblings = True
                 if not notice_point_refs:
@@ -132,20 +205,21 @@ class ContextAssembler:
                 context_level = str(context.payload.get("level") or "")
                 clause_ref = str(context.payload.get("clause_ref") or "")
                 if context_level == "clause" and context_looks_like_enumeration_parent(context) and clause_ref:
-                    siblings = self.record_store.fetch_records_by_reference(
-                        document_ids=(document_id,),
-                        article_numbers=(article_number,),
-                        clause_refs=(clause_ref,),
-                        exclude_chunk_ids=tuple(added_sibling_ids),
-                        limit=self.rule_config.MAX_ENUMERATION_CONTEXT_RECORDS,
-                    )
-                else:
-                    siblings = self.record_store.fetch_article_siblings(
+                    requested_limit = self.rule_config.MAX_ENUMERATION_CONTEXT_RECORDS
+                    siblings = fetch_reference_siblings_cached(
                         document_id=document_id,
                         article_number=article_number,
-                        exclude_chunk_ids=tuple(added_sibling_ids),
-                        limit=self.rule_config.MAX_ENUMERATION_CONTEXT_RECORDS,
+                        clause_refs=(clause_ref,),
+                        limit=requested_limit,
                     )
+                else:
+                    requested_limit = self.rule_config.MAX_ENUMERATION_CONTEXT_RECORDS
+                    siblings = fetch_article_siblings_cached(document_id, article_number)
+                siblings = self.without_excluded_records(
+                    siblings,
+                    added_sibling_ids,
+                    limit=self.sibling_limit(requested_limit),
+                )
                 expanded_context = extend_context_with_records(
                     context,
                     siblings,
@@ -156,11 +230,11 @@ class ContextAssembler:
                 expanded_contexts.append(expanded_context)
                 continue
             else:
-                siblings = self.record_store.fetch_article_siblings(
-                    document_id=document_id,
-                    article_number=article_number,
-                    exclude_chunk_ids=tuple(seen_chunk_ids | added_sibling_ids),
-                    limit=3,
+                requested_limit = 3
+                siblings = self.without_excluded_records(
+                    fetch_article_siblings_cached(document_id, article_number),
+                    seen_chunk_ids | added_sibling_ids,
+                    limit=requested_limit,
                 )
                 force_include_siblings = False
             expanded_contexts.append(expanded_context)
@@ -259,4 +333,3 @@ class ContextAssembler:
 
 
 __all__ = ["ContextAssembler"]
-

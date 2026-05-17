@@ -1,23 +1,22 @@
 {
-  "build_id": "20260426T140706Z",
-  "generated_at": "2026-04-26T14:09:48.384971+00:00",
+  "build_id": "20260516T143900Z",
+  "generated_at": "2026-05-16T14:41:13.698930+00:00",
   "collection_name": "vietnamese_labor_law_chunks",
   "qdrant_storage": "cloud",
   "record_source": "qdrant_payload",
   "dense_model_name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
   "dense_vector_name": "dense",
   "sparse_vector_name": "sparse",
-  "record_count": 1013,
-  "corpus_signature": "281630c2bbda8abcb31f6bba96d597604ea5bd3e41e25084798d5f25fad15cd3",
+  "record_count": 716,
+  "corpus_signature": "662cccf380af0bc276fbb9d1707ff1047da4a45615a6ab9ac232228ed678c29d",
   "chunk_paths": [
-    "corpus/chunks/45-2019-qh14.jsonl",
-    "corpus/chunks/nghi-dinh-145-2020-nd-cp.jsonl"
+    "labor_law_rechunked_hierarchical.jsonl"
   ],
-  "build_dir": "artifacts/index/builds/build_20260426T140706Z",
-  "qdrant_path": "artifacts/index/builds/build_20260426T140706Z/qdrant",
-  "records_db_path": "artifacts/index/builds/build_20260426T140706Z/records.db",
-  "records_jsonl_path": "artifacts/index/builds/build_20260426T140706Z/records.jsonl",
-  "sparse_encoder_path": "artifacts/index/builds/build_20260426T140706Z/sparse_encoder.json",
+  "build_dir": "artifacts/index/builds/build_20260516T143900Z",
+  "qdrant_path": "artifacts/index/builds/build_20260516T143900Z/qdrant",
+  "records_db_path": "artifacts/index/builds/build_20260516T143900Z/records.db",
+  "records_jsonl_path": "artifacts/index/builds/build_20260516T143900Z/records.jsonl",
+  "sparse_encoder_path": "artifacts/index/builds/build_20260516T143900Z/sparse_encoder.json",
   "batch_size": 32,
   "device": "cpu"
 }

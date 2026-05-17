@@ -44,6 +44,7 @@ class IndexingTests(unittest.TestCase):
 
         self.assertEqual(client.kwargs["url"], "https://example.qdrant.io")
         self.assertEqual(client.kwargs["api_key"], "secret")
+        self.assertEqual(client.kwargs["timeout"], 120.0)
         self.assertNotIn("path", client.kwargs)
 
     def test_build_qdrant_client_falls_back_to_local_path(self) -> None:
@@ -54,7 +55,10 @@ class IndexingTests(unittest.TestCase):
         with patch.dict("os.environ", {"QDRANT_URL": "", "QDRANT_API_KEY": ""}):
             client = build_qdrant_client(FakeQdrantClient, Path("artifacts/index/qdrant"))
 
-        self.assertEqual(client.kwargs, {"path": str(Path("artifacts/index/qdrant"))})
+        self.assertEqual(
+            client.kwargs,
+            {"path": str(Path("artifacts/index/qdrant")), "timeout": 120.0},
+        )
 
     def test_path_for_manifest_uses_repo_relative_paths(self) -> None:
         self.assertEqual(

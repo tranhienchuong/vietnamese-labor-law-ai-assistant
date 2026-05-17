@@ -23,6 +23,8 @@ def env_flag(name: str, default: bool) -> bool:
         return settings.query_router_enabled
     if name == "QUERY_ROUTER_FALLBACK_TO_HEURISTIC":
         return settings.query_router_fallback_to_heuristic
+    if name == "ENABLE_ARTICLE_SIBLING_CONTEXTS":
+        return settings.enable_article_sibling_contexts
     return default
 
 
@@ -327,4 +329,3 @@ __all__ = [
     "resolve_record_source",
     "select_contexts_for_prompt",
 ]
-

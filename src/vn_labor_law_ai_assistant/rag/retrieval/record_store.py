@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 import sqlite3
+import time
 from typing import Any, Sequence
+
+from qdrant_client.http.exceptions import ResponseHandlingException
 
 from ...heuristic_router import dedupe_preserve_order
 from ...indexing import make_qdrant_point_id
 from .models import RetrievedRecord, SearchHit
 from .utils import record_from_qdrant_payload, record_reference_sort_key
+
+
+logger = logging.getLogger(__name__)
 
 
 class RecordStore:
@@ -170,6 +177,55 @@ class QdrantPayloadRecordStore(RecordStore):
         self.models = qdrant_models
         self.collection_name = collection_name
 
+    def scroll_with_retry(
+        self,
+        *,
+        max_attempts: int = 3,
+        base_sleep_seconds: float = 1.0,
+        **kwargs,
+    ):
+        for attempt in range(1, max_attempts + 1):
+            started_at = time.perf_counter()
+            try:
+                points, next_page = self.qdrant.scroll(**kwargs)
+            except ResponseHandlingException as exc:
+                elapsed = time.perf_counter() - started_at
+                if attempt >= max_attempts:
+                    logger.warning(
+                        "Qdrant scroll failed after retries: collection=%s attempt=%s/%s elapsed=%.3fs error=%s",
+                        kwargs.get("collection_name", self.collection_name),
+                        attempt,
+                        max_attempts,
+                        elapsed,
+                        exc,
+                    )
+                    raise
+
+                sleep_seconds = base_sleep_seconds * (2 ** (attempt - 1))
+                logger.warning(
+                    "Qdrant scroll failed: collection=%s attempt=%s/%s elapsed=%.3fs sleep=%.1fs error=%s",
+                    kwargs.get("collection_name", self.collection_name),
+                    attempt,
+                    max_attempts,
+                    elapsed,
+                    sleep_seconds,
+                    exc,
+                )
+                time.sleep(sleep_seconds)
+                continue
+
+            elapsed = time.perf_counter() - started_at
+            log = logger.warning if elapsed > 5.0 else logger.info
+            log(
+                "Qdrant scroll done: collection=%s points=%s elapsed=%.3fs",
+                kwargs.get("collection_name", self.collection_name),
+                len(points),
+                elapsed,
+            )
+            return points, next_page
+
+        raise RuntimeError("Qdrant scroll retry loop exited unexpectedly.")
+
     @staticmethod
     def records_from_qdrant_points(points: Sequence[object]) -> dict[str, RetrievedRecord]:
         records: dict[str, RetrievedRecord] = {}
@@ -277,7 +333,7 @@ class QdrantPayloadRecordStore(RecordStore):
         if query_filter is None:
             return ()
 
-        points, _ = self.qdrant.scroll(
+        points, _ = self.scroll_with_retry(
             collection_name=self.collection_name,
             scroll_filter=query_filter,
             limit=max(1, int(limit)) * 4,
@@ -293,4 +349,3 @@ __all__ = [
     "RecordStore",
     "SQLiteRecordStore",
 ]
-

@@ -232,6 +232,58 @@ class EvaluationTests(unittest.TestCase):
 
         self.assertTrue(citation_matches_expected(expected, observed))
 
+    def test_citation_containment_matches_grouped_points(self) -> None:
+        positive_cases = (
+            ("Điều 20 khoản 1 điểm b", "Điều 20 khoản 1, các điểm a, b"),
+            ("Điều 20 khoản 2 điểm c", "Điều 20 khoản 2, các điểm a, b, c"),
+            ("Điều 8 khoản 3 điểm c", "Điều 8 khoản 3, các điểm b, c"),
+            ("Điều 35 khoản 1 điểm d", "Điều 35 khoản 1, các điểm a, b, c, d"),
+        )
+
+        for expected, observed in positive_cases:
+            with self.subTest(expected=expected, observed=observed):
+                self.assertTrue(citation_matches_expected(expected, observed, mode="containment"))
+                self.assertFalse(citation_matches_expected(expected, observed, mode="literal"))
+
+    def test_citation_containment_rejects_wrong_point_or_article(self) -> None:
+        self.assertFalse(
+            citation_matches_expected(
+                "Điều 20 khoản 1 điểm b",
+                "Điều 20 khoản 1 điểm a",
+                mode="containment",
+            )
+        )
+        self.assertFalse(
+            citation_matches_expected(
+                "Điều 20 khoản 1 điểm b",
+                "Điều 21 khoản 1 điểm b",
+                mode="containment",
+            )
+        )
+
+    def test_citation_containment_allows_specific_retrieved_or_broad_clause(self) -> None:
+        self.assertTrue(
+            citation_matches_expected(
+                "Điều 20 khoản 1",
+                "Điều 20 khoản 1 điểm b",
+                mode="containment",
+            )
+        )
+        self.assertTrue(
+            citation_matches_expected(
+                "Điều 20 khoản 1 điểm b",
+                "Điều 20 khoản 1",
+                mode="containment",
+            )
+        )
+        self.assertFalse(
+            citation_matches_expected(
+                "Điều 20 khoản 1 điểm b",
+                "Điều 20 khoản 1",
+                mode="normalized",
+            )
+        )
+
     def test_retrieval_hit_and_citation_scoring(self) -> None:
         case = BenchmarkCase(
             id="LBR_003",

@@ -8,7 +8,15 @@ import re
 from typing import Iterable, Sequence
 
 from .corpus_pipeline import normalize_for_matching
-from .indexing import extract_legal_hint_tokens
+from .core.config import load_settings
+from .evaluation_citation_matcher import (
+    CitationRef,
+    citation_contains,
+    citation_matches,
+    normalize_match_mode,
+    normalize_vietnamese_citation,
+    parse_citation,
+)
 
 
 WORKBOOK_SHEET_NAME = "golden_benchmark"
@@ -748,21 +756,23 @@ def citation_document_family(text: str) -> str | None:
     return None
 
 
-def citation_matches_expected(expected: str, observed: str) -> bool:
-    expected_normalized = normalize_for_matching(expected)
-    observed_normalized = normalize_for_matching(observed)
+def resolve_citation_match_mode(mode: str | None = None) -> str:
+    if mode is not None:
+        return normalize_match_mode(mode)
+    return normalize_match_mode(load_settings().eval_citation_match_mode)
 
+
+def citation_matches_expected(expected: str, observed: str, *, mode: str | None = None) -> bool:
     expected_family = citation_document_family(expected)
     observed_family = citation_document_family(observed)
     if expected_family and observed_family and expected_family != observed_family:
         return False
 
-    expected_tokens = set(extract_legal_hint_tokens(expected))
-    observed_tokens = set(extract_legal_hint_tokens(observed))
-    if expected_tokens:
-        return expected_tokens.issubset(observed_tokens)
-
-    return expected_normalized in observed_normalized or observed_normalized in expected_normalized
+    return citation_matches(
+        retrieved_text=observed,
+        expected_text=expected,
+        mode=resolve_citation_match_mode(mode),
+    )
 
 
 def citation_document_matches_expected(expected: str, observed: str) -> bool:
@@ -777,6 +787,7 @@ def retrieval_hit_at_k(
     *,
     k: int = 5,
     allowed_document_families: Sequence[str] | None = None,
+    citation_match_mode: str | None = None,
 ) -> bool | None:
     gold_citations = expected_citations_in_scope(
         case,
@@ -787,7 +798,7 @@ def retrieval_hit_at_k(
 
     for expected in gold_citations:
         for observed in observed_citations[:k]:
-            if citation_matches_expected(expected, observed):
+            if citation_matches_expected(expected, observed, mode=citation_match_mode):
                 return True
     return False
 
@@ -795,8 +806,14 @@ def retrieval_hit_at_k(
 def score_citation_correctness(
     case: BenchmarkCase,
     observed_citations: Sequence[str],
+    *,
+    citation_match_mode: str | None = None,
 ) -> str:
-    return score_citation_correctness_for_scope(case, observed_citations)
+    return score_citation_correctness_for_scope(
+        case,
+        observed_citations,
+        citation_match_mode=citation_match_mode,
+    )
 
 
 def score_citation_correctness_for_scope(
@@ -804,6 +821,7 @@ def score_citation_correctness_for_scope(
     observed_citations: Sequence[str],
     *,
     allowed_document_families: Sequence[str] | None = None,
+    citation_match_mode: str | None = None,
 ) -> str:
     gold_citations = expected_citations_in_scope(
         case,
@@ -817,7 +835,10 @@ def score_citation_correctness_for_scope(
     matched = [
         expected
         for expected in gold_citations
-        if any(citation_matches_expected(expected, observed) for observed in observed_citations)
+        if any(
+            citation_matches_expected(expected, observed, mode=citation_match_mode)
+            for observed in observed_citations
+        )
     ]
     if len(matched) == len(gold_citations):
         return "exact"
@@ -831,11 +852,13 @@ def score_citation_article_correctness_for_scope(
     observed_citations: Sequence[str],
     *,
     allowed_document_families: Sequence[str] | None = None,
+    citation_match_mode: str | None = None,
 ) -> str:
     return score_citation_correctness_for_scope(
         case,
         observed_citations,
         allowed_document_families=allowed_document_families,
+        citation_match_mode=citation_match_mode,
     )
 
 
@@ -880,6 +903,7 @@ def first_relevant_rank(
     *,
     k: int = 5,
     allowed_document_families: Sequence[str] | None = None,
+    citation_match_mode: str | None = None,
 ) -> int | None:
     gold_citations = expected_citations_in_scope(
         case,
@@ -889,7 +913,10 @@ def first_relevant_rank(
         return None if allowed_document_families else 0
 
     for rank, observed in enumerate(observed_citations[:k], start=1):
-        if any(citation_matches_expected(expected, observed) for expected in gold_citations):
+        if any(
+            citation_matches_expected(expected, observed, mode=citation_match_mode)
+            for expected in gold_citations
+        ):
             return rank
     return 0
 
@@ -900,12 +927,14 @@ def reciprocal_rank(
     *,
     k: int = 5,
     allowed_document_families: Sequence[str] | None = None,
+    citation_match_mode: str | None = None,
 ) -> float | None:
     rank = first_relevant_rank(
         case,
         observed_citations,
         k=k,
         allowed_document_families=allowed_document_families,
+        citation_match_mode=citation_match_mode,
     )
     if rank is None:
         return None
@@ -1183,7 +1212,9 @@ __all__ = [
     "WORKBOOK_RESULTS_SHEET_NAME",
     "WORKBOOK_SHEET_NAME",
     "AZURE_SAFE_JUDGE_SYSTEM_PROMPT",
+    "CitationRef",
     "case_requires_missing_information_handling",
+    "citation_contains",
     "citation_matches_expected",
     "citation_document_matches_expected",
     "document_families_from_chunk_paths",
@@ -1204,8 +1235,10 @@ __all__ = [
     "parse_hallucination_types",
     "parse_judge_payload",
     "partition_citations_by_scope",
+    "parse_citation",
     "reciprocal_rank",
     "require_openpyxl",
+    "resolve_citation_match_mode",
     "result_columns",
     "retrieval_hit_at_k",
     "score_citation_article_correctness_for_scope",
@@ -1213,6 +1246,7 @@ __all__ = [
     "score_citation_correctness_for_scope",
     "score_citation_document_correctness_for_scope",
     "summarize_benchmark_cases",
+    "normalize_vietnamese_citation",
     "write_benchmark_jsonl",
     "write_results_csv",
     "write_results_jsonl",
