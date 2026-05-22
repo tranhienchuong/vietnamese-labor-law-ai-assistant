@@ -234,39 +234,141 @@ class Neo4jLegalGraphStore:
 
         relationship_depth = max(1, min(4, int(depth)))
         edge_type_values = [edge_type_label(edge_type) for edge_type in edge_types]
-        with self._session() as session:
-            result = session.run(
-                f"""
-                MATCH path = (seed:Evidence_Chunk)-[*1..{relationship_depth}]-(e:Evidence_Chunk)
+        allowed_edge_types = set(edge_type_values)
+        if not allowed_edge_types:
+            return GraphExpansionResult(seed_chunk_ids=seed_chunk_ids, expanded_chunk_ids=())
+
+        def allows(*values: EdgeType) -> bool:
+            return {value.value for value in values}.issubset(allowed_edge_types)
+
+        query_limit = max(max(1, int(limit)) * 4, 20)
+        expansion_queries: list[str] = []
+        if relationship_depth >= 2 and allows(EdgeType.SOURCE_OF, EdgeType.HAS_SOURCE_CHUNK):
+            expansion_queries.append(
+                """
+                MATCH path = (seed:Evidence_Chunk)-[r1:SOURCE_OF]->(:LegalNode)-[r2:HAS_SOURCE_CHUNK]->(e:Evidence_Chunk)
+                WHERE seed.chunk_id IN $seed_chunk_ids
+                  AND e.chunk_id IS NOT NULL
+                  AND NOT e.chunk_id IN $seed_chunk_ids
+                  AND all(rel IN relationships(path) WHERE coalesce(rel.confidence, 1.0) >= $min_confidence)
+                RETURN e.chunk_id AS chunk_id,
+                       length(path) AS graph_depth,
+                       [rel IN relationships(path) | type(rel)] AS graph_edge_path,
+                       [node IN nodes(path) | node.node_id] AS graph_node_path,
+                       reduce(conf = 1.0, rel IN relationships(path) |
+                           conf * coalesce(rel.confidence, 1.0)) AS graph_confidence
+                ORDER BY graph_depth ASC, graph_confidence DESC, chunk_id
+                LIMIT $query_limit
+                """
+            )
+        if relationship_depth >= 2 and (
+            allows(EdgeType.MENTIONS_CONCEPT)
+            or allows(EdgeType.APPLIES_TO)
+            or allows(EdgeType.REGULATES_ACTION)
+        ):
+            expansion_queries.append(
+                """
+                MATCH path = (seed:Evidence_Chunk)-[r1:MENTIONS_CONCEPT|APPLIES_TO|REGULATES_ACTION]->(:LegalNode)<-[r2:MENTIONS_CONCEPT|APPLIES_TO|REGULATES_ACTION]-(e:Evidence_Chunk)
                 WHERE seed.chunk_id IN $seed_chunk_ids
                   AND e.chunk_id IS NOT NULL
                   AND NOT e.chunk_id IN $seed_chunk_ids
                   AND all(rel IN relationships(path)
                           WHERE type(rel) IN $edge_types
                             AND coalesce(rel.confidence, 1.0) >= $min_confidence)
-                WITH e, path, length(path) AS graph_depth
-                ORDER BY graph_depth ASC
-                WITH e, collect({{
-                    graph_depth: graph_depth,
-                    graph_edge_path: [rel IN relationships(path) | type(rel)],
-                    graph_node_path: [node IN nodes(path) | node.node_id],
-                    graph_confidence: reduce(conf = 1.0, rel IN relationships(path) |
-                        conf * coalesce(rel.confidence, 1.0))
-                }})[0] AS best_path
                 RETURN e.chunk_id AS chunk_id,
-                       best_path.graph_depth AS graph_depth,
-                       best_path.graph_edge_path AS graph_edge_path,
-                       best_path.graph_node_path AS graph_node_path,
-                       best_path.graph_confidence AS graph_confidence
-                ORDER BY best_path.graph_depth ASC, best_path.graph_confidence DESC, e.chunk_id
-                LIMIT $limit
-                """,
-                seed_chunk_ids=list(seed_chunk_ids),
-                edge_types=edge_type_values,
-                min_confidence=float(min_confidence),
-                limit=max(1, int(limit)),
+                       length(path) AS graph_depth,
+                       [rel IN relationships(path) | type(rel)] AS graph_edge_path,
+                       [node IN nodes(path) | node.node_id] AS graph_node_path,
+                       reduce(conf = 1.0, rel IN relationships(path) |
+                           conf * coalesce(rel.confidence, 1.0)) AS graph_confidence
+                ORDER BY graph_depth ASC, graph_confidence DESC, chunk_id
+                LIMIT $query_limit
+                """
             )
-            paths = tuple(dict(record) for record in result)
+        if relationship_depth >= 3 and allows(EdgeType.SOURCE_OF, EdgeType.HAS_SOURCE_CHUNK):
+            expansion_queries.append(
+                """
+                MATCH path = (seed:Evidence_Chunk)-[r1:SOURCE_OF]->(:LegalNode)-[r2:REFERENCES|GUIDED_BY]-(:LegalNode)-[r3:HAS_SOURCE_CHUNK]->(e:Evidence_Chunk)
+                WHERE seed.chunk_id IN $seed_chunk_ids
+                  AND e.chunk_id IS NOT NULL
+                  AND NOT e.chunk_id IN $seed_chunk_ids
+                  AND type(r2) IN $edge_types
+                  AND all(rel IN relationships(path) WHERE coalesce(rel.confidence, 1.0) >= $min_confidence)
+                RETURN e.chunk_id AS chunk_id,
+                       length(path) AS graph_depth,
+                       [rel IN relationships(path) | type(rel)] AS graph_edge_path,
+                       [node IN nodes(path) | node.node_id] AS graph_node_path,
+                       reduce(conf = 1.0, rel IN relationships(path) |
+                           conf * coalesce(rel.confidence, 1.0)) AS graph_confidence
+                ORDER BY graph_depth ASC, graph_confidence DESC, chunk_id
+                LIMIT $query_limit
+                """
+            )
+        if relationship_depth >= 4 and allows(EdgeType.SOURCE_OF, EdgeType.HAS_SOURCE_CHUNK):
+            expansion_queries.append(
+                """
+                MATCH path = (seed:Evidence_Chunk)-[r1:SOURCE_OF]->(:LegalNode)-[r2:MENTIONS_CONCEPT|APPLIES_TO|REGULATES_ACTION]->(:LegalNode)<-[r3:MENTIONS_CONCEPT|APPLIES_TO|REGULATES_ACTION]-(target:LegalNode)-[r4:HAS_SOURCE_CHUNK]->(e:Evidence_Chunk)
+                WHERE seed.chunk_id IN $seed_chunk_ids
+                  AND NOT target:Evidence_Chunk
+                  AND e.chunk_id IS NOT NULL
+                  AND NOT e.chunk_id IN $seed_chunk_ids
+                  AND type(r2) IN $edge_types
+                  AND type(r3) IN $edge_types
+                  AND all(rel IN relationships(path) WHERE coalesce(rel.confidence, 1.0) >= $min_confidence)
+                RETURN e.chunk_id AS chunk_id,
+                       length(path) AS graph_depth,
+                       [rel IN relationships(path) | type(rel)] AS graph_edge_path,
+                       [node IN nodes(path) | node.node_id] AS graph_node_path,
+                       reduce(conf = 1.0, rel IN relationships(path) |
+                           conf * coalesce(rel.confidence, 1.0)) AS graph_confidence
+                ORDER BY graph_depth ASC, graph_confidence DESC, chunk_id
+                LIMIT $query_limit
+                """
+            )
+
+        if not expansion_queries:
+            return GraphExpansionResult(seed_chunk_ids=seed_chunk_ids, expanded_chunk_ids=())
+
+        paths_by_chunk_id: dict[str, dict[str, Any]] = {}
+        with self._session() as session:
+            for query in expansion_queries:
+                result = session.run(
+                    query,
+                    seed_chunk_ids=list(seed_chunk_ids),
+                    edge_types=edge_type_values,
+                    min_confidence=float(min_confidence),
+                    query_limit=query_limit,
+                )
+                for record in result:
+                    path = dict(record)
+                    chunk_id = str(path.get("chunk_id") or "")
+                    if not chunk_id:
+                        continue
+                    current = paths_by_chunk_id.get(chunk_id)
+                    if current is None:
+                        paths_by_chunk_id[chunk_id] = path
+                        continue
+                    current_key = (
+                        int(current.get("graph_depth") or 10_000),
+                        -float(current.get("graph_confidence") or 0.0),
+                    )
+                    next_key = (
+                        int(path.get("graph_depth") or 10_000),
+                        -float(path.get("graph_confidence") or 0.0),
+                    )
+                    if next_key < current_key:
+                        paths_by_chunk_id[chunk_id] = path
+
+        paths = tuple(
+            sorted(
+                paths_by_chunk_id.values(),
+                key=lambda path: (
+                    int(path.get("graph_depth") or 10_000),
+                    -float(path.get("graph_confidence") or 0.0),
+                    str(path.get("chunk_id") or ""),
+                ),
+            )[: max(1, int(limit))]
+        )
 
         expanded_chunk_ids = dedupe_preserve_order(
             tuple(str(path.get("chunk_id") or "") for path in paths if path.get("chunk_id"))

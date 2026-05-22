@@ -16,6 +16,9 @@ from .store import LegalGraphStore
 logger = logging.getLogger(__name__)
 
 
+MAX_GRAPH_SEED_CHUNKS = 8
+
+
 RELATION_WEIGHTS: dict[str, float] = {
     "REFERENCES": 0.18,
     "GUIDED_BY": 0.14,
@@ -193,7 +196,7 @@ class Neo4jLegalGraphExpander:
 
         seed_chunk_ids = dedupe_preserve_order(
             tuple(hit.chunk_id for hit in hits if hit.chunk_id in direct_records)
-        )
+        )[:MAX_GRAPH_SEED_CHUNKS]
         if not seed_chunk_ids:
             return ()
 
