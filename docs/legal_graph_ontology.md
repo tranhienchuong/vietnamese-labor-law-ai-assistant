@@ -12,6 +12,9 @@ Every node has:
 - `source_chunk_id`
 - provenance properties: `citation_text`, `extraction_method`, `confidence`
 
+`Legal_Document` nodes aggregate chunk provenance in `source_chunk_ids` and
+`source_chunk_count` instead of relying on one representative chunk.
+
 Every edge has:
 
 - `edge_id`
@@ -19,7 +22,12 @@ Every edge has:
 - `source_chunk_id`
 - `extraction_method`
 - `confidence`
-- provenance properties such as `citation_text`, `matched_text`, `source_span`
+- provenance properties such as `citation_text`, `normalized_matched_text`,
+  `normalized_source_span`, and, when available, `original_matched_text` and
+  `raw_source_span`
+
+Graph build summaries include `build_metadata` with the source `index_path`,
+manifest hash, manifest build id, record count, and UTC build timestamp.
 
 ## Node Types
 

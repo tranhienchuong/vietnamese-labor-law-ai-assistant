@@ -23,12 +23,20 @@ class LegalGraphConfig:
     def from_env(cls) -> "LegalGraphConfig":
         load_repo_env()
         settings = load_settings()
+        enabled = bool(settings.legal_graph_enabled)
+        neo4j_password = settings.optional_secret_value(settings.neo4j_password) or "password"
+        if enabled and settings.is_production and neo4j_password == "password":
+            raise RuntimeError(
+                "LEGAL_GRAPH_ENABLED=true is not allowed in production with the default "
+                'NEO4J_PASSWORD="password". Set a strong Neo4j password before enabling '
+                "the legal graph backend."
+            )
         return cls(
-            enabled=bool(settings.legal_graph_enabled),
+            enabled=enabled,
             backend=settings.legal_graph_backend.strip().lower() or "neo4j",
             neo4j_uri=settings.neo4j_uri.strip() or "bolt://localhost:7687",
             neo4j_user=settings.neo4j_user.strip() or "neo4j",
-            neo4j_password=settings.optional_secret_value(settings.neo4j_password) or "password",
+            neo4j_password=neo4j_password,
             neo4j_database=settings.neo4j_database.strip() or "neo4j",
             expansion_depth=max(1, int(settings.legal_graph_expansion_depth)),
             max_expanded_chunks=max(0, int(settings.legal_graph_max_expanded_chunks)),

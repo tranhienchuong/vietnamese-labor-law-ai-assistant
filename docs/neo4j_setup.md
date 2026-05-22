@@ -21,6 +21,25 @@ Build the legal graph from the current hybrid index:
 .venv\Scripts\python.exe scripts\build_legal_graph.py --index-path artifacts/index --neo4j-uri bolt://localhost:7687 --neo4j-user neo4j --neo4j-password password --neo4j-database neo4j
 ```
 
+Rebuild from scratch:
+
+```powershell
+.venv\Scripts\python.exe scripts\build_legal_graph.py --index-path artifacts/index --reset
+```
+
+Build only structural hierarchy and chunk evidence:
+
+```powershell
+.venv\Scripts\python.exe scripts\build_legal_graph.py --index-path artifacts/index --reset --structural-only
+```
+
+Concept and cross-reference extraction are enabled by default. They can be
+disabled independently:
+
+```powershell
+.venv\Scripts\python.exe scripts\build_legal_graph.py --index-path artifacts/index --no-with-concepts --no-with-references
+```
+
 Enable graph expansion in the RAG runtime:
 
 ```text
@@ -34,3 +53,7 @@ LEGAL_GRAPH_COMPLEX_QUERY_ONLY=true
 
 Open Neo4j Browser at `http://localhost:7474` and use the Cypher examples in
 [cypher_examples.md](cypher_examples.md).
+
+Production safety: do not use the default `NEO4J_PASSWORD=password` when
+`APP_ENV=production` and `LEGAL_GRAPH_ENABLED=true`; startup rejects that
+configuration.

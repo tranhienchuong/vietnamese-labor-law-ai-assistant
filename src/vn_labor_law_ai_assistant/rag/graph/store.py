@@ -10,6 +10,9 @@ class LegalGraphStore(Protocol):
     def setup_schema(self) -> None:
         ...
 
+    def reset_graph(self) -> None:
+        ...
+
     def close(self) -> None:
         ...
 

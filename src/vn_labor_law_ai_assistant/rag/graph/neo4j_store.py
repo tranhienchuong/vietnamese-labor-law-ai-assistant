@@ -24,6 +24,10 @@ def _coerce_properties(properties: dict[str, Any]) -> dict[str, Any]:
     return {str(key): _coerce_neo4j_value(value) for key, value in properties.items()}
 
 
+def _batched(values: Sequence[Any], batch_size: int = 500) -> Sequence[Sequence[Any]]:
+    return [values[index : index + batch_size] for index in range(0, len(values), batch_size)]
+
+
 class Neo4jLegalGraphStore:
     def __init__(
         self,
@@ -79,60 +83,84 @@ class Neo4jLegalGraphStore:
     def close(self) -> None:
         self._driver.close()
 
+    def reset_graph(self) -> None:
+        with self._session() as session:
+            session.run("MATCH (n:LegalNode) DETACH DELETE n")
+
     def upsert_nodes(self, nodes: Sequence[LegalGraphNode]) -> None:
         if not nodes:
             return
+        grouped_rows: dict[str, list[dict[str, Any]]] = {}
+        for node in nodes:
+            label = node_type_label(node.node_type)
+            properties = _coerce_properties(
+                {
+                    **node.properties,
+                    "node_id": node.node_id,
+                    "node_type": node.node_type.value,
+                    "name": node.name,
+                    "normalized_name": node.normalized_name,
+                    "source_chunk_id": node.source_chunk_id,
+                }
+            )
+            grouped_rows.setdefault(label, []).append(
+                {
+                    "node_id": node.node_id,
+                    "properties": properties,
+                }
+            )
+
         with self._session() as session:
-            for node in nodes:
-                label = node_type_label(node.node_type)
-                props = _coerce_properties(
-                    {
-                        **node.properties,
-                        "node_id": node.node_id,
-                        "node_type": node.node_type.value,
-                        "name": node.name,
-                        "normalized_name": node.normalized_name,
-                        "source_chunk_id": node.source_chunk_id,
-                    }
-                )
-                session.run(
-                    f"""
-                    MERGE (n:LegalNode {{node_id: $node_id}})
-                    SET n += $properties
-                    SET n:{label}
-                    """,
-                    node_id=node.node_id,
-                    properties=props,
-                )
+            for label, rows in grouped_rows.items():
+                for batch in _batched(rows):
+                    session.run(
+                        f"""
+                        UNWIND $rows AS row
+                        MERGE (n:LegalNode {{node_id: row.node_id}})
+                        SET n += row.properties
+                        SET n:{label}
+                        """,
+                        rows=list(batch),
+                    )
 
     def upsert_edges(self, edges: Sequence[LegalGraphEdge]) -> None:
         if not edges:
             return
+        grouped_rows: dict[str, list[dict[str, Any]]] = {}
+        for edge in edges:
+            relationship_type = edge_type_label(edge.edge_type)
+            properties = _coerce_properties(
+                {
+                    **edge.properties,
+                    "edge_id": edge.edge_id,
+                    "edge_type": edge.edge_type.value,
+                    "confidence": edge.confidence,
+                    "source_chunk_id": edge.source_chunk_id,
+                    "extraction_method": edge.extraction_method,
+                }
+            )
+            grouped_rows.setdefault(relationship_type, []).append(
+                {
+                    "source_id": edge.source_id,
+                    "target_id": edge.target_id,
+                    "edge_id": edge.edge_id,
+                    "properties": properties,
+                }
+            )
+
         with self._session() as session:
-            for edge in edges:
-                relationship_type = edge_type_label(edge.edge_type)
-                props = _coerce_properties(
-                    {
-                        **edge.properties,
-                        "edge_id": edge.edge_id,
-                        "edge_type": edge.edge_type.value,
-                        "confidence": edge.confidence,
-                        "source_chunk_id": edge.source_chunk_id,
-                        "extraction_method": edge.extraction_method,
-                    }
-                )
-                session.run(
-                    f"""
-                    MATCH (source:LegalNode {{node_id: $source_id}})
-                    MATCH (target:LegalNode {{node_id: $target_id}})
-                    MERGE (source)-[r:{relationship_type} {{edge_id: $edge_id}}]->(target)
-                    SET r += $properties
-                    """,
-                    source_id=edge.source_id,
-                    target_id=edge.target_id,
-                    edge_id=edge.edge_id,
-                    properties=props,
-                )
+            for relationship_type, rows in grouped_rows.items():
+                for batch in _batched(rows):
+                    session.run(
+                        f"""
+                        UNWIND $rows AS row
+                        MATCH (source:LegalNode {{node_id: row.source_id}})
+                        MATCH (target:LegalNode {{node_id: row.target_id}})
+                        MERGE (source)-[r:{relationship_type} {{edge_id: row.edge_id}}]->(target)
+                        SET r += row.properties
+                        """,
+                        rows=list(batch),
+                    )
 
     @staticmethod
     def _node_from_record(record: Any) -> LegalGraphNode | None:

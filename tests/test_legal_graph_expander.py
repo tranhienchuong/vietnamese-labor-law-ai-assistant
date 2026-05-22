@@ -41,6 +41,22 @@ def make_record(chunk_id: str) -> RetrievedRecord:
 
 
 class LegalGraphExpanderTests(unittest.TestCase):
+    def test_natural_language_query_triggers_graph_without_explicit_article(self) -> None:
+        store = FakeGraphStore(GraphExpansionResult(seed_chunk_ids=("seed",), expanded_chunk_ids=()))
+        expander = Neo4jLegalGraphExpander(
+            store=store,
+            config=LegalGraphConfig(enabled=True, complex_query_only=True),
+        )
+
+        graph_hits = expander.expand_from_hits(
+            hits=(make_hit("seed"),),
+            direct_records={"seed": make_record("seed")},
+            intent=route_query("Cong ty phai lam gi khi cho nghi viec trai luat?"),
+        )
+
+        self.assertEqual(graph_hits, ())
+        self.assertEqual(store.calls[0][0], ("seed",))
+
     def test_expand_from_seed_chunk_adds_provenance(self) -> None:
         result = GraphExpansionResult(
             seed_chunk_ids=("seed",),
@@ -72,6 +88,46 @@ class LegalGraphExpanderTests(unittest.TestCase):
         self.assertEqual(graph_hits[0].payload["retrieval_source"], "neo4j_graph_expansion")
         self.assertEqual(graph_hits[0].payload["graph_seed_chunk_ids"], ["seed"])
         self.assertEqual(graph_hits[0].payload["graph_depth"], 2)
+
+    def test_multi_hop_query_uses_depth_greater_than_two(self) -> None:
+        store = FakeGraphStore(
+            GraphExpansionResult(
+                seed_chunk_ids=("seed",),
+                expanded_chunk_ids=("expanded",),
+                paths=(
+                    {
+                        "chunk_id": "expanded",
+                        "graph_depth": 3,
+                        "graph_edge_path": [
+                            "SOURCE_OF",
+                            "MENTIONS_CONCEPT",
+                            "MENTIONS_CONCEPT",
+                        ],
+                        "graph_node_path": [
+                            "chunk:seed",
+                            "clause:35:1",
+                            "concept:don_phuong",
+                            "chunk:expanded",
+                        ],
+                        "graph_confidence": 0.7,
+                    },
+                ),
+            )
+        )
+        expander = Neo4jLegalGraphExpander(
+            store=store,
+            config=LegalGraphConfig(enabled=True, complex_query_only=True, expansion_depth=2),
+        )
+
+        graph_hits = expander.expand_from_hits(
+            hits=(make_hit("seed"),),
+            direct_records={"seed": make_record("seed")},
+            intent=route_query("Dieu kien va ngoai le khi don phuong cham dut hop dong la gi?"),
+        )
+
+        self.assertGreater(store.calls[0][1]["depth"], 2)
+        self.assertEqual(graph_hits[0].payload["graph_depth"], 3)
+        self.assertEqual(graph_hits[0].payload["graph_edge_path"][1], "MENTIONS_CONCEPT")
 
     def test_no_seed_node_does_not_crash(self) -> None:
         expander = Neo4jLegalGraphExpander(

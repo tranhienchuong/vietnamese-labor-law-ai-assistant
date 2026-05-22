@@ -73,12 +73,16 @@ class Neo4jLegalGraphStoreTests(unittest.TestCase):
 
         queries = "\n".join(query for query, _ in driver.session_obj.calls)
         self.assertIn("CREATE CONSTRAINT legal_node_node_id", queries)
+        self.assertIn("UNWIND $rows AS row", queries)
         self.assertIn("SET n:Legal_Article", queries)
         self.assertIn("MERGE (source)-[r:HAS_ARTICLE", queries)
         node_call = next(call for call in driver.session_obj.calls if "SET n:Legal_Article" in call[0])
-        self.assertEqual(node_call[1]["properties"]["source_chunk_id"], "chunk-35")
+        self.assertEqual(node_call[1]["rows"][0]["properties"]["source_chunk_id"], "chunk-35")
         edge_call = next(call for call in driver.session_obj.calls if "HAS_ARTICLE" in call[0])
-        self.assertEqual(edge_call[1]["properties"]["extraction_method"], "structural_metadata")
+        self.assertEqual(
+            edge_call[1]["rows"][0]["properties"]["extraction_method"],
+            "structural_metadata",
+        )
         self.assertTrue(driver.closed)
 
 

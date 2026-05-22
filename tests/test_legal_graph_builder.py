@@ -68,6 +68,36 @@ class LegalGraphBuilderTests(unittest.TestCase):
             self.assertGreaterEqual(edge.confidence, 0.0)
             self.assertIn("citation_text", edge.properties)
 
+    def test_document_node_aggregates_chunk_provenance_and_build_metadata(self) -> None:
+        result = LegalGraphBuilder().build(
+            (
+                make_record("doc-dieu-35-k1"),
+                make_record("doc-dieu-35-k2"),
+            ),
+            build_metadata={"index_path": "artifacts/index", "manifest_hash": "abc"},
+        )
+
+        document_node = next(node for node in result.nodes if node.node_type == NodeType.LEGAL_DOCUMENT)
+        self.assertEqual(document_node.source_chunk_id, "")
+        self.assertEqual(
+            document_node.properties["source_chunk_ids"],
+            ["doc-dieu-35-k1", "doc-dieu-35-k2"],
+        )
+        self.assertEqual(document_node.properties["source_chunk_count"], 2)
+        self.assertEqual(result.summary["build_metadata"]["manifest_hash"], "abc")
+
+    def test_structural_only_skips_concepts_and_references(self) -> None:
+        result = LegalGraphBuilder(
+            with_concepts=False,
+            with_references=False,
+        ).build((make_record(text="quy dinh tai Dieu 46 ve tro cap thoi viec"),))
+
+        edge_types = {edge.edge_type for edge in result.edges}
+        node_types = {node.node_type for node in result.nodes}
+        self.assertNotIn(NodeType.LEGAL_CONCEPT, node_types)
+        self.assertNotIn(EdgeType.MENTIONS_CONCEPT, edge_types)
+        self.assertNotIn(EdgeType.REFERENCES, edge_types)
+
     def test_builds_reference_and_guided_by_edges_from_decree_record(self) -> None:
         record = make_record(
             chunk_id="nd145-dieu-7",

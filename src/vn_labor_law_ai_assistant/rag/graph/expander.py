@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Sequence
 
+from ...corpus_pipeline import normalize_for_matching
 from ...heuristic_router import QueryIntent, dedupe_preserve_order
 from ...indexing import make_qdrant_point_id
 from ..retrieval.models import RetrievedRecord, SearchHit
@@ -28,6 +29,43 @@ RELATION_WEIGHTS: dict[str, float] = {
 }
 
 
+NATURAL_GRAPH_QUERY_HINTS: tuple[str, ...] = tuple(
+    normalize_for_matching(value)
+    for value in (
+        "khi nào",
+        "điều kiện",
+        "trường hợp",
+        "ngoại lệ",
+        "có được không",
+        "bồi thường",
+        "trợ cấp",
+        "đơn phương chấm dứt",
+        "không cần báo trước",
+        "cho nghỉ việc",
+        "sa thải",
+        "người lao động được gì",
+        "công ty phải làm gì",
+    )
+)
+MULTI_HOP_QUERY_HINTS: tuple[str, ...] = tuple(
+    normalize_for_matching(value)
+    for value in (
+        "liên quan",
+        "theo nghị định",
+        "hướng dẫn",
+        "quy định chi tiết",
+        "trừ trường hợp",
+        "ngoại lệ",
+        "điều kiện",
+        "hậu quả",
+        "bồi thường",
+        "trợ cấp",
+        "so sánh",
+        "áp dụng như thế nào",
+    )
+)
+
+
 def dedupe_search_hits(hits: Sequence[SearchHit]) -> tuple[SearchHit, ...]:
     seen: set[str] = set()
     ordered: list[SearchHit] = []
@@ -49,6 +87,32 @@ class Neo4jLegalGraphExpander:
         self.store = store
         self.config = config
 
+    @staticmethod
+    def _contains_hint(normalized_query: str, hints: Sequence[str]) -> bool:
+        return any(hint and hint in normalized_query for hint in hints)
+
+    def _has_natural_graph_trigger(self, intent: QueryIntent) -> bool:
+        return self._contains_hint(intent.normalized_query, NATURAL_GRAPH_QUERY_HINTS)
+
+    def _is_multi_hop_query(self, intent: QueryIntent) -> bool:
+        return bool(
+            len(intent.all_article_numbers) > 1
+            or len(intent.document_filters) > 1
+            or self._contains_hint(intent.normalized_query, MULTI_HOP_QUERY_HINTS)
+            or (
+                self._has_natural_graph_trigger(intent)
+                and (intent.issue_filters or intent.topic_filters)
+            )
+        )
+
+    def _expansion_depth(self, intent: QueryIntent) -> int:
+        configured_depth = max(1, min(4, int(self.config.expansion_depth)))
+        if not self._is_multi_hop_query(intent):
+            return min(configured_depth, 2)
+        if len(intent.all_article_numbers) > 1 and self._has_natural_graph_trigger(intent):
+            return max(configured_depth, 4)
+        return max(configured_depth, 3)
+
     def _should_expand(self, intent: QueryIntent) -> bool:
         if self.config.max_expanded_chunks <= 0:
             return False
@@ -61,6 +125,7 @@ class Neo4jLegalGraphExpander:
             or intent.issue_filters
             or intent.topic_filters
             or intent.forced_references
+            or self._has_natural_graph_trigger(intent)
         )
 
     @staticmethod
@@ -134,7 +199,7 @@ class Neo4jLegalGraphExpander:
 
         result = self.store.expand_from_chunk_ids(
             seed_chunk_ids,
-            depth=self.config.expansion_depth,
+            depth=self._expansion_depth(intent),
             limit=self.config.max_expanded_chunks,
             min_confidence=self.config.min_confidence,
             edge_types=GRAPH_EXPANSION_EDGE_TYPES,

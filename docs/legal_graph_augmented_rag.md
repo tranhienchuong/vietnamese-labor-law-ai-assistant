@@ -40,6 +40,12 @@ Graph-expanded hit provenance is attached to the hit payload:
 - `graph_depth`
 - `graph_confidence`
 
+Graph expansion defaults to depth 2. Natural legal questions about conditions,
+exceptions, rights, severance, compensation, unilateral termination, dismissal,
+or employer/employee obligations can trigger expansion without explicit article
+numbers. Multi-hop questions can use depth 3 or 4 while still sending expanded
+chunks through the existing rerankers.
+
 Build output is written to:
 
 ```text

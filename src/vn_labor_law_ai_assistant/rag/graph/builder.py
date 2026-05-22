@@ -27,7 +27,7 @@ from .structural_parser import (
 class LegalGraphBuildResult:
     nodes: tuple[LegalGraphNode, ...]
     edges: tuple[LegalGraphEdge, ...]
-    summary: dict[str, int]
+    summary: dict[str, object]
 
 
 def _node_provenance(payload: dict[str, Any]) -> dict[str, Any]:
@@ -59,9 +59,24 @@ def _edge(
 
 
 class LegalGraphBuilder:
-    def build(self, records: Sequence[RetrievedRecord | dict[str, Any]]) -> LegalGraphBuildResult:
+    def __init__(
+        self,
+        *,
+        with_concepts: bool = True,
+        with_references: bool = True,
+    ) -> None:
+        self.with_concepts = with_concepts
+        self.with_references = with_references
+
+    def build(
+        self,
+        records: Sequence[RetrievedRecord | dict[str, Any]],
+        *,
+        build_metadata: dict[str, object] | None = None,
+    ) -> LegalGraphBuildResult:
         nodes: list[LegalGraphNode] = []
         edges: list[LegalGraphEdge] = []
+        documents: dict[str, dict[str, Any]] = {}
 
         for record in records:
             payload = record_to_payload(record)
@@ -75,20 +90,19 @@ class LegalGraphBuilder:
             document_title = str(payload.get("document_title") or document_id)
             doc_id = document_node_id(document_id)
             evidence_id = evidence_chunk_node_id(chunk_id)
-            nodes.append(
-                LegalGraphNode(
-                    node_id=doc_id,
-                    node_type=NodeType.LEGAL_DOCUMENT,
-                    name=document_title,
-                    normalized_name=normalized_name(document_title),
-                    source_chunk_id=chunk_id,
-                    properties={
-                        **_node_provenance(payload),
-                        "document_id": document_id,
-                        "citation_text": citation_text,
-                    },
-                )
+            document_state = documents.setdefault(
+                document_id,
+                {
+                    "node_id": doc_id,
+                    "document_id": document_id,
+                    "document_title": document_title,
+                    "source_chunk_ids": [],
+                    "citation_texts": [],
+                },
             )
+            document_state["source_chunk_ids"].append(chunk_id)
+            if citation_text:
+                document_state["citation_texts"].append(citation_text)
             nodes.append(
                 LegalGraphNode(
                     node_id=evidence_id,
@@ -233,16 +247,42 @@ class LegalGraphBuilder:
                 )
             )
 
-            concept_nodes, concept_edges = link_concepts_for_record(payload)
-            nodes.extend(concept_nodes)
-            edges.extend(concept_edges)
-            edges.extend(build_reference_edges(payload))
+            if self.with_concepts:
+                concept_nodes, concept_edges = link_concepts_for_record(payload)
+                nodes.extend(concept_nodes)
+                edges.extend(concept_edges)
+            if self.with_references:
+                edges.extend(build_reference_edges(payload))
+
+        for document in documents.values():
+            source_chunk_ids = tuple(dict.fromkeys(document["source_chunk_ids"]))
+            citation_texts = tuple(dict.fromkeys(document["citation_texts"]))
+            metadata_properties = dict(build_metadata or {})
+            nodes.append(
+                LegalGraphNode(
+                    node_id=str(document["node_id"]),
+                    node_type=NodeType.LEGAL_DOCUMENT,
+                    name=str(document["document_title"]),
+                    normalized_name=normalized_name(document["document_title"]),
+                    source_chunk_id="",
+                    properties={
+                        "document_id": document["document_id"],
+                        "citation_text": "",
+                        "source_chunk_ids": list(source_chunk_ids),
+                        "source_chunk_count": len(source_chunk_ids),
+                        "citation_texts": list(citation_texts[:50]),
+                        "extraction_method": "structural_metadata",
+                        "confidence": 1.0,
+                        **metadata_properties,
+                    },
+                )
+            )
 
         deduped_nodes = dedupe_nodes_by_id(nodes)
         deduped_edges = dedupe_edges_by_id(edges)
         type_counts = Counter(node.node_type.value for node in deduped_nodes)
         edge_counts = Counter(edge.edge_type.value for edge in deduped_edges)
-        summary = {
+        summary: dict[str, object] = {
             "documents": type_counts[NodeType.LEGAL_DOCUMENT.value],
             "articles": type_counts[NodeType.LEGAL_ARTICLE.value],
             "clauses": type_counts[NodeType.LEGAL_CLAUSE.value],
@@ -256,14 +296,18 @@ class LegalGraphBuilder:
             ),
             "reference_edges": edge_counts[EdgeType.REFERENCES.value],
         }
+        if build_metadata:
+            summary["build_metadata"] = dict(build_metadata)
         return LegalGraphBuildResult(nodes=deduped_nodes, edges=deduped_edges, summary=summary)
 
     def build_and_upsert(
         self,
         records: Sequence[RetrievedRecord | dict[str, Any]],
         store: LegalGraphStore,
+        *,
+        build_metadata: dict[str, object] | None = None,
     ) -> LegalGraphBuildResult:
-        result = self.build(records)
+        result = self.build(records, build_metadata=build_metadata)
         store.upsert_nodes(result.nodes)
         store.upsert_edges(result.edges)
         return result
