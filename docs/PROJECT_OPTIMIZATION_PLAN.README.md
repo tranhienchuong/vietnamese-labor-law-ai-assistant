@@ -115,7 +115,6 @@ src/vn_labor_law_ai_assistant/
   llm/
     base.py
     groq_provider.py
-    azure_provider.py
     factory.py
 
   corpus/

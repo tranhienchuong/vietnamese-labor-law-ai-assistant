@@ -201,7 +201,6 @@ class AdminApiTest(TestCase):
                 "APP_ENV": "development",
                 "AUTH_SECRET": "fake-auth-secret",
                 "GROQ_API_KEY": "fake-groq-key",
-                "AZURE_OPENAI_API_KEY": "fake-azure-key",
                 "QDRANT_API_KEY": "fake-qdrant-key",
                 "EMBEDDING_API_TOKEN": "fake-embedding-token",
                 "DEFAULT_USER_PASSWORD": "fake-user-password",
@@ -214,7 +213,6 @@ class AdminApiTest(TestCase):
         forbidden_values = (
             "fake-auth-secret",
             "fake-groq-key",
-            "fake-azure-key",
             "fake-qdrant-key",
             "fake-embedding-token",
             "fake-user-password",
@@ -223,7 +221,6 @@ class AdminApiTest(TestCase):
         forbidden_keys = (
             "AUTH_SECRET",
             "GROQ_API_KEY",
-            "AZURE_OPENAI_API_KEY",
             "QDRANT_API_KEY",
             "EMBEDDING_API_TOKEN",
             "DEFAULT_USER_PASSWORD",

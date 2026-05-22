@@ -91,18 +91,6 @@ class Settings(BaseSettings):
     groq_model: str = Field(default="qwen/qwen3-32b", alias="GROQ_MODEL")
     llm_provider: str = Field(default="groq", alias="LLM_PROVIDER")
 
-    azure_openai_responses_endpoint: str = Field(
-        default="",
-        alias="AZURE_OPENAI_RESPONSES_ENDPOINT",
-    )
-    azure_openai_api_key: SecretStr | None = Field(default=None, alias="AZURE_OPENAI_API_KEY")
-    azure_openai_model: str = Field(default="GPT-5.4-MINI", alias="AZURE_OPENAI_MODEL")
-    azure_openai_timeout_seconds: float = Field(
-        default=120.0,
-        alias="AZURE_OPENAI_TIMEOUT_SECONDS",
-    )
-    azure_openai_api_version: str = Field(default="", alias="AZURE_OPENAI_API_VERSION")
-
     benchmark_judge_provider: str = Field(default="groq", alias="BENCHMARK_JUDGE_PROVIDER")
     benchmark_judge_model: str = Field(default="", alias="BENCHMARK_JUDGE_MODEL")
     eval_citation_match_mode: str = Field(default="containment", alias="EVAL_CITATION_MATCH_MODE")

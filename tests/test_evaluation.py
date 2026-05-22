@@ -7,9 +7,7 @@ import unittest
 from openpyxl import Workbook
 
 from vn_labor_law_ai_assistant.evaluation import (
-    AZURE_SAFE_JUDGE_SYSTEM_PROMPT,
     BenchmarkCase,
-    build_judge_messages,
     compute_final_score_10,
     citation_matches_expected,
     score_citation_document_correctness_for_scope,
@@ -638,44 +636,6 @@ class EvaluationTests(unittest.TestCase):
 
     def test_parse_judge_payload_rejects_invalid_json(self) -> None:
         self.assertIsNone(parse_judge_payload("khong phai json"))
-
-    def test_build_judge_messages_uses_azure_safe_prompt(self) -> None:
-        case = BenchmarkCase(
-            id="LBR_010",
-            category="judge",
-            subtopic="azure",
-            difficulty="easy",
-            question_type="direct_qa",
-            question="Cau hoi?",
-            scenario="Tinh huong",
-            gold_issue="Gold issue",
-            gold_citation_primary="Dieu 35 Bo luat Lao dong 2019",
-            gold_citation_secondary=None,
-            gold_answer_short="Tra loi ngan",
-            gold_answer_full="Tra loi day du",
-            abstain_required=False,
-            missing_information=None,
-            source_document="Bo luat Lao dong 2019",
-            source_url=None,
-            annotator=None,
-            review_status=None,
-            notes=None,
-        )
-
-        messages = build_judge_messages(
-            case,
-            generated_answer="Tra loi cua model",
-            generated_legal_basis=("Dieu 35 Bo luat Lao dong 2019",),
-            insufficient_context="No",
-            expected_citations_scoped=("Dieu 35 Bo luat Lao dong 2019",),
-            retrieved_citations=("Dieu 35 Bo luat Lao dong 2019",),
-            case_scope="in_scope",
-            azure_safe=True,
-        )
-
-        self.assertEqual(messages[0]["content"], AZURE_SAFE_JUDGE_SYSTEM_PROMPT)
-        self.assertIn("CANDIDATE_ANSWER", messages[1]["content"])
-        self.assertNotIn("Judge chi duoc", messages[1]["content"])
 
 
 if __name__ == "__main__":

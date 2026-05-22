@@ -13,7 +13,7 @@ mypy src/vn_labor_law_ai_assistant/core src/vn_labor_law_ai_assistant/api src/vn
 python -m unittest discover -s tests -v
 ```
 
-The backend workflow runs the same commands on Python 3.10 and 3.11. It uses test-safe environment variables and dummy API keys, so pull request checks do not call Groq, Azure OpenAI, or Qdrant.
+The backend workflow runs the same commands on Python 3.10 and 3.11. It uses test-safe environment variables and dummy API keys, so pull request checks do not call Groq or Qdrant.
 
 The initial Ruff gate is intentionally conservative: it checks `E` and `F` classes while ignoring legacy line-length and script import-order findings. TODO: expand Ruff coverage after a dedicated formatting cleanup.
 

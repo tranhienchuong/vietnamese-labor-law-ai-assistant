@@ -44,7 +44,6 @@ from vn_labor_law_ai_assistant.llm import (
     default_benchmark_judge_model,
     default_benchmark_judge_provider,
     default_model_for_provider,
-    is_azure_openai_content_filter_error,
     normalize_provider,
     provider_model_label,
     resolve_model_name,
@@ -561,16 +560,13 @@ def main() -> None:
                                 expected_citations_scoped=expected_scoped,
                                 retrieved_citations=top_hit_citations,
                                 case_scope=case_scope,
-                                azure_safe=judge_provider == "azure_openai",
                             ),
                             temperature=0,
                             json_schema=JUDGE_JSON_SCHEMA,
                             json_schema_name="benchmark_judge",
                         )
                     except Exception as exc:
-                        if not is_azure_openai_content_filter_error(exc):
-                            raise
-                        judge_comment = "Judge blocked by Azure content filter; scores left blank."
+                        raise RuntimeError("Judge model call failed.") from exc
                     else:
                         judged = parse_judge_payload(judge_response.content)
                         if judged is not None:
