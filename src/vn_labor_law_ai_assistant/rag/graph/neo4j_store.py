@@ -1,0 +1,269 @@
+from __future__ import annotations
+
+import json
+import logging
+from typing import Any, Sequence
+
+from ...heuristic_router import dedupe_preserve_order
+from .models import GraphExpansionResult, LegalGraphEdge, LegalGraphNode
+from .ontology import EdgeType, NodeType, edge_type_label, node_type_label
+
+
+logger = logging.getLogger(__name__)
+
+
+def _coerce_neo4j_value(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (list, tuple, set)):
+        return [_coerce_neo4j_value(item) for item in value]
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _coerce_properties(properties: dict[str, Any]) -> dict[str, Any]:
+    return {str(key): _coerce_neo4j_value(value) for key, value in properties.items()}
+
+
+class Neo4jLegalGraphStore:
+    def __init__(
+        self,
+        *,
+        uri: str,
+        user: str,
+        password: str,
+        database: str = "neo4j",
+        verify_connectivity: bool = True,
+        driver: Any | None = None,
+    ) -> None:
+        self.database = database
+        self._driver = driver or self._build_driver(uri=uri, user=user, password=password)
+        if verify_connectivity and driver is None:
+            try:
+                self._driver.verify_connectivity()
+            except Exception as exc:
+                raise RuntimeError(
+                    "Neo4j legal graph is enabled but Neo4j is unavailable. "
+                    f"Check NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD. Original error: {exc}"
+                ) from exc
+
+    @staticmethod
+    def _build_driver(*, uri: str, user: str, password: str) -> Any:
+        try:
+            from neo4j import GraphDatabase
+        except ImportError as exc:
+            raise RuntimeError(
+                "The 'neo4j' package is required when LEGAL_GRAPH_ENABLED=true."
+            ) from exc
+        return GraphDatabase.driver(uri, auth=(user, password))
+
+    def _session(self):
+        return self._driver.session(database=self.database)
+
+    def setup_schema(self) -> None:
+        statements = (
+            "CREATE CONSTRAINT legal_node_node_id IF NOT EXISTS "
+            "FOR (n:LegalNode) REQUIRE n.node_id IS UNIQUE",
+            "CREATE INDEX legal_node_node_type IF NOT EXISTS "
+            "FOR (n:LegalNode) ON (n.node_type)",
+            "CREATE INDEX evidence_chunk_chunk_id IF NOT EXISTS "
+            "FOR (n:Evidence_Chunk) ON (n.chunk_id)",
+            "CREATE INDEX legal_node_source_chunk_id IF NOT EXISTS "
+            "FOR (n:LegalNode) ON (n.source_chunk_id)",
+            "CREATE INDEX legal_node_normalized_name IF NOT EXISTS "
+            "FOR (n:LegalNode) ON (n.normalized_name)",
+        )
+        with self._session() as session:
+            for statement in statements:
+                session.run(statement)
+
+    def close(self) -> None:
+        self._driver.close()
+
+    def upsert_nodes(self, nodes: Sequence[LegalGraphNode]) -> None:
+        if not nodes:
+            return
+        with self._session() as session:
+            for node in nodes:
+                label = node_type_label(node.node_type)
+                props = _coerce_properties(
+                    {
+                        **node.properties,
+                        "node_id": node.node_id,
+                        "node_type": node.node_type.value,
+                        "name": node.name,
+                        "normalized_name": node.normalized_name,
+                        "source_chunk_id": node.source_chunk_id,
+                    }
+                )
+                session.run(
+                    f"""
+                    MERGE (n:LegalNode {{node_id: $node_id}})
+                    SET n += $properties
+                    SET n:{label}
+                    """,
+                    node_id=node.node_id,
+                    properties=props,
+                )
+
+    def upsert_edges(self, edges: Sequence[LegalGraphEdge]) -> None:
+        if not edges:
+            return
+        with self._session() as session:
+            for edge in edges:
+                relationship_type = edge_type_label(edge.edge_type)
+                props = _coerce_properties(
+                    {
+                        **edge.properties,
+                        "edge_id": edge.edge_id,
+                        "edge_type": edge.edge_type.value,
+                        "confidence": edge.confidence,
+                        "source_chunk_id": edge.source_chunk_id,
+                        "extraction_method": edge.extraction_method,
+                    }
+                )
+                session.run(
+                    f"""
+                    MATCH (source:LegalNode {{node_id: $source_id}})
+                    MATCH (target:LegalNode {{node_id: $target_id}})
+                    MERGE (source)-[r:{relationship_type} {{edge_id: $edge_id}}]->(target)
+                    SET r += $properties
+                    """,
+                    source_id=edge.source_id,
+                    target_id=edge.target_id,
+                    edge_id=edge.edge_id,
+                    properties=props,
+                )
+
+    @staticmethod
+    def _node_from_record(record: Any) -> LegalGraphNode | None:
+        data = dict(record["n"]) if "n" in record else dict(record)
+        node_id = str(data.get("node_id") or "").strip()
+        node_type_value = str(data.get("node_type") or "").strip()
+        if not node_id or not node_type_value:
+            return None
+        try:
+            node_type = NodeType(node_type_value)
+        except ValueError:
+            logger.warning("Skipping unsupported legal graph node type: %s", node_type_value)
+            return None
+        properties = dict(data)
+        for key in ("node_id", "node_type", "name", "normalized_name", "source_chunk_id"):
+            properties.pop(key, None)
+        return LegalGraphNode(
+            node_id=node_id,
+            node_type=node_type,
+            name=str(data.get("name") or ""),
+            normalized_name=str(data.get("normalized_name") or ""),
+            properties=properties,
+            source_chunk_id=str(data.get("source_chunk_id") or ""),
+        )
+
+    def get_nodes_by_ids(self, node_ids: Sequence[str]) -> tuple[LegalGraphNode, ...]:
+        ordered_ids = dedupe_preserve_order(tuple(str(value) for value in node_ids if value))
+        if not ordered_ids:
+            return ()
+        with self._session() as session:
+            result = session.run(
+                """
+                MATCH (n:LegalNode)
+                WHERE n.node_id IN $node_ids
+                RETURN n
+                """,
+                node_ids=list(ordered_ids),
+            )
+            nodes = [self._node_from_record(record) for record in result]
+        return tuple(node for node in nodes if node is not None)
+
+    def get_nodes_by_chunk_ids(self, chunk_ids: Sequence[str]) -> tuple[LegalGraphNode, ...]:
+        ordered_ids = dedupe_preserve_order(tuple(str(value) for value in chunk_ids if value))
+        if not ordered_ids:
+            return ()
+        with self._session() as session:
+            result = session.run(
+                """
+                MATCH (n:LegalNode)
+                WHERE n.source_chunk_id IN $chunk_ids
+                   OR (n:Evidence_Chunk AND n.chunk_id IN $chunk_ids)
+                RETURN n
+                """,
+                chunk_ids=list(ordered_ids),
+            )
+            nodes = [self._node_from_record(record) for record in result]
+        return tuple(node for node in nodes if node is not None)
+
+    def expand_from_chunk_ids(
+        self,
+        chunk_ids: Sequence[str],
+        *,
+        depth: int,
+        limit: int,
+        min_confidence: float,
+        edge_types: Sequence[EdgeType],
+    ) -> GraphExpansionResult:
+        seed_chunk_ids = dedupe_preserve_order(tuple(str(value) for value in chunk_ids if value))
+        if not seed_chunk_ids or limit <= 0:
+            return GraphExpansionResult(seed_chunk_ids=seed_chunk_ids, expanded_chunk_ids=())
+
+        relationship_depth = max(1, min(4, int(depth)))
+        edge_type_values = [edge_type_label(edge_type) for edge_type in edge_types]
+        with self._session() as session:
+            result = session.run(
+                f"""
+                MATCH path = (seed:Evidence_Chunk)-[*1..{relationship_depth}]-(e:Evidence_Chunk)
+                WHERE seed.chunk_id IN $seed_chunk_ids
+                  AND e.chunk_id IS NOT NULL
+                  AND NOT e.chunk_id IN $seed_chunk_ids
+                  AND all(rel IN relationships(path)
+                          WHERE type(rel) IN $edge_types
+                            AND coalesce(rel.confidence, 1.0) >= $min_confidence)
+                WITH e, path, length(path) AS graph_depth
+                ORDER BY graph_depth ASC
+                WITH e, collect({{
+                    graph_depth: graph_depth,
+                    graph_edge_path: [rel IN relationships(path) | type(rel)],
+                    graph_node_path: [node IN nodes(path) | node.node_id],
+                    graph_confidence: reduce(conf = 1.0, rel IN relationships(path) |
+                        conf * coalesce(rel.confidence, 1.0))
+                }})[0] AS best_path
+                RETURN e.chunk_id AS chunk_id,
+                       best_path.graph_depth AS graph_depth,
+                       best_path.graph_edge_path AS graph_edge_path,
+                       best_path.graph_node_path AS graph_node_path,
+                       best_path.graph_confidence AS graph_confidence
+                ORDER BY best_path.graph_depth ASC, best_path.graph_confidence DESC, e.chunk_id
+                LIMIT $limit
+                """,
+                seed_chunk_ids=list(seed_chunk_ids),
+                edge_types=edge_type_values,
+                min_confidence=float(min_confidence),
+                limit=max(1, int(limit)),
+            )
+            paths = tuple(dict(record) for record in result)
+
+        expanded_chunk_ids = dedupe_preserve_order(
+            tuple(str(path.get("chunk_id") or "") for path in paths if path.get("chunk_id"))
+        )
+        return GraphExpansionResult(
+            seed_chunk_ids=seed_chunk_ids,
+            expanded_chunk_ids=expanded_chunk_ids,
+            paths=paths,
+        )
+
+    def get_source_chunk_ids(self, node_ids: Sequence[str]) -> tuple[str, ...]:
+        ordered_ids = dedupe_preserve_order(tuple(str(value) for value in node_ids if value))
+        if not ordered_ids:
+            return ()
+        with self._session() as session:
+            result = session.run(
+                """
+                MATCH (n:LegalNode)
+                WHERE n.node_id IN $node_ids
+                RETURN coalesce(n.chunk_id, n.source_chunk_id) AS chunk_id
+                """,
+                node_ids=list(ordered_ids),
+            )
+            chunk_ids = tuple(str(record["chunk_id"]) for record in result if record["chunk_id"])
+        return dedupe_preserve_order(chunk_ids)
+
+
+__all__ = ["Neo4jLegalGraphStore"]

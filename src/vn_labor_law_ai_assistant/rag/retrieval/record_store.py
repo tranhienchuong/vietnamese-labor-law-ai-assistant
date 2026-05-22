@@ -240,6 +240,16 @@ class QdrantPayloadRecordStore(RecordStore):
             records[record.chunk_id] = record
         return records
 
+    @staticmethod
+    def payload_has_embedded_record(payload: dict[str, object]) -> bool:
+        return bool(
+            payload.get("chunk_id")
+            and "text" in payload
+            and "dense_text" in payload
+            and "sparse_text" in payload
+            and "citation_text" in payload
+        )
+
     def fetch_records(self, chunk_ids: Sequence[str]) -> dict[str, RetrievedRecord]:
         ordered_ids = dedupe_preserve_order(chunk_ids)
         if not ordered_ids:
@@ -257,6 +267,9 @@ class QdrantPayloadRecordStore(RecordStore):
         records: dict[str, RetrievedRecord] = {}
         missing_chunk_ids: list[str] = []
         for hit in hits:
+            if not self.payload_has_embedded_record(hit.payload):
+                missing_chunk_ids.append(hit.chunk_id)
+                continue
             try:
                 record = record_from_qdrant_payload(hit.payload)
             except ValueError:

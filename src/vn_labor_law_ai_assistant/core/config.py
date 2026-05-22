@@ -134,6 +134,27 @@ class Settings(BaseSettings):
         alias="QUERY_ROUTER_FALLBACK_TO_HEURISTIC",
     )
 
+    legal_graph_enabled: bool = Field(default=False, alias="LEGAL_GRAPH_ENABLED")
+    legal_graph_backend: str = Field(default="neo4j", alias="LEGAL_GRAPH_BACKEND")
+    neo4j_uri: str = Field(default="bolt://localhost:7687", alias="NEO4J_URI")
+    neo4j_user: str = Field(default="neo4j", alias="NEO4J_USER")
+    neo4j_password: SecretStr = Field(default=SecretStr("password"), alias="NEO4J_PASSWORD")
+    neo4j_database: str = Field(default="neo4j", alias="NEO4J_DATABASE")
+    legal_graph_expansion_depth: int = Field(default=2, alias="LEGAL_GRAPH_EXPANSION_DEPTH")
+    legal_graph_max_expanded_chunks: int = Field(
+        default=12,
+        alias="LEGAL_GRAPH_MAX_EXPANDED_CHUNKS",
+    )
+    legal_graph_min_confidence: float = Field(
+        default=0.60,
+        alias="LEGAL_GRAPH_MIN_CONFIDENCE",
+    )
+    legal_graph_complex_query_only: bool = Field(
+        default=True,
+        alias="LEGAL_GRAPH_COMPLEX_QUERY_ONLY",
+    )
+    legal_graph_trace: bool = Field(default=False, alias="LEGAL_GRAPH_TRACE")
+
     groq_rate_limit_retries: int = Field(default=6, alias="GROQ_RATE_LIMIT_RETRIES")
     groq_rate_limit_backoff_seconds: float = Field(
         default=1.0,
@@ -165,6 +186,21 @@ class Settings(BaseSettings):
     @classmethod
     def _validate_enable_article_sibling_contexts(cls, value: Any) -> Any:
         return _bool_with_default(value, True)
+
+    @field_validator("legal_graph_enabled", mode="before")
+    @classmethod
+    def _validate_legal_graph_enabled(cls, value: Any) -> Any:
+        return _bool_with_default(value, False)
+
+    @field_validator("legal_graph_complex_query_only", mode="before")
+    @classmethod
+    def _validate_legal_graph_complex_query_only(cls, value: Any) -> Any:
+        return _bool_with_default(value, True)
+
+    @field_validator("legal_graph_trace", mode="before")
+    @classmethod
+    def _validate_legal_graph_trace(cls, value: Any) -> Any:
+        return _bool_with_default(value, False)
 
     @property
     def is_production(self) -> bool:
@@ -249,6 +285,10 @@ class Settings(BaseSettings):
             "queryRouterFallbackToHeuristic": self.query_router_fallback_to_heuristic,
             "embeddingProvider": self.embedding_provider,
             "denseModel": dense_model or self.dense_model,
+            "legalGraphEnabled": self.legal_graph_enabled,
+            "legalGraphBackend": self.legal_graph_backend,
+            "legalGraphExpansionDepth": self.legal_graph_expansion_depth,
+            "legalGraphMaxExpandedChunks": self.legal_graph_max_expanded_chunks,
         }
 
 
