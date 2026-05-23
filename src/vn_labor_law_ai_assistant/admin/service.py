@@ -138,16 +138,9 @@ class AdminService:
         }
 
     def _llm_model(self, provider: str) -> str:
-        if provider == "azure_openai":
-            return self.settings.azure_openai_model
         return self.settings.groq_model
 
     def _llm_provider_is_configured(self, provider: str) -> bool:
-        if provider == "azure_openai":
-            return bool(
-                self.settings.azure_openai_responses_endpoint.strip()
-                and self.settings.optional_secret_value(self.settings.azure_openai_api_key)
-            )
         return bool(self.settings.optional_secret_value(self.settings.groq_api_key))
 
     def _effective_qdrant_collection(self) -> str:

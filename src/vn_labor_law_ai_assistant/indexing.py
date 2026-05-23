@@ -177,17 +177,19 @@ def build_qdrant_client(qdrant_client_cls, qdrant_path: Path | None = None):
     settings = load_settings()
     qdrant_url = settings.qdrant_url.strip()
     qdrant_api_key = settings.optional_secret_value(settings.qdrant_api_key)
+    qdrant_timeout = float(settings.qdrant_timeout)
 
     if qdrant_url:
         return qdrant_client_cls(
             url=qdrant_url,
             api_key=qdrant_api_key or None,
+            timeout=qdrant_timeout,
         )
 
     if qdrant_path is None:
         raise ValueError("qdrant_path is required when QDRANT_URL is not set.")
 
-    return qdrant_client_cls(path=str(qdrant_path))
+    return qdrant_client_cls(path=str(qdrant_path), timeout=qdrant_timeout)
 
 
 def require_pyvi():

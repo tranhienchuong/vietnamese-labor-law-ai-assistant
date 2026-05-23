@@ -31,6 +31,7 @@ from vn_labor_law_ai_assistant.evaluation import (
     reciprocal_rank,
     result_columns,
     retrieval_hit_at_k,
+    resolve_citation_match_mode,
     score_citation_article_correctness_for_scope,
     score_citation_document_correctness_for_scope,
     write_results_csv,
@@ -43,7 +44,6 @@ from vn_labor_law_ai_assistant.llm import (
     default_benchmark_judge_model,
     default_benchmark_judge_provider,
     default_model_for_provider,
-    is_azure_openai_content_filter_error,
     normalize_provider,
     provider_model_label,
     resolve_model_name,
@@ -176,6 +176,15 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Path to a previous benchmark .jsonl or .csv. Completed case IDs are skipped, "
             "and progress is appended by rewriting the same output stem."
+        ),
+    )
+    parser.add_argument(
+        "--citation-match-mode",
+        default="",
+        choices=("", "literal", "normalized", "containment"),
+        help=(
+            "Citation matching mode for official retrieval/citation metrics. "
+            "Defaults to EVAL_CITATION_MATCH_MODE or containment."
         ),
     )
     return parser.parse_args()
@@ -354,12 +363,20 @@ def main() -> None:
         retriever.manifest.get("chunk_paths", [])
     )
     judge_provider, judge_model, judge_enabled = resolve_judge_configuration(args)
+    citation_match_mode = resolve_citation_match_mode(args.citation_match_mode or None)
     evaluator_label = resolve_evaluator_label(
         args.evaluator,
         judge_enabled=judge_enabled,
         judge_provider=judge_provider,
         judge_model=judge_model,
     )
+    literal_reciprocal_ranks: list[float | None] = []
+    containment_reciprocal_ranks: list[float | None] = []
+    literal_scored_count = 0
+    literal_hit_count = 0
+    containment_scored_count = 0
+    containment_hit_count = 0
+    literal_miss_containment_match_ids: list[str] = []
 
     def save_progress() -> None:
         if not rows:
@@ -373,6 +390,7 @@ def main() -> None:
             print(f"Semantic reranker: {retriever.reranker_model_name} (top {args.reranker_top_n})")
         else:
             print("Semantic reranker: disabled")
+        print(f"Citation match mode: {citation_match_mode}")
         if args.model:
             print(f"Answer model: {provider_model_label(args.provider, args.model)}")
             if judge_enabled:
@@ -405,20 +423,61 @@ def main() -> None:
                 top_hit_citations,
                 k=args.top_k,
                 allowed_document_families=allowed_document_families,
+                citation_match_mode=citation_match_mode,
             )
             relevant_rank = first_relevant_rank(
                 case,
                 top_hit_citations,
                 k=args.top_k,
                 allowed_document_families=allowed_document_families,
+                citation_match_mode=citation_match_mode,
             )
             reciprocal = reciprocal_rank(
                 case,
                 top_hit_citations,
                 k=args.top_k,
                 allowed_document_families=allowed_document_families,
+                citation_match_mode=citation_match_mode,
             )
             reciprocal_ranks.append(reciprocal)
+            literal_hit = retrieval_hit_at_k(
+                case,
+                top_hit_citations,
+                k=args.top_k,
+                allowed_document_families=allowed_document_families,
+                citation_match_mode="literal",
+            )
+            containment_hit = retrieval_hit_at_k(
+                case,
+                top_hit_citations,
+                k=args.top_k,
+                allowed_document_families=allowed_document_families,
+                citation_match_mode="containment",
+            )
+            literal_reciprocal = reciprocal_rank(
+                case,
+                top_hit_citations,
+                k=args.top_k,
+                allowed_document_families=allowed_document_families,
+                citation_match_mode="literal",
+            )
+            containment_reciprocal = reciprocal_rank(
+                case,
+                top_hit_citations,
+                k=args.top_k,
+                allowed_document_families=allowed_document_families,
+                citation_match_mode="containment",
+            )
+            literal_reciprocal_ranks.append(literal_reciprocal)
+            containment_reciprocal_ranks.append(containment_reciprocal)
+            if literal_hit is not None:
+                literal_scored_count += 1
+                literal_hit_count += int(literal_hit)
+            if containment_hit is not None:
+                containment_scored_count += 1
+                containment_hit_count += int(containment_hit)
+            if literal_hit is False and containment_hit is True:
+                literal_miss_containment_match_ids.append(case.id)
 
             generated_answer = ""
             generated_legal_basis: tuple[str, ...] = ()
@@ -474,6 +533,7 @@ def main() -> None:
                     case,
                     parsed.legal_basis,
                     allowed_document_families=allowed_document_families,
+                    citation_match_mode=citation_match_mode,
                 )
                 citation_provision_correct = citation_article_correct
                 citation_document_correct = score_citation_document_correctness_for_scope(
@@ -500,16 +560,13 @@ def main() -> None:
                                 expected_citations_scoped=expected_scoped,
                                 retrieved_citations=top_hit_citations,
                                 case_scope=case_scope,
-                                azure_safe=judge_provider == "azure_openai",
                             ),
                             temperature=0,
                             json_schema=JUDGE_JSON_SCHEMA,
                             json_schema_name="benchmark_judge",
                         )
                     except Exception as exc:
-                        if not is_azure_openai_content_filter_error(exc):
-                            raise
-                        judge_comment = "Judge blocked by Azure content filter; scores left blank."
+                        raise RuntimeError("Judge model call failed.") from exc
                     else:
                         judged = parse_judge_payload(judge_response.content)
                         if judged is not None:
@@ -638,6 +695,34 @@ def main() -> None:
     print(f"Retrieval hit@{args.top_k}: {hit_rate:.2%} over {len(scored_hit_cases)} scored cases")
     if mrr is not None:
         print(f"Retrieval MRR@{args.top_k}: {mrr:.4f}")
+    literal_hit_rate = literal_hit_count / literal_scored_count if literal_scored_count else 0.0
+    containment_hit_rate = (
+        containment_hit_count / containment_scored_count if containment_scored_count else 0.0
+    )
+    literal_mrr = mean_reciprocal_rank(literal_reciprocal_ranks)
+    containment_mrr = mean_reciprocal_rank(containment_reciprocal_ranks)
+    print(
+        f"Literal hit@{args.top_k}: {literal_hit_rate:.2%} "
+        f"over {literal_scored_count} scored cases"
+    )
+    if literal_mrr is not None:
+        print(f"Literal MRR@{args.top_k}: {literal_mrr:.4f}")
+    print(
+        f"Containment hit@{args.top_k}: {containment_hit_rate:.2%} "
+        f"over {containment_scored_count} scored cases"
+    )
+    if containment_mrr is not None:
+        print(f"Containment MRR@{args.top_k}: {containment_mrr:.4f}")
+    print(
+        "Literal misses recovered by containment: "
+        f"{len(literal_miss_containment_match_ids)}"
+    )
+    if literal_miss_containment_match_ids:
+        print(
+            "Recovered case IDs: "
+            + ", ".join(literal_miss_containment_match_ids[:50])
+            + (" ..." if len(literal_miss_containment_match_ids) > 50 else "")
+        )
     print(f"Saved benchmark JSONL: {output_jsonl.resolve()}")
     print(f"Saved benchmark CSV: {output_csv.resolve()}")
 

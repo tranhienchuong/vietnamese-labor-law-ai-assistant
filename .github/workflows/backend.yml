@@ -27,7 +27,6 @@ jobs:
       AUTH_SEED_DEFAULT_USERS: "0"
       APP_DB_PATH: artifacts/test-app.db
       GROQ_API_KEY: dummy
-      AZURE_OPENAI_API_KEY: dummy
       QDRANT_API_KEY: dummy
       CORS_ALLOW_ORIGINS: "*"
       QUERY_ROUTER_ENABLED: "0"

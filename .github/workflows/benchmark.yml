@@ -33,8 +33,6 @@ jobs:
       AUTH_SEED_DEFAULT_USERS: "0"
       APP_DB_PATH: artifacts/benchmark-app.db
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
-      AZURE_OPENAI_RESPONSES_ENDPOINT: ${{ secrets.AZURE_OPENAI_RESPONSES_ENDPOINT }}
       QDRANT_URL: ${{ secrets.QDRANT_URL }}
       QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
       QUERY_ROUTER_ENABLED: "0"
@@ -91,13 +89,6 @@ jobs:
           if [[ "${{ inputs.provider }}" == "groq" && -z "${GROQ_API_KEY}" ]]; then
             echo "::error::GROQ_API_KEY secret is required when retrieve_only=false and provider=groq."
             exit 1
-          fi
-
-          if [[ "${{ inputs.provider }}" == "azure_openai" ]]; then
-            if [[ -z "${AZURE_OPENAI_API_KEY}" || -z "${AZURE_OPENAI_RESPONSES_ENDPOINT}" ]]; then
-              echo "::error::AZURE_OPENAI_API_KEY and AZURE_OPENAI_RESPONSES_ENDPOINT secrets are required when retrieve_only=false and provider=azure_openai."
-              exit 1
-            fi
           fi
 
           python scripts/run_benchmark.py \

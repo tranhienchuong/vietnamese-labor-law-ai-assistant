@@ -195,6 +195,28 @@ class HybridRetriever:
             record_store=self._record_store,
             rule_config=RULE_CONFIG,
         )
+        from ..graph.config import LegalGraphConfig
+
+        self._legal_graph_config = LegalGraphConfig.from_env()
+        self._legal_graph_store = None
+        self._legal_graph_expander = None
+        if self._legal_graph_config.enabled:
+            from ..graph.expander import Neo4jLegalGraphExpander
+            from ..graph.neo4j_store import Neo4jLegalGraphStore
+
+            if self._legal_graph_config.backend != "neo4j":
+                raise ValueError("LEGAL_GRAPH_BACKEND must be 'neo4j' for the MVP graph backend.")
+            self._legal_graph_store = Neo4jLegalGraphStore(
+                uri=self._legal_graph_config.neo4j_uri,
+                user=self._legal_graph_config.neo4j_user,
+                password=self._legal_graph_config.neo4j_password,
+                database=self._legal_graph_config.neo4j_database,
+            )
+            self._legal_graph_store.setup_schema()
+            self._legal_graph_expander = Neo4jLegalGraphExpander(
+                store=self._legal_graph_store,
+                config=self._legal_graph_config,
+            )
 
         self._query_router_enabled = (
             env_flag("QUERY_ROUTER_ENABLED", True)
@@ -227,6 +249,9 @@ class HybridRetriever:
     def close(self) -> None:
         self._qdrant.close()
         self._record_store.close()
+        graph_store = getattr(self, "_legal_graph_store", None)
+        if graph_store is not None:
+            graph_store.close()
 
     def _get_dense_model(self):
         if hasattr(self, "_query_encoder"):
@@ -780,6 +805,40 @@ class HybridRetriever:
         remainder = tuple(hits[len(candidate_hits) :])
         return reranked_candidates + remainder
 
+    @staticmethod
+    def _enrich_hits_with_records(
+        hits: Sequence[SearchHit],
+        direct_records: dict[str, RetrievedRecord],
+    ) -> tuple[SearchHit, ...]:
+        enriched_hits: list[SearchHit] = []
+        for hit in hits:
+            record = direct_records.get(hit.chunk_id)
+            if record is None:
+                enriched_hits.append(hit)
+                continue
+            payload = {
+                **record.payload,
+                "chunk_id": record.chunk_id,
+                "qdrant_point_id": hit.qdrant_point_id,
+                "parent_chunk_id": record.parent_chunk_id,
+                "citation_text": record.citation_text,
+                "text": record.text,
+                "dense_text": record.dense_text,
+                "sparse_text": record.sparse_text,
+                **hit.payload,
+            }
+            payload["citation_text"] = record.citation_text
+            enriched_hits.append(
+                SearchHit(
+                    chunk_id=hit.chunk_id,
+                    qdrant_point_id=hit.qdrant_point_id,
+                    score=hit.score,
+                    citation_text=hit.citation_text or record.citation_text,
+                    payload=payload,
+                )
+            )
+        return tuple(enriched_hits)
+
     def _context_assembler_for_compat(self) -> ContextAssembler:
         if hasattr(self, "_context_assembler"):
             return self._context_assembler
@@ -829,6 +888,23 @@ class HybridRetriever:
         hits = self._reference_expander.append_forced_reference_hits(hits, intent, limit=max(4, top_k))
         hits = self._reference_expander.append_reference_fallback_hits(hits, intent, limit=max(4, top_k))
         direct_records = self._record_store.fetch_records_from_hits(hits)
+        graph_expander = getattr(self, "_legal_graph_expander", None)
+        if graph_expander is not None:
+            from ..graph.expander import dedupe_search_hits
+
+            graph_hits = graph_expander.expand_from_hits(
+                hits=hits,
+                direct_records=direct_records,
+                intent=intent,
+            )
+            if graph_hits:
+                hits = dedupe_search_hits((*hits, *graph_hits))
+                missing_chunk_ids = [
+                    hit.chunk_id for hit in hits if hit.chunk_id not in direct_records
+                ]
+                if missing_chunk_ids:
+                    direct_records.update(self._record_store.fetch_records(missing_chunk_ids))
+                hits = self._enrich_hits_with_records(hits, direct_records)
         hits = self._scorer.rerank_hits(hits, intent, direct_records)
         hits = self._semantic_reranker.semantic_rerank_hits(query, hits, direct_records)
         hits = self._reference_expander.pin_forced_reference_hits(hits, intent)[:top_k]
@@ -865,4 +941,3 @@ __all__ = [
     "resolve_record_source",
     "route_query_with_llm",
 ]
-

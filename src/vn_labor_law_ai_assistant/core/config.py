@@ -91,20 +91,9 @@ class Settings(BaseSettings):
     groq_model: str = Field(default="qwen/qwen3-32b", alias="GROQ_MODEL")
     llm_provider: str = Field(default="groq", alias="LLM_PROVIDER")
 
-    azure_openai_responses_endpoint: str = Field(
-        default="",
-        alias="AZURE_OPENAI_RESPONSES_ENDPOINT",
-    )
-    azure_openai_api_key: SecretStr | None = Field(default=None, alias="AZURE_OPENAI_API_KEY")
-    azure_openai_model: str = Field(default="GPT-5.4-MINI", alias="AZURE_OPENAI_MODEL")
-    azure_openai_timeout_seconds: float = Field(
-        default=120.0,
-        alias="AZURE_OPENAI_TIMEOUT_SECONDS",
-    )
-    azure_openai_api_version: str = Field(default="", alias="AZURE_OPENAI_API_VERSION")
-
     benchmark_judge_provider: str = Field(default="groq", alias="BENCHMARK_JUDGE_PROVIDER")
     benchmark_judge_model: str = Field(default="", alias="BENCHMARK_JUDGE_MODEL")
+    eval_citation_match_mode: str = Field(default="containment", alias="EVAL_CITATION_MATCH_MODE")
 
     qdrant_url: str = Field(default="", alias="QDRANT_URL")
     qdrant_api_key: SecretStr | None = Field(default=None, alias="QDRANT_API_KEY")
@@ -112,11 +101,17 @@ class Settings(BaseSettings):
         default="vietnamese_labor_law_chunks",
         alias="QDRANT_COLLECTION",
     )
+    qdrant_timeout: float = Field(default=120.0, alias="QDRANT_TIMEOUT")
 
     retriever_record_source: str = Field(default="", alias="RETRIEVER_RECORD_SOURCE")
     index_path: Path = Field(default=Path("artifacts/index"), alias="INDEX_PATH")
     reranker_model: str = Field(default="", alias="RERANKER_MODEL")
     reranker_top_n: int = Field(default=24, alias="RERANKER_TOP_N")
+    enable_article_sibling_contexts: bool = Field(
+        default=True,
+        alias="ENABLE_ARTICLE_SIBLING_CONTEXTS",
+    )
+    sibling_context_limit: int = Field(default=8, alias="SIBLING_CONTEXT_LIMIT")
 
     embedding_provider: str = Field(
         default="sentence_transformers",
@@ -138,6 +133,27 @@ class Settings(BaseSettings):
         default=True,
         alias="QUERY_ROUTER_FALLBACK_TO_HEURISTIC",
     )
+
+    legal_graph_enabled: bool = Field(default=False, alias="LEGAL_GRAPH_ENABLED")
+    legal_graph_backend: str = Field(default="neo4j", alias="LEGAL_GRAPH_BACKEND")
+    neo4j_uri: str = Field(default="bolt://localhost:7687", alias="NEO4J_URI")
+    neo4j_user: str = Field(default="neo4j", alias="NEO4J_USER")
+    neo4j_password: SecretStr = Field(default=SecretStr("password"), alias="NEO4J_PASSWORD")
+    neo4j_database: str = Field(default="neo4j", alias="NEO4J_DATABASE")
+    legal_graph_expansion_depth: int = Field(default=2, alias="LEGAL_GRAPH_EXPANSION_DEPTH")
+    legal_graph_max_expanded_chunks: int = Field(
+        default=12,
+        alias="LEGAL_GRAPH_MAX_EXPANDED_CHUNKS",
+    )
+    legal_graph_min_confidence: float = Field(
+        default=0.60,
+        alias="LEGAL_GRAPH_MIN_CONFIDENCE",
+    )
+    legal_graph_complex_query_only: bool = Field(
+        default=True,
+        alias="LEGAL_GRAPH_COMPLEX_QUERY_ONLY",
+    )
+    legal_graph_trace: bool = Field(default=False, alias="LEGAL_GRAPH_TRACE")
 
     groq_rate_limit_retries: int = Field(default=6, alias="GROQ_RATE_LIMIT_RETRIES")
     groq_rate_limit_backoff_seconds: float = Field(
@@ -165,6 +181,26 @@ class Settings(BaseSettings):
     @classmethod
     def _validate_query_router_fallback_to_heuristic(cls, value: Any) -> Any:
         return _bool_with_default(value, True)
+
+    @field_validator("enable_article_sibling_contexts", mode="before")
+    @classmethod
+    def _validate_enable_article_sibling_contexts(cls, value: Any) -> Any:
+        return _bool_with_default(value, True)
+
+    @field_validator("legal_graph_enabled", mode="before")
+    @classmethod
+    def _validate_legal_graph_enabled(cls, value: Any) -> Any:
+        return _bool_with_default(value, False)
+
+    @field_validator("legal_graph_complex_query_only", mode="before")
+    @classmethod
+    def _validate_legal_graph_complex_query_only(cls, value: Any) -> Any:
+        return _bool_with_default(value, True)
+
+    @field_validator("legal_graph_trace", mode="before")
+    @classmethod
+    def _validate_legal_graph_trace(cls, value: Any) -> Any:
+        return _bool_with_default(value, False)
 
     @property
     def is_production(self) -> bool:
@@ -240,12 +276,19 @@ class Settings(BaseSettings):
             "rerankerModel": self.reranker_model,
             "rerankerEnabled": bool(self.reranker_model.strip()),
             "rerankerTopN": self.reranker_top_n,
+            "articleSiblingContextsEnabled": self.enable_article_sibling_contexts,
+            "siblingContextLimit": self.sibling_context_limit,
+            "qdrantTimeout": self.qdrant_timeout,
             "queryRouterEnabled": self.query_router_enabled,
             "queryRouterProvider": self.query_router_provider,
             "queryRouterModel": self.query_router_model,
             "queryRouterFallbackToHeuristic": self.query_router_fallback_to_heuristic,
             "embeddingProvider": self.embedding_provider,
             "denseModel": dense_model or self.dense_model,
+            "legalGraphEnabled": self.legal_graph_enabled,
+            "legalGraphBackend": self.legal_graph_backend,
+            "legalGraphExpansionDepth": self.legal_graph_expansion_depth,
+            "legalGraphMaxExpandedChunks": self.legal_graph_max_expanded_chunks,
         }
 
 

@@ -8,7 +8,15 @@ import re
 from typing import Iterable, Sequence
 
 from .corpus_pipeline import normalize_for_matching
-from .indexing import extract_legal_hint_tokens
+from .core.config import load_settings
+from .evaluation_citation_matcher import (
+    CitationRef,
+    citation_contains,
+    citation_matches,
+    normalize_match_mode,
+    normalize_vietnamese_citation,
+    parse_citation,
+)
 
 
 WORKBOOK_SHEET_NAME = "golden_benchmark"
@@ -142,24 +150,6 @@ Lưu ý:
 - Nếu GENERATED_ANSWER đưa ra thông tin pháp lý nằm ngoài EXPECTED_CITATIONS_IN_SCOPE hoặc trái với RETRIEVED_CITATIONS, phải coi đó là groundedness thấp.
 - Không tự chấm final_score_10; hệ thống sẽ tính điểm tổng hợp bằng công thức riêng.
 - Trả đúng JSON theo schema."""
-
-AZURE_SAFE_JUDGE_SYSTEM_PROMPT = """You are a QA evaluator for a Vietnamese labor-law RAG benchmark.
-
-Compare the candidate answer with the reference answer, expected citations, and retrieved citations.
-Return one JSON object that matches the provided schema.
-
-Rubric:
-- answer_correct: yes when the main legal conclusion is correct, partial for incomplete or minor errors, no for material errors or off-topic answers.
-- legal_issue_classification_correct: yes when the central legal issue is correctly identified, partial for mixed classification, no for a wrong legal issue.
-- legal_reasoning_score_1_5: 5 is complete legal reasoning, 4 is mostly complete, 3 has important gaps, 2 is vague or partly confused, 1 is wrong.
-- missing_information_score_0_2: 2 handles missing facts well, 1 mentions missing facts vaguely, 0 overstates a conclusion or asks for unnecessary facts.
-- citation_supports_answer: yes when citations support the conclusion, partial when relevant but incomplete, no when unsupported or wrong.
-- groundedness_score_1_5: 5 is fully grounded in supplied citations, 3 has some unsupported expansion, 1 is mostly unsupported.
-- clarity_score_1_5 and format_score_1_5 evaluate readability and answer structure.
-- hallucination_types: include legal_basis, rule, or fact when the candidate adds unsupported citations, rules, or facts; use [] when none are clear.
-- comments: one short Vietnamese sentence with the main reason for the score.
-
-The aggregate final_score_10 is computed outside the model."""
 
 LEGAL_ARTICLE_RE = re.compile(r"\bdieu\s+(?P<value>\d+[a-z]?)")
 LEGAL_CLAUSE_RE = re.compile(r"\bkhoan\s+(?P<value>\d+)")
@@ -748,21 +738,23 @@ def citation_document_family(text: str) -> str | None:
     return None
 
 
-def citation_matches_expected(expected: str, observed: str) -> bool:
-    expected_normalized = normalize_for_matching(expected)
-    observed_normalized = normalize_for_matching(observed)
+def resolve_citation_match_mode(mode: str | None = None) -> str:
+    if mode is not None:
+        return normalize_match_mode(mode)
+    return normalize_match_mode(load_settings().eval_citation_match_mode)
 
+
+def citation_matches_expected(expected: str, observed: str, *, mode: str | None = None) -> bool:
     expected_family = citation_document_family(expected)
     observed_family = citation_document_family(observed)
     if expected_family and observed_family and expected_family != observed_family:
         return False
 
-    expected_tokens = set(extract_legal_hint_tokens(expected))
-    observed_tokens = set(extract_legal_hint_tokens(observed))
-    if expected_tokens:
-        return expected_tokens.issubset(observed_tokens)
-
-    return expected_normalized in observed_normalized or observed_normalized in expected_normalized
+    return citation_matches(
+        retrieved_text=observed,
+        expected_text=expected,
+        mode=resolve_citation_match_mode(mode),
+    )
 
 
 def citation_document_matches_expected(expected: str, observed: str) -> bool:
@@ -777,6 +769,7 @@ def retrieval_hit_at_k(
     *,
     k: int = 5,
     allowed_document_families: Sequence[str] | None = None,
+    citation_match_mode: str | None = None,
 ) -> bool | None:
     gold_citations = expected_citations_in_scope(
         case,
@@ -787,7 +780,7 @@ def retrieval_hit_at_k(
 
     for expected in gold_citations:
         for observed in observed_citations[:k]:
-            if citation_matches_expected(expected, observed):
+            if citation_matches_expected(expected, observed, mode=citation_match_mode):
                 return True
     return False
 
@@ -795,8 +788,14 @@ def retrieval_hit_at_k(
 def score_citation_correctness(
     case: BenchmarkCase,
     observed_citations: Sequence[str],
+    *,
+    citation_match_mode: str | None = None,
 ) -> str:
-    return score_citation_correctness_for_scope(case, observed_citations)
+    return score_citation_correctness_for_scope(
+        case,
+        observed_citations,
+        citation_match_mode=citation_match_mode,
+    )
 
 
 def score_citation_correctness_for_scope(
@@ -804,6 +803,7 @@ def score_citation_correctness_for_scope(
     observed_citations: Sequence[str],
     *,
     allowed_document_families: Sequence[str] | None = None,
+    citation_match_mode: str | None = None,
 ) -> str:
     gold_citations = expected_citations_in_scope(
         case,
@@ -817,7 +817,10 @@ def score_citation_correctness_for_scope(
     matched = [
         expected
         for expected in gold_citations
-        if any(citation_matches_expected(expected, observed) for observed in observed_citations)
+        if any(
+            citation_matches_expected(expected, observed, mode=citation_match_mode)
+            for observed in observed_citations
+        )
     ]
     if len(matched) == len(gold_citations):
         return "exact"
@@ -831,11 +834,13 @@ def score_citation_article_correctness_for_scope(
     observed_citations: Sequence[str],
     *,
     allowed_document_families: Sequence[str] | None = None,
+    citation_match_mode: str | None = None,
 ) -> str:
     return score_citation_correctness_for_scope(
         case,
         observed_citations,
         allowed_document_families=allowed_document_families,
+        citation_match_mode=citation_match_mode,
     )
 
 
@@ -880,6 +885,7 @@ def first_relevant_rank(
     *,
     k: int = 5,
     allowed_document_families: Sequence[str] | None = None,
+    citation_match_mode: str | None = None,
 ) -> int | None:
     gold_citations = expected_citations_in_scope(
         case,
@@ -889,7 +895,10 @@ def first_relevant_rank(
         return None if allowed_document_families else 0
 
     for rank, observed in enumerate(observed_citations[:k], start=1):
-        if any(citation_matches_expected(expected, observed) for expected in gold_citations):
+        if any(
+            citation_matches_expected(expected, observed, mode=citation_match_mode)
+            for expected in gold_citations
+        ):
             return rank
     return 0
 
@@ -900,12 +909,14 @@ def reciprocal_rank(
     *,
     k: int = 5,
     allowed_document_families: Sequence[str] | None = None,
+    citation_match_mode: str | None = None,
 ) -> float | None:
     rank = first_relevant_rank(
         case,
         observed_citations,
         k=k,
         allowed_document_families=allowed_document_families,
+        citation_match_mode=citation_match_mode,
     )
     if rank is None:
         return None
@@ -1008,53 +1019,31 @@ def build_judge_messages(
     expected_citations_scoped: Sequence[str],
     retrieved_citations: Sequence[str],
     case_scope: str,
-    azure_safe: bool = False,
 ) -> list[dict[str, str]]:
-    if azure_safe:
-        user_prompt = "\n\n".join(
-            [
-                f"QUESTION:\n{case.question.strip()}",
-                f"REFERENCE_ISSUE:\n{case.gold_issue.strip()}",
-                f"REFERENCE_ANSWER:\n{case.gold_answer_full.strip()}",
-                f"REFERENCE_SHORT_ANSWER:\n{case.gold_answer_short.strip()}",
-                f"ABSTAIN_EXPECTED:\n{case.abstain_required}",
-                f"MISSING_FACTS_NOTE:\n{(case.missing_information or '').strip()}",
-                f"CASE_SCOPE:\n{case_scope}",
-                "EXPECTED_CITATIONS:",
-                "\n".join(f"- {citation}" for citation in expected_citations_scoped) or "-",
-                "RETRIEVED_CITATIONS:",
-                "\n".join(f"- {citation}" for citation in retrieved_citations) or "-",
-                f"CANDIDATE_ANSWER:\n{generated_answer.strip()}",
-                "CANDIDATE_LEGAL_BASIS:",
-                "\n".join(f"- {citation}" for citation in generated_legal_basis) or "-",
-                f"CANDIDATE_INSUFFICIENT_CONTEXT:\n{insufficient_context}",
-            ]
-        )
-    else:
-        user_prompt = "\n\n".join(
-            [
-                f"QUESTION:\n{case.question.strip()}",
-                f"GOLD_ISSUE:\n{case.gold_issue.strip()}",
-                f"GOLD_ANSWER:\n{case.gold_answer_full.strip()}",
-                f"GOLD_ANSWER_SHORT:\n{case.gold_answer_short.strip()}",
-                f"ABSTAIN_REQUIRED:\n{case.abstain_required}",
-                f"GOLD_MISSING_INFORMATION:\n{(case.missing_information or '').strip()}",
-                f"CASE_SCOPE:\n{case_scope}",
-                "EXPECTED_CITATIONS_IN_SCOPE:",
-                "\n".join(f"- {citation}" for citation in expected_citations_scoped) or "-",
-                "Judge chi duoc dua tren evidence duoc cap trong prompt nay.",
-                "RETRIEVED_CITATIONS:",
-                "\n".join(f"- {citation}" for citation in retrieved_citations) or "-",
-                f"GENERATED_ANSWER:\n{generated_answer.strip()}",
-                "GENERATED_LEGAL_BASIS:",
-                "\n".join(f"- {citation}" for citation in generated_legal_basis) or "-",
-                f"INSUFFICIENT_CONTEXT:\n{insufficient_context}",
-            ]
-        )
+    user_prompt = "\n\n".join(
+        [
+            f"QUESTION:\n{case.question.strip()}",
+            f"GOLD_ISSUE:\n{case.gold_issue.strip()}",
+            f"GOLD_ANSWER:\n{case.gold_answer_full.strip()}",
+            f"GOLD_ANSWER_SHORT:\n{case.gold_answer_short.strip()}",
+            f"ABSTAIN_REQUIRED:\n{case.abstain_required}",
+            f"GOLD_MISSING_INFORMATION:\n{(case.missing_information or '').strip()}",
+            f"CASE_SCOPE:\n{case_scope}",
+            "EXPECTED_CITATIONS_IN_SCOPE:",
+            "\n".join(f"- {citation}" for citation in expected_citations_scoped) or "-",
+            "Judge chi duoc dua tren evidence duoc cap trong prompt nay.",
+            "RETRIEVED_CITATIONS:",
+            "\n".join(f"- {citation}" for citation in retrieved_citations) or "-",
+            f"GENERATED_ANSWER:\n{generated_answer.strip()}",
+            "GENERATED_LEGAL_BASIS:",
+            "\n".join(f"- {citation}" for citation in generated_legal_basis) or "-",
+            f"INSUFFICIENT_CONTEXT:\n{insufficient_context}",
+        ]
+    )
     return [
         {
             "role": "system",
-            "content": AZURE_SAFE_JUDGE_SYSTEM_PROMPT if azure_safe else JUDGE_SYSTEM_PROMPT,
+            "content": JUDGE_SYSTEM_PROMPT,
         },
         {"role": "user", "content": user_prompt},
     ]
@@ -1182,8 +1171,9 @@ __all__ = [
     "RESULTS_COLUMNS",
     "WORKBOOK_RESULTS_SHEET_NAME",
     "WORKBOOK_SHEET_NAME",
-    "AZURE_SAFE_JUDGE_SYSTEM_PROMPT",
+    "CitationRef",
     "case_requires_missing_information_handling",
+    "citation_contains",
     "citation_matches_expected",
     "citation_document_matches_expected",
     "document_families_from_chunk_paths",
@@ -1204,8 +1194,10 @@ __all__ = [
     "parse_hallucination_types",
     "parse_judge_payload",
     "partition_citations_by_scope",
+    "parse_citation",
     "reciprocal_rank",
     "require_openpyxl",
+    "resolve_citation_match_mode",
     "result_columns",
     "retrieval_hit_at_k",
     "score_citation_article_correctness_for_scope",
@@ -1213,6 +1205,7 @@ __all__ = [
     "score_citation_correctness_for_scope",
     "score_citation_document_correctness_for_scope",
     "summarize_benchmark_cases",
+    "normalize_vietnamese_citation",
     "write_benchmark_jsonl",
     "write_results_csv",
     "write_results_jsonl",
