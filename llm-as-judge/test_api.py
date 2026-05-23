@@ -1,20 +1,28 @@
-import os
-from dotenv import load_dotenv
-from openai import OpenAI
+from __future__ import annotations
 
-load_dotenv()
+from ragas_eval.config import load_thesparkdaily_config
+from ragas_eval.thesparkdaily_llm import build_chat_openai, invoke_chat_model
 
-client = OpenAI(
-    api_key=os.getenv("THESPARK_API_KEY"),
-    base_url=os.getenv("THESPARK_BASE_URL"),
-)
 
-response = client.chat.completions.create(
-    model=os.getenv("THESPARK_MODEL", "gpt-5.4"),
-    messages=[
-        {"role": "system", "content": "Bạn là trợ lý tiếng Việt, trả lời ngắn gọn."},
-        {"role": "user", "content": "Xin chào, bạn đang hoạt động không?"}
-    ],
-)
+def main() -> int:
+    config = load_thesparkdaily_config()
+    chat_model = build_chat_openai(model=config.judge_model, config=config)
+    response = invoke_chat_model(
+        chat_model,
+        [
+            {
+                "role": "system",
+                "content": "You are a concise Vietnamese assistant.",
+            },
+            {
+                "role": "user",
+                "content": "Xin chao, ban dang hoat dong khong?",
+            },
+        ],
+    )
+    print(response)
+    return 0
 
-print(response.choices[0].message.content)
+
+if __name__ == "__main__":
+    raise SystemExit(main())

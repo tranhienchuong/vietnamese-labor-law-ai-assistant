@@ -17,8 +17,14 @@ from ragas_eval.dataset_loader import (  # noqa: E402
     validate_benchmark_schema,
 )
 from ragas_eval.legal_judge_prompt import (  # noqa: E402
+    LEGAL_JUDGE_SYSTEM_PROMPT,
     LegalJudgeParseError,
     parse_legal_judge_response,
+)
+from ragas_eval.metrics import (  # noqa: E402
+    ResolvedMetric,
+    metrics_require_embeddings,
+    ragas_metric_names_for_mode,
 )
 from ragas_eval.summarize_results import build_summary, render_summary_markdown  # noqa: E402
 
@@ -78,6 +84,10 @@ class RagasDatasetLoaderTests(unittest.TestCase):
 
 
 class LegalJudgeParserTests(unittest.TestCase):
+    def test_prompt_forbids_citation_guessing_when_gold_data_is_empty(self) -> None:
+        self.assertIn("gold_citation hoặc reference_contexts trống", LEGAL_JUDGE_SYSTEM_PROMPT)
+        self.assertIn("không được tự suy đoán căn cứ pháp lý", LEGAL_JUDGE_SYSTEM_PROMPT)
+
     def test_parse_valid_legal_judge_json(self) -> None:
         score = parse_legal_judge_response(
             json.dumps(
@@ -143,6 +153,16 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(summary["error_type_distribution"]["missing_condition"], 1)
         self.assertIn("RAGAS Evaluation Summary", markdown)
         self.assertEqual(summary["worst_samples"][0]["id"], "LBR_001")
+
+
+class RagasMetricsTests(unittest.TestCase):
+    def test_answer_relevancy_uses_explicit_embeddings(self) -> None:
+        self.assertIn("answer_relevancy", ragas_metric_names_for_mode("fast"))
+        self.assertTrue(
+            metrics_require_embeddings(
+                [ResolvedMetric(name="answer_relevancy", metric=object())]
+            )
+        )
 
 
 if __name__ == "__main__":

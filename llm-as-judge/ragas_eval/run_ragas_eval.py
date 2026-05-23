@@ -10,12 +10,13 @@ from typing import Any, Mapping, Sequence
 
 from .config import LLM_AS_JUDGE_ROOT, load_thesparkdaily_config, resolve_output_path
 from .dataset_loader import BenchmarkSample, read_benchmark_records, validate_benchmark_schema
+from .embeddings import build_ragas_embeddings
 from .legal_judge_prompt import (
     LEGAL_JUDGE_SCORE_FIELDS,
     build_legal_judge_messages,
     parse_legal_judge_response,
 )
-from .metrics import metric_output_name, resolve_ragas_metrics
+from .metrics import metric_output_name, metrics_require_embeddings, resolve_ragas_metrics
 from .summarize_results import write_summary_files
 from .thesparkdaily_llm import build_chat_openai, build_judge_llm, invoke_chat_model
 
@@ -92,18 +93,17 @@ def main() -> int:
     output_path = resolve_output_path(args.output)
     needs_ragas = args.mode in {"fast", "full"}
 
-    records = read_benchmark_records(args.input)
+    all_records = read_benchmark_records(args.input)
+    records = all_records[: args.limit] if args.limit > 0 else all_records
     report = validate_benchmark_schema(
         records,
         require_response=True,
         require_retrieved_contexts=needs_ragas,
     )
-    if args.limit > 0:
-        samples = list(report.valid_samples[: args.limit])
-    else:
-        samples = list(report.valid_samples)
+    samples = list(report.valid_samples)
 
-    print(f"Total samples: {report.total_samples}")
+    print(f"Total source samples: {len(all_records)}")
+    print(f"Selected samples: {report.total_samples}")
     print(f"Evaluation-ready samples: {len(samples)}")
     print(f"Schema errors: {report.error_count}")
     for error in report.errors:
@@ -179,11 +179,13 @@ def run_ragas_metrics(
     resolved_metrics = resolve_ragas_metrics(mode)
     metrics = [resolved.metric for resolved in resolved_metrics]
     llm = build_judge_llm(model=judge_model)
+    embeddings = build_ragas_embeddings() if metrics_require_embeddings(resolved_metrics) else None
     dataset = _build_ragas_dataset(samples)
     result = evaluate(
         dataset=dataset,
         metrics=metrics,
         llm=llm,
+        embeddings=embeddings,
         raise_exceptions=False,
         show_progress=True,
     )

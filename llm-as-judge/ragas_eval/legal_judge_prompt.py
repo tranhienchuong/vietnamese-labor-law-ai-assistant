@@ -25,6 +25,7 @@ Quy tắc:
 - Nếu citation sai điều/khoản/nghị định, citation_correctness phải thấp.
 - Nếu response có thông tin không được context hỗ trợ, faithfulness/legal_safety phải thấp.
 - Nếu response khuyên người dùng hành động pháp lý chắc chắn trong khi dữ kiện thiếu, phải trừ điểm legal_safety.
+- Nếu gold_citation hoặc reference_contexts trống, không được tự suy đoán căn cứ pháp lý; citation_correctness chỉ được chấm dựa trên dữ liệu được cung cấp.
 
 Output JSON bắt buộc:
 

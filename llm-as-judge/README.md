@@ -1,28 +1,36 @@
 # RAGAS Evaluation with TheSparkDaily Judge
 
-This folder contains the RAGAS evaluation pipeline for the Vietnamese labor-law RAG system. It is intentionally separate from the production retrieval and generation code under `src/vn_labor_law_ai_assistant`.
+This folder contains the standalone RAGAS evaluation pipeline for the Vietnamese labor-law RAG system. The evaluation code is kept outside the production RAG code so it can be run for experiments without changing retrieval or generation behavior.
 
-## Project Notes
+## Current Project Layout
 
-- RAG pipeline: `src/vn_labor_law_ai_assistant/rag/retrieval/*` and `src/vn_labor_law_ai_assistant/rag/answering/*`.
-- Retrieval config: `src/vn_labor_law_ai_assistant/core/config.py`, plus index metadata under `artifacts/index`.
-- Generation config: current app LLM code is `src/vn_labor_law_ai_assistant/llm.py` and uses Groq.
-- Embedding config: `src/vn_labor_law_ai_assistant/embeddings.py`, with `sentence_transformers` or `custom_http`.
-- Benchmark data: current JSONL files live in `eval/data`.
-- Python version: `pyproject.toml` requires Python `>=3.10`.
-- Dependency manager: `pyproject.toml` with setuptools.
+- RAG pipeline: `src/vn_labor_law_ai_assistant/rag/retrieval/*` and `src/vn_labor_law_ai_assistant/rag/answering/*`
+- Runtime config: `src/vn_labor_law_ai_assistant/core/config.py`
+- App LLM: `src/vn_labor_law_ai_assistant/llm.py`
+- Embeddings: `src/vn_labor_law_ai_assistant/embeddings.py`
+- Benchmark data: `eval/data/*.jsonl`
+- Python: `>=3.10`
+- Dependencies: `pyproject.toml`
 
 ## Install
 
-From the repository root:
+Run this once from the repository root so both the app package and evaluation dependencies are importable:
 
 ```bash
 python -m pip install -e ".[dev]"
 ```
 
+Then run evaluation commands from `llm-as-judge`:
+
+```bash
+cd llm-as-judge
+```
+
+The supported namespace is `ragas_eval`.
+
 ## Configure TheSparkDaily
 
-Set the API key in your environment or in the repo `.env` file:
+Set these variables in your shell or in the repository `.env` file:
 
 ```bash
 export THESPARKDAILY_API_KEY="your_api_key"
@@ -37,32 +45,51 @@ PowerShell:
 $env:THESPARKDAILY_API_KEY="your_api_key"
 ```
 
+API keys are read from environment variables and are not printed.
+
+## RAGAS Embeddings
+
+`answer_relevancy` and `answer_correctness` need embeddings. This pipeline passes an explicit embedding adapter to RAGAS instead of relying on defaults.
+
+The adapter uses the project's existing embedding config:
+
+- `EMBEDDING_PROVIDER=sentence_transformers`: loads `DENSE_MODEL`
+- `EMBEDDING_PROVIDER=custom_http`: calls the configured `EMBEDDING_API_URL`
+
+Optional RAGAS overrides:
+
+```bash
+export RAGAS_EMBEDDING_MODEL="keepitreal/vietnamese-sbert"
+export RAGAS_EMBEDDING_DEVICE="cpu"
+export RAGAS_EMBEDDING_BATCH_SIZE="32"
+```
+
 ## Dataset Format
 
-Preferred JSONL sample:
+Evaluation runs require `response` and, for RAGAS modes, `retrieved_contexts`:
 
 ```json
 {
   "id": "LBR_001",
-  "user_input": "Câu hỏi luật lao động",
-  "response": "Câu trả lời do RAG system sinh ra",
+  "user_input": "Cau hoi luat lao dong",
+  "response": "Cau tra loi do RAG system sinh ra",
   "retrieved_contexts": ["chunk 1", "chunk 2"],
-  "reference": "Câu trả lời chuẩn",
-  "reference_contexts": ["chunk luật chuẩn"],
-  "gold_citation": "Điều/Khoản luật chuẩn"
+  "reference": "Cau tra loi chuan",
+  "reference_contexts": ["chunk luat chuan"],
+  "gold_citation": "Dieu/Khoan luat chuan"
 }
 ```
 
-The loader also maps older fields:
+Legacy field mappings:
 
 - `question` -> `user_input`
 - `answer`, `gold_answer`, `gold_answer_full` -> `reference`
 - `generated_answer` -> `response`
 - `contexts` -> `retrieved_contexts`
 
-## Validate Benchmark
+## Validate Dataset
 
-From `llm-as-judge`:
+Validate a benchmark without requiring generated responses:
 
 ```bash
 python -m ragas_eval.dataset_loader \
@@ -70,39 +97,42 @@ python -m ragas_eval.dataset_loader \
   --validate-only
 ```
 
-The compatibility namespace also works from `llm-as-judge`:
+Validate that a dataset is ready for RAGAS scoring:
 
 ```bash
-python -m evaluation.ragas_eval.dataset_loader \
-  --input ../eval/data/golden_benchmark_100_answered_v2.jsonl \
-  --validate-only
+python -m ragas_eval.dataset_loader \
+  --input path/to/benchmark_with_responses.jsonl \
+  --require-response \
+  --require-contexts
 ```
 
 ## Dry Run
 
-Use this before setting an API key to confirm that an evaluation-ready dataset has `response` and `retrieved_contexts`:
+Dry-run validates the selected rows and makes no API calls:
 
 ```bash
 python -m ragas_eval.run_ragas_eval \
-  --input path/to/benchmark_with_responses.jsonl \
-  --limit 10 \
+  --input ../eval/data/golden_benchmark_100_answered_v2.jsonl \
+  --limit 2 \
   --mode full \
   --dry-run
 ```
 
+If the selected dataset rows do not have `response` or `retrieved_contexts`, this command exits with schema errors that name the sample IDs and missing fields.
+
 ## Run Evaluation
 
-Fast mode uses the fast judge model for cheaper RAGAS metrics:
+Fast mode uses the fast judge model for lighter RAGAS metrics:
 
 ```bash
 python -m ragas_eval.run_ragas_eval \
   --input path/to/benchmark_with_responses.jsonl \
-  --output outputs/ragas_results.csv \
+  --output outputs/ragas_results_fast.csv \
   --limit 10 \
   --mode fast
 ```
 
-Accurate mode runs only the custom legal judge:
+Accurate mode runs only the custom legal judge with the accurate model:
 
 ```bash
 python -m ragas_eval.run_ragas_eval \
@@ -121,9 +151,21 @@ python -m ragas_eval.run_ragas_eval \
   --judge-model gpt-5.4-pro
 ```
 
-## Summarize Results
+## Outputs
 
-`run_ragas_eval.py` writes summary JSON and Markdown automatically. You can regenerate them:
+By default, results and summaries are written under:
+
+```text
+llm-as-judge/outputs/
+```
+
+Typical files:
+
+- `ragas_results_YYYYMMDD_HHMM.csv`
+- `ragas_summary_YYYYMMDD_HHMM.json`
+- `ragas_summary_YYYYMMDD_HHMM.md`
+
+Regenerate a summary:
 
 ```bash
 python -m ragas_eval.summarize_results \
@@ -132,4 +174,10 @@ python -m ragas_eval.summarize_results \
   --judge-model gpt-5.4-pro
 ```
 
-The Markdown summary includes average metrics, legal judge metrics, error-type distribution, and the 10 lowest-scoring samples.
+## API Smoke Test
+
+`test_api.py` uses the same `THESPARKDAILY_*` config as the evaluator:
+
+```bash
+python test_api.py
+```

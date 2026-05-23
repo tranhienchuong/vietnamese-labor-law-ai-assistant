@@ -3,6 +3,7 @@
 __all__ = [
     "config",
     "dataset_loader",
+    "embeddings",
     "legal_judge_prompt",
     "metrics",
     "summarize_results",
