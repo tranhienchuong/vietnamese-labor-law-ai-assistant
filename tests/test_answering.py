@@ -481,6 +481,22 @@ class AnsweringTests(unittest.TestCase):
         self.assertTrue(parsed.insufficient_context)
         self.assertEqual(parsed.legal_basis, ())
 
+    def test_parse_answer_payload_fills_blank_insufficient_answer(self) -> None:
+        contexts = (make_context("Bo luat so 45/2019/QH 14, Dieu 36, khoan 1"),)
+        raw_content = """
+        {
+          "answer": "",
+          "legal_basis": [],
+          "insufficient_context": true,
+          "notes": ""
+        }
+        """
+
+        parsed = parse_answer_payload(raw_content, contexts)
+
+        self.assertTrue(parsed.insufficient_context)
+        self.assertIn("chua du can cu", parsed.answer.lower())
+
     def test_parse_answer_payload_marks_invalid_json_as_insufficient(self) -> None:
         contexts = (make_context("Bo luat so 45/2019/QH 14, Dieu 36, khoan 1"),)
 

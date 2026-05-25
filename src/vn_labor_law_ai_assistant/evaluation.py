@@ -5,7 +5,7 @@ import csv
 import json
 from pathlib import Path
 import re
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 from .corpus_pipeline import normalize_for_matching
 from .core.config import load_settings
@@ -284,11 +284,15 @@ class BenchmarkCase:
     notes: str | None
     skill_tag: str | None = None
     gold_citations: tuple[str, ...] = field(default_factory=tuple)
+    reference_contexts: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         raw_citations: Iterable[str | None]
         if self.gold_citations:
-            raw_citations = tuple(self.gold_citations)
+            if isinstance(self.gold_citations, str):
+                raw_citations = (self.gold_citations,)
+            else:
+                raw_citations = tuple(self.gold_citations)
         else:
             raw_citations = (
                 self.gold_citation_primary,
@@ -298,6 +302,18 @@ class BenchmarkCase:
             self,
             "gold_citations",
             expand_expected_citations(raw_citations),
+        )
+        raw_reference_contexts = self.reference_contexts or ()
+        if isinstance(raw_reference_contexts, str):
+            raw_reference_contexts = (raw_reference_contexts,)
+        object.__setattr__(
+            self,
+            "reference_contexts",
+            tuple(
+                str(context).strip()
+                for context in raw_reference_contexts
+                if str(context).strip()
+            ),
         )
         object.__setattr__(
             self,
@@ -608,13 +624,130 @@ def load_benchmark_workbook(
     return parse_benchmark_rows(rows)
 
 
+def first_json_value(record: Mapping[str, object], names: Sequence[str]) -> object | None:
+    for name in names:
+        value = record.get(name)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def coerce_text_sequence(value: object) -> tuple[str, ...]:
+    if value in (None, ""):
+        return ()
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return ()
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, list):
+            return tuple(str(item).strip() for item in parsed if str(item).strip())
+        return (stripped,)
+    if isinstance(value, Sequence):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    return (str(value).strip(),) if str(value).strip() else ()
+
+
+def citation_values_from_json_record(record: Mapping[str, object]) -> tuple[str, ...]:
+    raw_values: list[str] = []
+    for field_name in (
+        "gold_citations",
+        "gold_citation",
+        "expected_citations",
+        "gold_citation_primary",
+        "gold_citation_secondary",
+    ):
+        value = record.get(field_name)
+        if value in (None, ""):
+            continue
+        if isinstance(value, str):
+            raw_values.extend(part.strip() for part in value.split("|") if part.strip())
+        else:
+            raw_values.extend(coerce_text_sequence(value))
+    return unique_preserve_order(raw_values)
+
+
+def benchmark_case_from_json_record(payload: Mapping[str, object]) -> BenchmarkCase:
+    benchmark_fields = set(BenchmarkCase.__dataclass_fields__)
+    filtered_payload = {
+        key: value for key, value in payload.items() if key in benchmark_fields
+    }
+    try:
+        return BenchmarkCase(**filtered_payload)
+    except TypeError:
+        pass
+
+    question = coerce_required_text(
+        first_json_value(payload, ("question", "user_input", "query", "input")),
+        "question",
+    )
+    reference = coerce_required_text(
+        first_json_value(
+            payload,
+            (
+                "gold_answer_full",
+                "reference",
+                "gold_answer",
+                "expected_answer",
+                "ground_truth",
+                "answer",
+            ),
+        ),
+        "gold_answer_full",
+    )
+    citation_values = citation_values_from_json_record(payload)
+    reference_contexts = coerce_text_sequence(
+        first_json_value(
+            payload,
+            (
+                "reference_contexts",
+                "gold_contexts",
+                "gold_context",
+                "expected_contexts",
+                "ground_truth_contexts",
+            ),
+        )
+    )
+
+    return BenchmarkCase(
+        id=coerce_required_text(
+            first_json_value(payload, ("id", "sample_id", "case_id")),
+            "id",
+        ),
+        category=coerce_optional_text(payload.get("category")) or "ragas_eval",
+        subtopic=coerce_optional_text(payload.get("subtopic")) or "ragas_template",
+        difficulty=coerce_optional_text(payload.get("difficulty")) or "unspecified",
+        question_type=coerce_optional_text(payload.get("question_type")) or "direct_qa",
+        question=question,
+        scenario=coerce_optional_text(payload.get("scenario")) or "",
+        gold_issue=coerce_optional_text(payload.get("gold_issue")) or "",
+        gold_citation_primary=citation_values[0] if citation_values else None,
+        gold_citation_secondary=" | ".join(citation_values[1:]) if len(citation_values) > 1 else None,
+        gold_answer_short=coerce_optional_text(payload.get("gold_answer_short")) or reference,
+        gold_answer_full=reference,
+        abstain_required=parse_yes_no_flag(payload.get("abstain_required")),
+        missing_information=coerce_optional_text(payload.get("missing_information")),
+        source_document=coerce_optional_text(payload.get("source_document")),
+        source_url=coerce_optional_text(payload.get("source_url")),
+        annotator=coerce_optional_text(payload.get("annotator")),
+        review_status=coerce_optional_text(payload.get("review_status")),
+        notes=coerce_optional_text(payload.get("notes")),
+        skill_tag=coerce_optional_text(payload.get("skill_tag")),
+        gold_citations=expand_expected_citations(citation_values),
+        reference_contexts=reference_contexts,
+    )
+
+
 def load_benchmark_jsonl(input_path: Path) -> list[BenchmarkCase]:
     cases: list[BenchmarkCase] = []
     for line in input_path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         payload = json.loads(line)
-        cases.append(BenchmarkCase(**payload))
+        cases.append(benchmark_case_from_json_record(payload))
     return cases
 
 

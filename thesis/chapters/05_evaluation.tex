@@ -1,0 +1,166 @@
+\chapter{Evaluation and Results}
+
+\section{Evaluation Setup}
+% TODO: Describe experimental configuration.
+\todotext{State hardware, software versions, corpus snapshot, embedding model, LLM model, retrieval settings, graph settings, and random seeds where applicable.}
+
+\begin{figure}[H]
+  \centering
+  \placeholderbox{Evaluation pipeline: benchmark questions, retrieval runs, generation runs, metric computation, LLM-as-Judge review, citation matching, reporting.}
+  \caption{Evaluation pipeline.}
+  \label{fig:evaluation-pipeline}
+\end{figure}
+
+\section{Curated Legal QA Benchmark Dataset}
+% TODO: Describe dataset construction and annotation process.
+\todotext{Explain question selection, answer references, citation labels, quality control, and train/test separation if any.}
+
+\begin{table}[H]
+  \centering
+  \caption{Benchmark question types.}
+  \label{tab:benchmark-question-types}
+  \begin{tabular}{lll}
+    \toprule
+    Question Type & Description & Count \\
+    \midrule
+    Definition lookup & TODO & TBD \\
+    Article-specific lookup & TODO & TBD \\
+    Multi-hop legal reasoning & TODO & TBD \\
+    Procedure or entitlement & TODO & TBD \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Retrieval Evaluation Metrics}
+% TODO: Define retrieval metrics and relevance labels.
+\todotext{Define Recall@k, Precision@k, Mean Reciprocal Rank, nDCG if used, and how relevant legal chunks are determined.}
+
+\begin{table}[H]
+  \centering
+  \caption{Retrieval metrics.}
+  \label{tab:retrieval-metrics}
+  \begin{tabular}{lll}
+    \toprule
+    Metric & Definition & Notes \\
+    \midrule
+    Recall@k & TODO & Measures whether relevant chunks appear in top-k \\
+    Precision@k & TODO & Measures relevance density in retrieved context \\
+    MRR & TODO & Measures rank of first relevant result \\
+    nDCG@k & TODO & Optional graded relevance metric \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Answer Quality Evaluation}
+% TODO: Define answer evaluation protocol.
+\todotext{Describe human review, LLM-as-Judge, RAGAS-style metrics, scoring rubrics, and safeguards against evaluator bias.}
+
+\subsection{Faithfulness}
+% TODO: Define faithfulness.
+\todotext{Explain how unsupported claims are identified and scored against retrieved context and cited legal provisions.}
+
+\subsection{Answer Relevance}
+% TODO: Define answer relevance.
+\todotext{Explain how directly and completely an answer responds to the user question.}
+
+\subsection{Context Precision and Context Recall}
+% TODO: Define context precision and context recall.
+\todotext{Explain how retrieved contexts are judged for usefulness and coverage of required legal evidence.}
+
+\begin{table}[H]
+  \centering
+  \caption{Answer quality metrics.}
+  \label{tab:answer-quality-metrics}
+  \begin{tabular}{lll}
+    \toprule
+    Metric & Scoring Method & Status \\
+    \midrule
+    Faithfulness & TODO & To be filled after evaluation \\
+    Answer relevance & TODO & To be filled after evaluation \\
+    Context precision & TODO & To be filled after evaluation \\
+    Context recall & TODO & To be filled after evaluation \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Citation Evaluation}
+% TODO: Define citation evaluation criteria.
+\todotext{Explain exact, partial, and incorrect citation matches. Define how hallucinated or missing citations are counted.}
+
+\subsection{Citation Matching Accuracy}
+% TODO: Present citation matching accuracy and how it is computed.
+\todotext{Use this formula and later report the measured score after running evaluation.}
+
+\begin{equation}
+\text{Citation Matching Accuracy} =
+\frac{\text{Number of answers with correct citations}}
+{\text{Total number of evaluated answers}}
+\label{eq:citation-matching-accuracy}
+\end{equation}
+
+\subsection{Citation Hallucination Analysis}
+% TODO: Analyze citation hallucination patterns.
+\todotext{Categorize hallucinations such as nonexistent articles, wrong clauses, cited but unused evidence, and unsupported answer claims.}
+
+\begin{table}[H]
+  \centering
+  \caption{Citation evaluation metrics.}
+  \label{tab:citation-evaluation-metrics}
+  \begin{tabular}{lll}
+    \toprule
+    Metric & Definition & Value \\
+    \midrule
+    Citation matching accuracy & See Equation~\ref{eq:citation-matching-accuracy} & TBD \\
+    Missing citation rate & TODO & TBD \\
+    Citation hallucination rate & TODO & TBD \\
+    Wrong-granularity citation rate & TODO & TBD \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Experimental Results}
+% TODO: Report the main quantitative results.
+\todotext{Fill in this section only after running experiments. Do not report speculative improvements.}
+
+\begin{table}[H]
+  \centering
+  \caption{Main experimental results.}
+  \label{tab:main-experimental-results}
+  \begin{tabular}{lllll}
+    \toprule
+    System & Recall@k & Faithfulness & Citation Accuracy & Latency \\
+    \midrule
+    Retrieval-only RAG & TBD & TBD & TBD & TBD \\
+    Graph-augmented RAG & TBD & TBD & TBD & TBD \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section[Comparison between Retrieval-only RAG and Graph-Augmented RAG]{Comparison between Retrieval-only RAG and\\ Graph-Augmented RAG}
+% TODO: Compare systems using quantitative and qualitative evidence.
+\todotext{Discuss where graph augmentation improves retrieval, where it does not, and how it affects answer quality, citation correctness, and latency.}
+
+\section{Error Analysis}
+% TODO: Analyze representative failures.
+\todotext{Group errors by retrieval miss, routing error, graph traversal error, generation error, citation error, and ambiguous legal question.}
+
+\begin{longtable}{@{}p{0.16\linewidth}p{0.24\linewidth}p{0.24\linewidth}p{0.20\linewidth}@{}}
+  \caption{Error analysis examples.}
+  \label{tab:error-analysis-examples}\\
+  \toprule
+  Error Type & Example Question & Observed Behavior & Planned Fix \\
+  \midrule
+  \endfirsthead
+  \toprule
+  Error Type & Example Question & Observed Behavior & Planned Fix \\
+  \midrule
+  \endhead
+  Retrieval miss & TODO & TBD & TBD \\
+  Citation error & TODO & TBD & TBD \\
+  Routing error & TODO & TBD & TBD \\
+  \bottomrule
+\end{longtable}
+
+\section{Case Studies}
+% TODO: Present selected qualitative case studies.
+\todotext{Choose representative questions that show strengths and limitations of both retrieval-only and graph-augmented RAG.}

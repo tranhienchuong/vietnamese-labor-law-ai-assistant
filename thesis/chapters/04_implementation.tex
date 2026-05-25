@@ -1,0 +1,72 @@
+\chapter{Implementation}
+
+\section{Technology Stack}
+% TODO: List implementation tools and justify major technology choices.
+\todotext{Describe the backend, frontend, vector database, Neo4j, LLM provider, tracing tools, evaluation scripts, and deployment environment.}
+
+\begin{table}[H]
+  \centering
+  \caption{Technology stack.}
+  \label{tab:technology-stack}
+  \begin{tabular}{lll}
+    \toprule
+    Layer & Technology & Purpose \\
+    \midrule
+    Backend & TODO & API, orchestration, retrieval, generation \\
+    Frontend & TODO & User interface for legal QA \\
+    Vector database & TODO & Embedding search baseline \\
+    Graph database & Neo4j & Legal hierarchy and graph traversal \\
+    Evaluation & TODO & Benchmarking and report generation \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Backend Implementation}
+% TODO: Describe API endpoints and service organization.
+\todotext{Explain request flow, service modules, retrieval interfaces, generator interface, error handling, and configuration management.}
+
+\section{Frontend Implementation}
+% TODO: Describe UI workflows.
+\todotext{Describe the question input, answer display, citation presentation, trace or debug view, and user feedback collection if implemented.}
+
+\section{Vector Database Implementation}
+% TODO: Describe indexing and retrieval details.
+\todotext{Explain collection schema, embedding storage, metadata filters, similarity search, and update or rebuild process.}
+
+\section{Neo4j Graph Database Design}
+% TODO: Describe graph database implementation details.
+\todotext{Document constraints, indexes, Cypher queries, import scripts, relationship creation, and graph traversal patterns.}
+
+\section{Prompt Design}
+% TODO: Describe prompt templates and prompt safety constraints.
+\todotext{Explain system messages, answer style constraints, citation requirements, refusal policy for unsupported questions, and prompt iteration process.}
+
+\begin{lstlisting}[caption={Prompt template placeholder for citation-aware legal answering.},label={lst:prompt-template}]
+System:
+You are a Vietnamese labor law assistant. Answer only from the provided legal context.
+If the context is insufficient, say that the answer cannot be determined from the provided sources.
+
+User question:
+{question}
+
+Retrieved legal context:
+{context}
+
+Instructions:
+1. Provide a concise answer in English or Vietnamese according to the user request.
+2. Cite each legal claim using the supplied citation identifiers.
+3. Do not invent articles, clauses, or legal consequences.
+4. End with a short list of cited sources.
+\end{lstlisting}
+
+\section{Example Use Cases}
+% TODO: Add representative system use cases.
+\todotext{Describe example questions such as severance allowance, probation period, overtime limits, contract termination, and article-specific lookup.}
+
+\section{System Observability and Tracing}
+% TODO: Describe logging, tracing, and monitoring.
+\todotext{Document trace fields such as query ID, routing decision, retrieved chunk IDs, graph traversal path, prompt size, latency, token usage, and citation validation status.}
+
+\section{Deployment Setup and CI/CD}
+% TODO: Describe deployment configuration.
+\todotext{Explain local development setup, Docker services, environment variables, database migrations or imports, CI checks, and deployment target.}

@@ -15,6 +15,7 @@ llm-as-judge/outputs/*
 # Local weekly LaTeX reports
 docs/bao_cao_tuan_*.tex
 docs/bao_cao_tuan_*.pdf
+llm-as-judge/evaluation/ragas_eval/*
 
 # LaTeX build artifacts
 *.aux

@@ -1,0 +1,28 @@
+\chapter{Background and Related Work}
+
+\section{Large Language Models}
+% TODO: Explain transformer-based language models and their role in question answering.
+\todotext{Introduce LLM capabilities and limitations, especially hallucination, context window limits, and domain-specific legal reasoning constraints.}
+
+\section{Retrieval-Augmented Generation}
+% TODO: Describe RAG and cite foundational work.
+\todotext{Explain indexing, embedding, retrieval, context construction, and generation. Discuss why RAG is suitable for legal QA. Add citations such as \cite{lewis2020retrieval}.}
+
+\begin{figure}[H]
+  \centering
+  \placeholderbox{Standard RAG pipeline: user query, embedding, vector search, retrieved context, prompt assembly, LLM answer.}
+  \caption{Standard retrieval-augmented generation pipeline.}
+  \label{fig:standard-rag-pipeline}
+\end{figure}
+
+\section{Legal Question Answering}
+% TODO: Review legal QA requirements and risks.
+\todotext{Discuss legal domain constraints: traceability, citation correctness, jurisdiction specificity, temporal validity, and careful wording.}
+
+\section{Graph-Augmented Retrieval}
+% TODO: Describe graph retrieval and how legal structure can be represented as nodes and edges.
+\todotext{Explain how graphs can represent legal hierarchy and cross-references. Compare graph traversal with vector similarity retrieval.}
+
+\section{Evaluation Methods for RAG Systems}
+% TODO: Review retrieval metrics, answer quality metrics, RAGAS-style evaluation, and citation checks.
+\todotext{Summarize metrics such as Recall@k, Precision@k, MRR, faithfulness, answer relevance, context precision, context recall, and citation matching accuracy.}
