@@ -1,0 +1,89 @@
+\chapter{System Design and Methodology}
+
+\section{Overall System Architecture}
+% TODO: Present the complete system architecture and explain each major component.
+\todotext{Describe data ingestion, preprocessing, vector indexing, graph construction, query routing, retrieval, generation, citation validation, tracing, and user interface layers.}
+
+\begin{figure}[H]
+  \centering
+  \placeholderbox{Overall architecture: legal corpus, preprocessing, vector database, Neo4j, query router, retrieval pipelines, LLM, observability, frontend.}
+  \caption{Overall system architecture.}
+  \label{fig:overall-system-architecture}
+\end{figure}
+
+\section{Data Sources}
+% TODO: Identify legal documents and metadata fields used by the system.
+\todotext{List official or curated legal sources, document versions, collection method, update date, and licensing or access notes.}
+
+\begin{table}[H]
+  \centering
+  \caption{Data sources used by the system.}
+  \label{tab:data-sources}
+  \begin{tabular}{llll}
+    \toprule
+    Source & Document Type & Coverage & Status \\
+    \midrule
+    TODO & Labor Code & TBD & To be filled \\
+    TODO & Decree or Circular & TBD & To be filled \\
+    TODO & Guidance document & TBD & To be filled \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Legal Document Preprocessing}
+% TODO: Explain the preprocessing pipeline before indexing.
+\todotext{Describe text extraction, normalization, structural parsing, cleaning, deduplication, metadata assignment, and validation.}
+
+\subsection{Hierarchical Chunking for Legal Texts}
+% TODO: Define the legal hierarchy and chunking algorithm.
+\todotext{Explain the Document -> Chapter -> Section -> Article -> Clause -> Point hierarchy and why preserving this structure improves retrieval and citation grounding.}
+
+\subsection{Metadata Enrichment}
+% TODO: Describe metadata fields attached to chunks.
+\todotext{Define fields such as document title, article number, clause number, point label, effective date, parent path, citation string, and source URI.}
+
+\subsection{Rechunking Strategy}
+% TODO: Explain how chunks are adjusted for embedding and generation constraints.
+\todotext{Describe when adjacent units are merged, when long provisions are split, and how parent-child metadata is retained after rechunking.}
+
+\section{Vector-based Retrieval}
+% TODO: Describe the retrieval-only baseline.
+\todotext{Specify embedding model, vector store, similarity metric, top-k setting, filters, reranking if used, and context assembly policy.}
+
+\section{Graph Construction with Neo4j}
+% TODO: Explain graph schema and graph loading process.
+\todotext{Define node labels, relationship types, uniqueness constraints, and how legal hierarchy and references are inserted into Neo4j.}
+
+\begin{figure}[H]
+  \centering
+  \placeholderbox{Neo4j graph schema: Document, Chapter, Section, Article, Clause, Point, Concept, and reference relationships.}
+  \caption{Neo4j graph schema for hierarchical legal documents.}
+  \label{fig:neo4j-graph-schema}
+\end{figure}
+
+\section{Query Routing and Retrieval Strategy}
+% TODO: Explain why routing is needed and how strategies are selected.
+\todotext{Describe the query router inputs, outputs, confidence scores, fallback behavior, and how routing affects retrieval mode.}
+
+\subsection{Query Intent Classification}
+% TODO: Define intent classes.
+\todotext{Describe possible intents such as definition lookup, article-specific lookup, eligibility question, comparison question, procedure question, and multi-hop reasoning question.}
+
+\subsection{Retrieval Strategy Selection}
+% TODO: Map intents to retrieval strategies.
+\todotext{Explain when to use vector retrieval, graph traversal, hybrid retrieval, metadata filtering, or reranking.}
+
+\section{Graph-Augmented Retrieval Pipeline}
+% TODO: Describe the graph-augmented retrieval pipeline in detail.
+\todotext{Explain how initial candidates seed graph expansion, how neighboring legal units are selected, and how graph context is merged with vector context.}
+
+\begin{figure}[H]
+  \centering
+  \placeholderbox{Graph-augmented retrieval flow: query, intent, seed retrieval, graph traversal, context merge, citation-aware generation.}
+  \caption{Graph-augmented retrieval flow.}
+  \label{fig:graph-augmented-retrieval-flow}
+\end{figure}
+
+\section{Answer Generation with Legal Citations}
+% TODO: Explain prompt construction and citation formatting.
+\todotext{Describe answer constraints, citation insertion, unsupported-answer handling, and post-generation citation validation.}

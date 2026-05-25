@@ -276,6 +276,52 @@ Run unit tests:
 
 Benchmark outputs are written to `eval/results/*.jsonl` and `eval/results/*.csv`.
 
+### Recommended Evaluation Flow
+
+Use `scripts/run_benchmark.py` as the system runner, then use RAGAS/TheSparkDaily
+as the final evaluator. The recommended path disables the legacy benchmark judge
+while exporting a RAGAS-ready input file:
+
+Step 1: generate answers and prompt contexts from the live RAG system.
+
+```powershell
+$env:LEGAL_GRAPH_ENABLED="false"
+
+.venv\Scripts\python.exe scripts\run_benchmark.py `
+  --benchmark-path llm-as-judge\evaluation\ragas_eval\labor_law_benchmark_pilot_30_eval_template.jsonl `
+  --provider groq `
+  --model qwen/qwen3-32b `
+  --no-judge `
+  --export-ragas `
+  --ragas-output-path eval\results\pilot_30_vector_only_ragas_input.jsonl
+```
+
+Step 2: score the exported file with RAGAS/TheSparkDaily.
+
+```powershell
+cd llm-as-judge
+
+..\.venv\Scripts\python.exe -m ragas_eval.run_ragas_eval `
+  --input ..\eval\results\pilot_30_vector_only_ragas_input.jsonl `
+  --mode full
+```
+
+Step 3: compare vector-only against graph-augmented retrieval by rerunning Step 1
+with Neo4j graph expansion enabled, then scoring the second export with Step 2.
+
+```powershell
+$env:LEGAL_GRAPH_ENABLED="true"
+$env:LEGAL_GRAPH_BACKEND="neo4j"
+
+.venv\Scripts\python.exe scripts\run_benchmark.py `
+  --benchmark-path llm-as-judge\evaluation\ragas_eval\labor_law_benchmark_pilot_30_eval_template.jsonl `
+  --provider groq `
+  --model qwen/qwen3-32b `
+  --no-judge `
+  --export-ragas `
+  --ragas-output-path eval\results\pilot_30_vector_graph_ragas_input.jsonl
+```
+
 ## CI and Benchmark Checks
 
 Automation details are documented in [docs/CI.md](docs/CI.md).

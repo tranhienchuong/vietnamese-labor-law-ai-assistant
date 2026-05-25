@@ -90,6 +90,9 @@ def parse_answer_payload(
                 if part
             ).strip()
 
+    if insufficient_context and not str(payload.get("answer") or "").strip():
+        payload["answer"] = "Chua du can cu de ket luan mot cach chac chan tu context hien tai."
+
     override = contextual_answer_override(question, contexts) if question else None
     if override is not None:
         insufficient_context = False

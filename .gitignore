@@ -9,10 +9,13 @@ artifacts/
 .ROADMAP.md
 eval/results/*
 !eval/results/.gitkeep
+llm-as-judge/outputs/*
+!llm-as-judge/outputs/.gitkeep
 
 # Local weekly LaTeX reports
 docs/bao_cao_tuan_*.tex
 docs/bao_cao_tuan_*.pdf
+llm-as-judge/evaluation/ragas_eval/*
 
 # LaTeX build artifacts
 *.aux

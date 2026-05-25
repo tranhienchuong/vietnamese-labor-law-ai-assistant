@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import sys
+from typing import Sequence
 
 from vn_labor_law_ai_assistant.answering import (
     EvidenceQuote,
@@ -187,6 +188,23 @@ def parse_args() -> argparse.Namespace:
             "Defaults to EVAL_CITATION_MATCH_MODE or containment."
         ),
     )
+    parser.add_argument(
+        "--export-ragas",
+        action="store_true",
+        help=(
+            "Write an additional RAGAS-ready JSONL file with generated answers and "
+            "the exact contexts sent to the answer prompt. Requires --model."
+        ),
+    )
+    parser.add_argument(
+        "--ragas-output-path",
+        type=Path,
+        default=None,
+        help=(
+            "Optional path for --export-ragas JSONL output. Defaults to "
+            "<output-dir>/<benchmark-output-stem>_ragas_input.jsonl."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -263,6 +281,56 @@ def format_evidence_quotes(evidence_quotes: tuple[EvidenceQuote, ...]) -> str:
     )
 
 
+def build_ragas_export_row(
+    *,
+    case: BenchmarkCase,
+    generated_answer: str,
+    prompt_contexts: Sequence[object],
+    expected_citations_scoped: Sequence[str],
+    expected_citations_all: Sequence[str],
+) -> dict[str, object]:
+    citations = tuple(expected_citations_scoped or expected_citations_all)
+    return {
+        "id": case.id,
+        "user_input": case.question,
+        "response": generated_answer,
+        "retrieved_contexts": [
+            text
+            for context in prompt_contexts
+            if (text := str(getattr(context, "text", "")).strip())
+        ],
+        "reference": case.gold_answer_full,
+        "reference_contexts": list(case.reference_contexts),
+        "gold_citation": " | ".join(citations),
+    }
+
+
+def write_ragas_export_jsonl(rows: Sequence[dict[str, object]], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def load_existing_jsonl_rows(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        return []
+    rows: list[dict[str, object]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            rows.append(json.loads(line))
+    return rows
+
+
+def resolve_ragas_output_path(
+    *,
+    requested_path: Path | None,
+    output_dir: Path,
+    output_stem: str,
+) -> Path:
+    return requested_path or output_dir / f"{output_stem}_ragas_input.jsonl"
+
+
 def slugify_model_version(text: str) -> str:
     cleaned = re.sub(r"[^a-z0-9]+", "-", text.strip().lower())
     return cleaned.strip("-") or "run"
@@ -328,6 +396,10 @@ def main() -> None:
         raise ValueError("--no-judge cannot be combined with --judge-provider or --judge-model.")
     if (args.judge_provider or args.judge_model) and not args.model:
         raise ValueError("Judge options require --model because there is no generated answer otherwise.")
+    if args.export_ragas and not str(args.model or "").strip():
+        raise SystemExit("--export-ragas requires --model because RAGAS export needs generated responses.")
+    if args.ragas_output_path and args.ragas_output_path.suffix.lower() != ".jsonl":
+        raise ValueError("--ragas-output-path must point to a .jsonl file.")
 
     cases = load_benchmark_jsonl(args.benchmark_path)
     if args.limit > 0:
@@ -355,6 +427,18 @@ def main() -> None:
         output_stem = f"benchmark_{slugify_model_version(model_version)}_{timestamp}"
         output_jsonl = args.output_dir / f"{output_stem}.jsonl"
         output_csv = args.output_dir / f"{output_stem}.csv"
+    ragas_output_jsonl = resolve_ragas_output_path(
+        requested_path=args.ragas_output_path,
+        output_dir=args.output_dir,
+        output_stem=output_stem,
+    )
+    if args.export_ragas and ragas_output_jsonl.resolve() == output_jsonl.resolve():
+        raise ValueError("--ragas-output-path must be different from the benchmark JSONL output path.")
+    ragas_rows = (
+        load_existing_jsonl_rows(ragas_output_jsonl)
+        if args.export_ragas and args.resume_from
+        else []
+    )
     del output_stem
     reciprocal_ranks: list[float | None] = []
     retrieval_hit_column = f"retrieval_hit_at_{args.top_k}"
@@ -383,6 +467,8 @@ def main() -> None:
             return
         write_results_jsonl(rows, output_jsonl)
         write_results_csv(rows, output_csv, fieldnames=fieldnames)
+        if args.export_ragas:
+            write_ragas_export_jsonl(ragas_rows, ragas_output_jsonl)
 
     completed = False
     try:
@@ -500,20 +586,25 @@ def main() -> None:
             format_score = ""
             final_score = ""
             judge_comment = ""
+            prompt_contexts = ()
 
             if args.model:
-                contexts = select_contexts_for_prompt(
+                prompt_contexts = select_contexts_for_prompt(
                     retrieval_result.contexts,
                     max_contexts=args.max_contexts,
                     max_chars=args.max_context_chars,
                     max_tokens=args.max_context_tokens,
                 )
+                if args.export_ragas and not prompt_contexts:
+                    raise RuntimeError(
+                        f"Cannot export RAGAS row for {case.id}: no prompt contexts were selected."
+                    )
                 response = chat_completion(
                     provider=args.provider,
                     model=args.model,
                     messages=build_messages(
                         case.question,
-                        contexts,
+                        prompt_contexts,
                         max_context_chars=args.max_context_chars,
                         max_context_tokens=args.max_context_tokens,
                     ),
@@ -522,10 +613,14 @@ def main() -> None:
                 )
                 parsed = parse_answer_payload(
                     response.content,
-                    contexts,
+                    prompt_contexts,
                     question=case.question,
                 )
                 generated_answer = parsed.answer
+                if args.export_ragas and not generated_answer.strip():
+                    raise RuntimeError(
+                        f"Cannot export RAGAS row for {case.id}: generated answer is empty."
+                    )
                 generated_legal_basis = parsed.legal_basis
                 generated_evidence_quotes = parsed.evidence_quotes
                 insufficient_context = "Yes" if parsed.insufficient_context else "No"
@@ -668,6 +763,16 @@ def main() -> None:
                 row["comments"] = " | ".join(comment for comment in comments if comment)
 
             rows.append(row)
+            if args.export_ragas:
+                ragas_rows.append(
+                    build_ragas_export_row(
+                        case=case,
+                        generated_answer=generated_answer,
+                        prompt_contexts=prompt_contexts,
+                        expected_citations_scoped=expected_scoped,
+                        expected_citations_all=expected_all,
+                    )
+                )
             save_progress()
             print(
                 f"[{index}/{remaining_count}] {case.id}: "
@@ -681,6 +786,8 @@ def main() -> None:
         if rows and not completed:
             print(f"Saved partial benchmark JSONL: {output_jsonl.resolve()}")
             print(f"Saved partial benchmark CSV: {output_csv.resolve()}")
+            if args.export_ragas:
+                print(f"Saved partial RAGAS input JSONL: {ragas_output_jsonl.resolve()}")
 
     scored_hit_cases = [
         row for row in rows if row[retrieval_hit_column] in {"Yes", "No"}
@@ -725,6 +832,8 @@ def main() -> None:
         )
     print(f"Saved benchmark JSONL: {output_jsonl.resolve()}")
     print(f"Saved benchmark CSV: {output_csv.resolve()}")
+    if args.export_ragas:
+        print(f"Saved RAGAS input JSONL: {ragas_output_jsonl.resolve()}")
 
 
 if __name__ == "__main__":

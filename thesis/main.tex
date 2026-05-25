@@ -1,0 +1,146 @@
+\documentclass[12pt,a4paper,oneside]{report}
+
+\usepackage{iftex}
+\ifXeTeX
+  \usepackage{fontspec}
+  \setmainfont{Latin Modern Roman}
+  \setsansfont{Latin Modern Sans}
+  \setmonofont{Latin Modern Mono}
+\else\ifLuaTeX
+  \usepackage{fontspec}
+  \setmainfont{Latin Modern Roman}
+  \setsansfont{Latin Modern Sans}
+  \setmonofont{Latin Modern Mono}
+\else
+  \PackageError{main}{This template requires XeLaTeX or LuaLaTeX}{Compile with xelatex or lualatex.}
+\fi\fi
+
+\usepackage[english]{babel}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{enumitem}
+\usepackage{csquotes}
+\usepackage{float}
+\usepackage[
+  backend=biber,
+  style=numeric,
+  sorting=nyt
+]{biblatex}
+\usepackage[
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black
+]{hyperref}
+
+\addbibresource{references.bib}
+
+\definecolor{codebackground}{RGB}{248,248,248}
+\definecolor{codeframe}{RGB}{210,210,210}
+\definecolor{todocolor}{RGB}{180,85,0}
+
+\lstdefinestyle{thesislisting}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebackground},
+  frame=single,
+  rulecolor=\color{codeframe},
+  breaklines=true,
+  columns=fullflexible,
+  showstringspaces=false,
+  tabsize=2,
+  captionpos=b
+}
+\lstset{style=thesislisting}
+
+\setlist[itemize]{topsep=0.35em,itemsep=0.2em}
+\setlist[enumerate]{topsep=0.35em,itemsep=0.2em}
+
+\newcommand{\todotext}[1]{%
+  \par\noindent
+  \begingroup
+  \setlength{\emergencystretch}{2em}%
+  \sloppy
+  \textcolor{todocolor}{\textbf{TODO:} #1}%
+  \par
+  \endgroup
+}
+
+\newcommand{\placeholderbox}[1]{%
+  \fbox{%
+    \begin{minipage}[c][0.24\textheight][c]{0.86\linewidth}
+      \centering
+      \textbf{Placeholder figure}\\[0.75em]
+      #1
+    \end{minipage}%
+  }%
+}
+
+\title{Vietnamese Labor Law Question Answering System Using Retrieval-Augmented Generation and Graph-Augmented Retrieval with Neo4j}
+\author{Student Name}
+\date{Academic Year 2025--2026}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  \vspace*{1.5cm}
+  {\Large University Name\par}
+  {\large Faculty or Department Name\par}
+  \vspace{2.5cm}
+  {\Huge\bfseries Vietnamese Labor Law Question Answering System\par}
+  \vspace{0.5cm}
+  {\Large Using Retrieval-Augmented Generation and Graph-Augmented Retrieval with Neo4j\par}
+  \vspace{2.5cm}
+  \begin{tabular}{rl}
+    Student: & Student Name \\
+    Student ID: & TBD \\
+    Supervisor: & Supervisor Name \\
+    Program: & Computer Science / Artificial Intelligence \\
+  \end{tabular}
+  \vfill
+  {\large City, Vietnam\par}
+  {\large \today\par}
+\end{titlepage}
+
+\pagenumbering{roman}
+
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+% TODO: Summarize the problem, methodology, implementation, evaluation, and main findings after the thesis is complete.
+\todotext{Write a concise 200--300 word abstract after completing the evaluation. Mention Vietnamese labor law QA, RAG, graph-augmented retrieval, Neo4j, legal citations, and the main comparative findings.}
+
+\chapter*{Acknowledgements}
+\addcontentsline{toc}{chapter}{Acknowledgements}
+% TODO: Acknowledge supervisors, university staff, peers, family, and any data/tool providers.
+\todotext{Add acknowledgements before submission.}
+
+\tableofcontents
+\listoffigures
+\listoftables
+\clearpage
+
+\pagenumbering{arabic}
+
+\input{chapters/01_introduction}
+\input{chapters/02_background}
+\input{chapters/03_methodology}
+\input{chapters/04_implementation}
+\input{chapters/05_evaluation}
+\input{chapters/06_discussion}
+\input{chapters/07_conclusion}
+
+\printbibliography[heading=bibintoc,title={References}]
+
+\appendix
+\input{appendices/appendix_a}
+
+\end{document}
