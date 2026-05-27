@@ -1,89 +1,189 @@
 \chapter{System Design and Methodology}
 
 \section{Overall System Architecture}
-% TODO: Present the complete system architecture and explain each major component.
-\todotext{Describe data ingestion, preprocessing, vector indexing, graph construction, query routing, retrieval, generation, citation validation, tracing, and user interface layers.}
+\todotext{Move the old system architecture content here and revise it around the implemented Graph-Augmented RAG pipeline: corpus preparation, chunking, enrichment, cross-reference extraction, Qdrant indexing, Neo4j graph construction, graph-augmented retrieval, extractive answer generation, and rule-based citation validation.}
 
 \begin{figure}[H]
   \centering
-  \placeholderbox{Overall architecture: legal corpus, preprocessing, vector database, Neo4j, query router, retrieval pipelines, LLM, observability, frontend.}
+  \placeholderbox{Overall system architecture: legal corpus, preprocessing, vector index, Neo4j legal graph, query router, graph-augmented retriever, grounded answer generator, and validation layer.}
   \caption{Overall system architecture.}
   \label{fig:overall-system-architecture}
 \end{figure}
 
-\section{Data Sources}
-% TODO: Identify legal documents and metadata fields used by the system.
-\todotext{List official or curated legal sources, document versions, collection method, update date, and licensing or access notes.}
+\section{Legal Corpus and Data Sources}
+\todotext{Explain the intentionally scoped six-document corpus and state that it covers selected Vietnamese labor-law documents, implementing guidance, retirement appendices, and labor-related civil procedure provisions.}
 
 \begin{table}[H]
   \centering
-  \caption{Data sources used by the system.}
-  \label{tab:data-sources}
+  \caption{Corpus document table.}
+  \label{tab:corpus-documents}
   \begin{tabular}{llll}
     \toprule
-    Source & Document Type & Coverage & Status \\
+    Document ID & Type & Normative Rank & Chunks \\
     \midrule
-    TODO & Labor Code & TBD & To be filled \\
-    TODO & Decree or Circular & TBD & To be filled \\
-    TODO & Guidance document & TBD & To be filled \\
+    \texttt{45-2019-qh14} & \texttt{bo\_luat} & 1 & 697 \\
+    \texttt{92-2015-qh13-labor-only} & \texttt{bo\_luat} & 1 & 159 \\
+    \texttt{nghi-dinh-135-2020-nd-cp} & \texttt{nghi\_dinh} & 2 & 41 \\
+    \texttt{nghi-dinh-145-2020-nd-cp} & \texttt{nghi\_dinh} & 2 & 520 \\
+    \texttt{thong-tu-09-2020-tt-bldtbxh} & \texttt{thong\_tu} & 3 & 73 \\
+    \texttt{thong-tu-10-2020-tt-bldtbxh} & \texttt{thong\_tu} & 3 & 66 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
+\subsection{Labor Code 2019}
+\todotext{Describe the role of the 2019 Labor Code in the corpus. Add official source details and final legal citation metadata before submission.}
+
+\subsection{Decrees and Circulars}
+\todotext{Describe how Decree 135/2020/ND-CP, Decree 145/2020/ND-CP, Circular 09/2020/TT-BLDTBXH, and Circular 10/2020/TT-BLDTBXH provide lower-rank implementation details and guidance.}
+
+\subsection{Labor-related Civil Procedure Provisions}
+\todotext{Explain why labor-related provisions from the Civil Procedure Code are included for labor dispute and court procedure questions. Clarify the filtering method and document scope.}
+
 \section{Legal Document Preprocessing}
-% TODO: Explain the preprocessing pipeline before indexing.
-\todotext{Describe text extraction, normalization, structural parsing, cleaning, deduplication, metadata assignment, and validation.}
-
-\subsection{Hierarchical Chunking for Legal Texts}
-% TODO: Define the legal hierarchy and chunking algorithm.
-\todotext{Explain the Document -> Chapter -> Section -> Article -> Clause -> Point hierarchy and why preserving this structure improves retrieval and citation grounding.}
-
-\subsection{Metadata Enrichment}
-% TODO: Describe metadata fields attached to chunks.
-\todotext{Define fields such as document title, article number, clause number, point label, effective date, parent path, citation string, and source URI.}
-
-\subsection{Rechunking Strategy}
-% TODO: Explain how chunks are adjusted for embedding and generation constraints.
-\todotext{Describe when adjacent units are merged, when long provisions are split, and how parent-child metadata is retained after rechunking.}
-
-\section{Vector-based Retrieval}
-% TODO: Describe the retrieval-only baseline.
-\todotext{Specify embedding model, vector store, similarity metric, top-k setting, filters, reranking if used, and context assembly policy.}
-
-\section{Graph Construction with Neo4j}
-% TODO: Explain graph schema and graph loading process.
-\todotext{Define node labels, relationship types, uniqueness constraints, and how legal hierarchy and references are inserted into Neo4j.}
+\todotext{Move old preprocessing content here and align it with the implemented artifact pipeline from cleaned text to validated legal chunks.}
 
 \begin{figure}[H]
   \centering
-  \placeholderbox{Neo4j graph schema: Document, Chapter, Section, Article, Clause, Point, Concept, and reference relationships.}
-  \caption{Neo4j graph schema for hierarchical legal documents.}
-  \label{fig:neo4j-graph-schema}
+  \placeholderbox{Data processing pipeline: cleaned text input, legal unit parsing, hierarchy-aware chunking, metadata enrichment, cross-reference extraction, vector indexing, and graph loading.}
+  \caption{Data processing pipeline.}
+  \label{fig:data-processing-pipeline}
 \end{figure}
 
-\section{Query Routing and Retrieval Strategy}
-% TODO: Explain why routing is needed and how strategies are selected.
-\todotext{Describe the query router inputs, outputs, confidence scores, fallback behavior, and how routing affects retrieval mode.}
+\subsection{Text Cleaning}
+\todotext{Explain cleaning of legal text inputs, encoding normalization, removal of extraction artifacts, and validation reports for curated text.}
 
-\subsection{Query Intent Classification}
-% TODO: Define intent classes.
-\todotext{Describe possible intents such as definition lookup, article-specific lookup, eligibility question, comparison question, procedure question, and multi-hop reasoning question.}
+\subsection{Hierarchical Chunking for Legal Texts}
+\todotext{Explain the chunking algorithm for articles, clauses, points, appendices, and tables. Describe how citation text and parent hierarchy are preserved for retrieval and answer grounding.}
 
-\subsection{Retrieval Strategy Selection}
-% TODO: Map intents to retrieval strategies.
-\todotext{Explain when to use vector retrieval, graph traversal, hybrid retrieval, metadata filtering, or reranking.}
+\begin{table}[H]
+  \centering
+  \caption{Chunking validation table.}
+  \label{tab:chunking-validation}
+  \begin{tabular}{lr}
+    \toprule
+    Validation Item & Value \\
+    \midrule
+    Legal chunks & 1,556 \\
+    Duplicate chunk IDs & 0 \\
+    Missing citation text & 0 \\
+    Missing article number & 0 \\
+    Very short chunks & 0 \\
+    Very long chunks & 0 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-\section{Graph-Augmented Retrieval Pipeline}
-% TODO: Describe the graph-augmented retrieval pipeline in detail.
-\todotext{Explain how initial candidates seed graph expansion, how neighboring legal units are selected, and how graph context is merged with vector context.}
+\subsection{Appendix and Table Handling}
+\todotext{Describe how appendix forms, appendix tables, and retirement-age lookup tables are represented as evidence chunks and graph nodes. Add examples in Appendix G.}
+
+\subsection{Metadata Enrichment}
+\todotext{Explain topic, actor, issue type, document type, normative rank, citation text, source file, and hierarchy metadata. Use counts from the final evaluation report when writing the full chapter.}
+
+\section{Legal Cross-Reference Extraction}
+\todotext{Describe the implemented extraction of legal references from chunk text into candidate graph edges. Include the resolved edge count of 948 and unresolved edge count of 111 without overclaiming perfect parsing.}
+
+\subsection{Citation Pattern Detection}
+\todotext{Explain citation patterns for article, clause, point, document-level references, and guidance relations. Add examples from the reference edge artifacts.}
+
+\subsection{Document Alias Resolution}
+\todotext{Explain how aliases such as Labor Code, decrees, circulars, and relative references are normalized to document IDs.}
+
+\subsection{Reference Edge Generation}
+\todotext{Describe generation and validation of \texttt{REFERENCES}, \texttt{DETAILS}, and \texttt{GUIDED\_BY} edges before Neo4j loading.}
+
+\section{Vector-based Retrieval}
+\todotext{Describe the vector and hybrid retrieval baseline used before graph expansion. Keep the distinction between vector-only, hybrid, and graph-augmented modes clear.}
+
+\subsection{Embedding Model}
+\todotext{Document the dense embedding model, vector dimension 384, and why multilingual embeddings are suitable for Vietnamese legal text. Add a verified Sentence Transformers citation using \cite{todo_sentence_transformers}.}
+
+\subsection{Vector Index Payload Design}
+\todotext{Explain the Qdrant payload fields, including chunk ID, document ID, document type, normative rank, citation text, dense text, sparse text, and source metadata. Add a Qdrant citation using \cite{todo_qdrant}.}
+
+\subsection{Hybrid Retrieval}
+\todotext{Describe how dense and sparse retrieval signals are combined for the hybrid baseline, including top-k and prefetch settings from the evaluation scripts.}
+
+\section{Legal Knowledge Graph Design}
+\todotext{Move the old Neo4j graph construction content here and split it into schema, structural edges, cross-reference edges, and normative hierarchy edges.}
 
 \begin{figure}[H]
   \centering
-  \placeholderbox{Graph-augmented retrieval flow: query, intent, seed retrieval, graph traversal, context merge, citation-aware generation.}
+  \placeholderbox{Legal graph schema: Document, Article, Clause, Point, Appendix, EvidenceChunk, Topic, Actor, IssueType, and relationship groups.}
+  \caption{Legal graph schema.}
+  \label{fig:legal-graph-schema}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \caption{Graph node and edge count table.}
+  \label{tab:graph-node-edge-counts}
+  \begin{tabular}{lr}
+    \toprule
+    Graph Item & Count \\
+    \midrule
+    Documents & 6 \\
+    Articles & 411 \\
+    Clauses & 1,235 \\
+    Points & 774 \\
+    Appendices & 35 \\
+    Evidence chunks & 1,556 \\
+    Resolved reference edges loaded & 948 \\
+    Taxonomy edges & 6,099 \\
+    Normative hierarchy edges & 20 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Graph Schema}
+\todotext{Explain the Neo4j node labels and key properties. Include constraints and indexes in Chapter 4.}
+
+\subsection{Structural Edges}
+\todotext{Describe document-to-article, article-to-clause, clause-to-point, appendix, and evidence-chunk relationships.}
+
+\subsection{Cross-reference Edges}
+\todotext{Describe loaded reference relationships and why unresolved references are excluded from graph traversal.}
+
+\subsection{Normative Hierarchy Edges}
+\todotext{Explain normative-rank relationships among codes, decrees, and circulars and how they support context ordering.}
+
+\section{Query Routing and Retrieval Strategy}
+\todotext{Explain how query intent and legal hints influence retrieval mode, metadata boosting, and graph expansion.}
+
+\subsection{Query Intent Classification}
+\todotext{Define intent categories such as direct QA, definition QA, document guidance, procedure QA, comparison QA, table lookup, exception-based QA, scenario QA, and multi-hop QA.}
+
+\subsection{Intent-specific Retrieval Boosting}
+\todotext{Explain how article mentions, document mentions, topic hints, actor hints, and issue-type hints affect retrieval scores or filters.}
+
+\subsection{Graph Expansion Policy}
+\todotext{Describe the graph expansion depth, maximum expanded chunks, relationship types, and deduplication policy used after seed retrieval.}
+
+\section{Graph-Augmented Retrieval Pipeline}
+\todotext{Describe the complete graph-augmented retrieval flow from user query to seed retrieval, graph traversal, context merging, reranking, and final context selection.}
+
+\begin{figure}[H]
+  \centering
+  \placeholderbox{Graph-augmented retrieval flow: intent classification, hybrid seed retrieval, graph expansion through structural and reference edges, reranking, deduplication, and context assembly.}
   \caption{Graph-augmented retrieval flow.}
   \label{fig:graph-augmented-retrieval-flow}
 \end{figure}
 
-\section{Answer Generation with Legal Citations}
-% TODO: Explain prompt construction and citation formatting.
-\todotext{Describe answer constraints, citation insertion, unsupported-answer handling, and post-generation citation validation.}
+\section{Grounded Answer Generation with Legal Citations}
+\todotext{Describe the extractive answer generator and validation layer. Avoid claiming broad legal reasoning beyond the retrieved and cited legal context.}
+
+\begin{figure}[H]
+  \centering
+  \placeholderbox{Answer generation and citation validation flow: ordered context, extractive answer construction, legal-basis formatting, citation guard, unsupported article detection, and low-information quote checks.}
+  \caption{Answer generation and citation validation flow.}
+  \label{fig:answer-generation-citation-validation-flow}
+\end{figure}
+
+\subsection{Context Ordering by Normative Rank}
+\todotext{Explain how higher-rank legal documents, implementing decrees, circular guidance, and appendices are ordered for answer construction.}
+
+\subsection{Citation-aware Answer Construction}
+\todotext{Explain how answer text, evidence quotes, and legal-basis lists are built from retrieved chunks without inventing article numbers.}
+
+\subsection{Rule-based Citation Validation}
+\todotext{Explain deterministic validation of cited article numbers, retrieved citation coverage, forbidden citations, and low-information quotes.}

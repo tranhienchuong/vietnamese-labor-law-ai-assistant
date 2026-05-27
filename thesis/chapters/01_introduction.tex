@@ -1,25 +1,19 @@
 \chapter{Introduction}
 
 \section{Background}
-% TODO: Describe the growth of legal information systems and the difficulty of navigating Vietnamese labor law documents.
-\todotext{Introduce Vietnamese labor law as a high-stakes information access domain. Explain why legal texts are hard for non-experts to search, interpret, and cite correctly.}
+\todotext{Introduce Vietnamese labor law as a structured, citation-heavy information access domain. Explain why users need answers that preserve article, clause, point, document, and normative-rank context rather than only keyword matches.}
 
 \section{Problem Statement}
-% TODO: Define the concrete research and engineering problem addressed by the project.
-\todotext{State the limitations of keyword search and retrieval-only RAG for structured legal questions, multi-hop legal references, and citation-grounded answers.}
+\todotext{State the concrete problem: retrieval-only legal QA can miss cross-referenced provisions, implementing guidance, appendices, and procedure rules, which can lead to incomplete or weakly grounded answers.}
 
-\section{Objectives}
-% TODO: List the project objectives as measurable technical goals.
-\todotext{Describe objectives such as building a legal QA pipeline, comparing retrieval-only RAG and graph-augmented RAG, supporting legal citations, and evaluating answer quality.}
+\section{Research Objectives}
+\todotext{List measurable objectives: build a Vietnamese labor-law Graph-Augmented RAG pipeline, construct a hierarchy-aware corpus and graph, retrieve citation-grounded evidence, generate extractive answers with legal citations, and evaluate on the constructed 69-query benchmark.}
 
 \section{Scope of the Project}
-% TODO: Clarify legal domain boundaries, language assumptions, system boundaries, and evaluation limits.
-\todotext{Specify covered legal sources, Vietnamese labor law focus, supported question types, and exclusions such as formal legal advice or exhaustive statutory coverage.}
+\todotext{Define the project scope around the six indexed Vietnamese labor-law and labor-procedure documents. Clarify that the system is for information assistance within the indexed corpus and is not a substitute for professional legal advice.}
 
 \section{Contributions}
-% TODO: Summarize the expected technical and empirical contributions.
-\todotext{List contributions: hierarchical legal chunking, metadata-enriched retrieval, Neo4j graph modeling, query routing, citation-aware generation, tracing, and evaluation design.}
+\todotext{Summarize contributions: cleaned legal corpus, hierarchy-aware legal chunking, metadata enrichment, cross-reference extraction, Qdrant vector index, Neo4j legal knowledge graph, graph-augmented retrieval, citation-grounded extractive answer generation, and deterministic validation artifacts.}
 
 \section{Thesis Structure}
-% TODO: Briefly describe what each following chapter contains.
-\todotext{Provide a paragraph mapping Chapters 2--7 to background, methodology, implementation, evaluation, discussion, and conclusion.}
+\todotext{Briefly describe Chapters 2--7 after drafting: background and related work, methodology, implementation, evaluation, discussion, and conclusion with future work.}

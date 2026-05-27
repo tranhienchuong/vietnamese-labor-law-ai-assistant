@@ -1,28 +1,29 @@
 \chapter{Background and Related Work}
 
 \section{Large Language Models}
-% TODO: Explain transformer-based language models and their role in question answering.
-\todotext{Introduce LLM capabilities and limitations, especially hallucination, context window limits, and domain-specific legal reasoning constraints.}
+\todotext{Explain transformer-based language models, their use in question answering, and their limitations for legal domains, including hallucination, context limits, and the need for source grounding. Add verified citations.}
 
 \section{Retrieval-Augmented Generation}
-% TODO: Describe RAG and cite foundational work.
-\todotext{Explain indexing, embedding, retrieval, context construction, and generation. Discuss why RAG is suitable for legal QA. Add citations such as \cite{lewis2020retrieval}.}
+\todotext{Move and expand the old RAG background here. Explain indexing, embeddings, retrieval, context assembly, and grounded generation. Cite foundational RAG work such as \cite{lewis2020retrieval} and add any newer verified RAG references.}
 
 \begin{figure}[H]
   \centering
-  \placeholderbox{Standard RAG pipeline: user query, embedding, vector search, retrieved context, prompt assembly, LLM answer.}
+  \placeholderbox{Standard RAG pipeline: query encoding, vector search, retrieved context, prompt assembly, and answer generation.}
   \caption{Standard retrieval-augmented generation pipeline.}
   \label{fig:standard-rag-pipeline}
 \end{figure}
 
 \section{Legal Question Answering}
-% TODO: Review legal QA requirements and risks.
-\todotext{Discuss legal domain constraints: traceability, citation correctness, jurisdiction specificity, temporal validity, and careful wording.}
+\todotext{Review legal QA requirements: jurisdiction specificity, temporal validity, citation traceability, cautious wording, and the risk of unsupported legal conclusions. Add legal QA references using \cite{todo_legal_question_answering}.}
+
+\section{Legal Document Structure and Citation}
+\todotext{Explain how Vietnamese legal documents are organized into documents, chapters, sections, articles, clauses, points, and appendices. Discuss why legal citations must preserve this hierarchy. Cite verified Vietnamese legal document sources using \cite{todo_vietnamese_labor_law_documents}.}
+
+\section{Knowledge Graphs for Legal Retrieval}
+\todotext{Introduce knowledge graphs for representing legal hierarchy, references, topics, actors, issue types, and normative relationships. Explain how graph structure complements embedding similarity. Add verified KG and legal KG references.}
 
 \section{Graph-Augmented Retrieval}
-% TODO: Describe graph retrieval and how legal structure can be represented as nodes and edges.
-\todotext{Explain how graphs can represent legal hierarchy and cross-references. Compare graph traversal with vector similarity retrieval.}
+\todotext{Move the old graph-augmented retrieval background here. Compare graph expansion with vector-only and hybrid retrieval, and cite GraphRAG or graph-augmented retrieval work using \cite{todo_graphrag_graph_augmented_retrieval}.}
 
 \section{Evaluation Methods for RAG Systems}
-% TODO: Review retrieval metrics, answer quality metrics, RAGAS-style evaluation, and citation checks.
-\todotext{Summarize metrics such as Recall@k, Precision@k, MRR, faithfulness, answer relevance, context precision, context recall, and citation matching accuracy.}
+\todotext{Review retrieval metrics, answer validation, and citation grounding. Distinguish human expert review, LLM-as-Judge, and deterministic rule-based validation; later chapters use deterministic rule-based validation only.}

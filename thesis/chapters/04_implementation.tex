@@ -1,72 +1,93 @@
 \chapter{Implementation}
 
 \section{Technology Stack}
-% TODO: List implementation tools and justify major technology choices.
-\todotext{Describe the backend, frontend, vector database, Neo4j, LLM provider, tracing tools, evaluation scripts, and deployment environment.}
+\todotext{Move old implementation content here and update it for the actual project stack. Demote frontend, deployment, and CI details unless they are necessary for reproducing the evaluated RAG pipeline.}
 
 \begin{table}[H]
   \centering
   \caption{Technology stack.}
   \label{tab:technology-stack}
-  \begin{tabular}{lll}
+  \begin{tabular}{p{0.24\linewidth}p{0.27\linewidth}p{0.36\linewidth}}
     \toprule
     Layer & Technology & Purpose \\
     \midrule
-    Backend & TODO & API, orchestration, retrieval, generation \\
-    Frontend & TODO & User interface for legal QA \\
-    Vector database & TODO & Embedding search baseline \\
-    Graph database & Neo4j & Legal hierarchy and graph traversal \\
-    Evaluation & TODO & Benchmarking and report generation \\
+    Backend & Python, FastAPI & API and orchestration \\
+    Embeddings & Sentence Transformers & Dense multilingual vectors \\
+    Vector database & Qdrant & Dense and sparse retrieval \\
+    Graph database & Neo4j & Legal hierarchy and references \\
+    Evaluation & Python scripts and generated artifacts & Benchmark reporting \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-\section{Backend Implementation}
-% TODO: Describe API endpoints and service organization.
-\todotext{Explain request flow, service modules, retrieval interfaces, generator interface, error handling, and configuration management.}
+\section{Data Processing Pipeline}
+\todotext{Document the implemented scripts and modules that transform cleaned legal text into enriched chunks, reference edges, vector records, and graph artifacts.}
 
-\section{Frontend Implementation}
-% TODO: Describe UI workflows.
-\todotext{Describe the question input, answer display, citation presentation, trace or debug view, and user feedback collection if implemented.}
+\subsection{Clean Text Input}
+\todotext{Describe cleaned corpus inputs and validation artifacts from \texttt{artifacts/validation}.}
 
-\section{Vector Database Implementation}
-% TODO: Describe indexing and retrieval details.
-\todotext{Explain collection schema, embedding storage, metadata filters, similarity search, and update or rebuild process.}
+\subsection{Chunk Generation}
+\todotext{Describe chunk generation modules and scripts, including hierarchy detection and output files \texttt{legal\_chunks.jsonl} and \texttt{legal\_chunks\_summary.md}.}
 
-\section{Neo4j Graph Database Design}
-% TODO: Describe graph database implementation details.
-\todotext{Document constraints, indexes, Cypher queries, import scripts, relationship creation, and graph traversal patterns.}
+\subsection{Metadata Enrichment}
+\todotext{Describe enrichment rules for topic, actor, issue type, document type, normative rank, and citation metadata.}
 
-\section{Prompt Design}
-% TODO: Describe prompt templates and prompt safety constraints.
-\todotext{Explain system messages, answer style constraints, citation requirements, refusal policy for unsupported questions, and prompt iteration process.}
+\subsection{Cross-reference Extraction}
+\todotext{Describe reference extraction outputs, including resolved and unresolved reference reports.}
 
-\begin{lstlisting}[caption={Prompt template placeholder for citation-aware legal answering.},label={lst:prompt-template}]
-System:
-You are a Vietnamese labor law assistant. Answer only from the provided legal context.
-If the context is insufficient, say that the answer cannot be determined from the provided sources.
+\section{Vector Index Implementation}
+\todotext{Move old vector database implementation content here and align it with the Qdrant collection used in the final evaluation.}
 
-User question:
-{question}
+\subsection{Qdrant Collection}
+\todotext{Document collection \texttt{vietnamese\_labor\_law\_chunks}, vector dimension 384, cloud storage mode, and validation that 1,556 chunks were indexed.}
 
-Retrieved legal context:
-{context}
+\subsection{Dense and Sparse Retrieval}
+\todotext{Explain dense vector search, sparse token search, and how hybrid retrieval is implemented. Add key script and module names during chapter writing.}
 
-Instructions:
-1. Provide a concise answer in English or Vietnamese according to the user request.
-2. Cite each legal claim using the supplied citation identifiers.
-3. Do not invent articles, clauses, or legal consequences.
-4. End with a short list of cited sources.
-\end{lstlisting}
+\subsection{Metadata Payload}
+\todotext{List payload fields and explain how they support filtering, citation display, reranking, and validation.}
+
+\section{Neo4j Graph Implementation}
+\todotext{Move old Neo4j graph database details here and keep lower-level implementation details separate from the methodology chapter.}
+
+\subsection{Node Types}
+\todotext{Document implemented node types: Document, Article, Clause, Point, Appendix, EvidenceChunk, Topic, Actor, and IssueType.}
+
+\subsection{Relationship Types}
+\todotext{Document structural, taxonomy, cross-reference, and normative hierarchy relationships. Include \texttt{REFERENCES}, \texttt{DETAILS}, and \texttt{GUIDED\_BY}.}
+
+\subsection{Graph Constraints and Indexes}
+\todotext{Document Neo4j constraints, indexes, upsert strategy, and validation queries used during graph build.}
+
+\section{Graph-Augmented Retriever Implementation}
+\todotext{Describe implemented retriever modules and how they use Qdrant records plus Neo4j expansion.}
+
+\subsection{Seed Chunk Selection}
+\todotext{Explain seed retrieval from hybrid search, including top-k, prefetch limit, metadata hints, and query routing outputs.}
+
+\subsection{Graph Expansion}
+\todotext{Explain graph expansion from seed chunks through structural, cross-reference, taxonomy, and normative hierarchy edges.}
+
+\subsection{Reranking and Deduplication}
+\todotext{Explain score merging, deduplication by chunk ID, context ordering, and maximum context selection for answering.}
+
+\section{Grounded Answer Generator}
+\todotext{Move old prompt design content here but revise it to match the implemented grounded extractive answer generator instead of a general free-form prompt-only design.}
+
+\subsection{Extractive Answer Generation}
+\todotext{Describe the deterministic extractive provider used in the final evaluation and how answer text is selected from retrieved evidence.}
+
+\subsection{Legal Citation Formatting}
+\todotext{Document legal-basis formatting, citation surfaces, evidence quotes, and source display.}
+
+\subsection{Normative Hierarchy Handling}
+\todotext{Explain how the answer generator handles higher-rank provisions, implementing guidance, and appendices without implying universal legal interpretation.}
+
+\section{Evaluation Scripts and Artifacts}
+\todotext{Document scripts for retrieval-mode evaluation, end-to-end evaluation, and final thesis evaluation reports. Reference the generated artifacts in \texttt{artifacts/evaluation}.}
 
 \section{Example Use Cases}
-% TODO: Add representative system use cases.
-\todotext{Describe example questions such as severance allowance, probation period, overtime limits, contract termination, and article-specific lookup.}
+\todotext{Move old example-use-case content here. Use the case studies requested in Chapter 5 as the main examples: minor worker, retirement age table lookup, labor contract content with circular guidance, and dismissal dispute with court procedure.}
 
-\section{System Observability and Tracing}
-% TODO: Describe logging, tracing, and monitoring.
-\todotext{Document trace fields such as query ID, routing decision, retrieved chunk IDs, graph traversal path, prompt size, latency, token usage, and citation validation status.}
-
-\section{Deployment Setup and CI/CD}
-% TODO: Describe deployment configuration.
-\todotext{Explain local development setup, Docker services, environment variables, database migrations or imports, CI checks, and deployment target.}
+\section{Reproducibility Setup}
+\todotext{Move old deployment and CI/CD material here only if it helps reproduce the thesis evaluation. Include environment variables, Qdrant and Neo4j setup, and commands from \texttt{artifacts/evaluation/reproducibility\_notes.md}.}

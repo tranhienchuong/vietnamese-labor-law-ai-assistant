@@ -1,13 +1,39 @@
-\chapter{Supplementary Materials}
+\chapter{List of Legal Documents}
+\todotext{List the six legal documents used in the final corpus, including official titles, document IDs, effective dates, source URLs, document type, normative rank, and chunk counts.}
 
-\section{Benchmark Dataset Template}
-% TODO: Add schema and representative anonymized examples from the benchmark dataset.
-\todotext{Document benchmark fields such as question ID, question text, expected answer, gold citations, question type, and difficulty.}
+\begin{table}[H]
+  \centering
+  \caption{Appendix document list placeholder.}
+  \label{tab:appendix-document-list}
+  \footnotesize
+  \begin{tabular}{p{0.26\linewidth}p{0.22\linewidth}p{0.18\linewidth}p{0.22\linewidth}}
+    \toprule
+    Document ID & Official Title & Source URL & Notes \\
+    \midrule
+    45-2019-qh14 & TODO & TODO & Labor Code 2019 \\
+    92-2015-qh13-labor-only & TODO & TODO & Labor-related procedure provisions \\
+    nghi-dinh-135-2020-nd-cp & TODO & TODO & Retirement age guidance \\
+    nghi-dinh-145-2020-nd-cp & TODO & TODO & Labor Code implementation \\
+    thong-tu-09-2020-tt-bldtbxh & TODO & TODO & Circular guidance \\
+    thong-tu-10-2020-tt-bldtbxh & TODO & TODO & Circular guidance \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-\section{Prompt Templates}
-% TODO: Add final prompt templates used in experiments.
-\todotext{Include the final system prompt, retrieval prompt, router prompt, and evaluator prompt after they are stabilized.}
+\chapter{Chunk Schema}
+\todotext{Document the JSONL schema for legal chunks and enriched chunks, including required fields, optional fields, and validation rules.}
 
-\section{Configuration Details}
-% TODO: Add reproducibility details.
-\todotext{List key environment variables, retrieval parameters, model versions, database versions, and evaluation script commands.}
+\chapter{Graph Schema}
+\todotext{Document Neo4j labels, relationship types, properties, constraints, indexes, and example Cypher queries.}
+
+\chapter{Benchmark Samples}
+\todotext{Add representative benchmark samples with question text, category, difficulty, required citations, forbidden citations, graph-required label, and normative-hierarchy-required label. Do not include fabricated examples.}
+
+\chapter{Evaluation Metrics}
+\todotext{Define retrieval metrics, answer validation checks, citation validation checks, and pass/fail aggregation. Include formulas used by the evaluation scripts.}
+
+\chapter{Reproducibility Commands}
+\todotext{Copy final reproducibility commands from \texttt{artifacts/evaluation/reproducibility\_notes.md}, including retrieval-mode evaluation, end-to-end evaluation, optional vector index rebuild, and optional Neo4j graph rebuild.}
+
+\chapter{Example Retrieved Contexts and Answers}
+\todotext{Insert selected retrieved contexts and generated answers for the Chapter 5 case studies after choosing final examples from the evaluation outputs.}
