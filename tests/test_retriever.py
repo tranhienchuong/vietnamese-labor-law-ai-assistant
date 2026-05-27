@@ -135,6 +135,30 @@ class QueryRoutingTests(unittest.TestCase):
         self.assertIn("Dieu 3 khoan 1 Bo luat Lao dong 2019", variants)
         self.assertFalse(any("Dieu 5" in variant for variant in variants))
 
+    def test_legal_definition_lookup_accepts_definition_wording(self) -> None:
+        intent = route_query("Nguoi lao dong duoc dinh nghia nhu the nao theo Bo luat Lao dong 2019?")
+
+        self.assertIn("definition", intent.query_types)
+        self.assertEqual(intent.forced_references[0].document_id, "45-2019-qh14")
+        self.assertEqual(intent.forced_references[0].article, "3")
+        self.assertEqual(intent.forced_references[0].clause, "1")
+        self.assertIn("definition_nguoi_lao_dong", intent.matched_direct_reference_rules)
+
+    def test_related_definition_lookup_routes_employer_definition_to_article_3_clause_2(self) -> None:
+        intent = route_query("Nguoi su dung lao dong la gi theo Bo luat Lao dong?")
+
+        self.assertEqual(intent.forced_references[0].document_id, "45-2019-qh14")
+        self.assertEqual(intent.forced_references[0].article, "3")
+        self.assertEqual(intent.forced_references[0].clause, "2")
+
+    def test_related_definition_lookup_routes_representative_organization_to_article_3_clause_3(self) -> None:
+        intent = route_query("To chuc dai dien nguoi lao dong la gi?")
+
+        self.assertEqual(len(intent.forced_references), 1)
+        self.assertEqual(intent.forced_references[0].document_id, "45-2019-qh14")
+        self.assertEqual(intent.forced_references[0].article, "3")
+        self.assertEqual(intent.forced_references[0].clause, "3")
+
     def test_parse_reference_values_collects_all_matches(self) -> None:
         values = parse_reference_values(
             ARTICLE_REF_RE,
@@ -587,6 +611,55 @@ class RetrievalAssemblyTests(unittest.TestCase):
             contexts[0].matched_citations,
             (child_a.citation_text, child_b.citation_text),
         )
+
+    def test_assemble_contexts_preserves_forced_exact_reference_clause(self) -> None:
+        parent = RetrievedRecord(
+            chunk_id="dieu-3",
+            parent_chunk_id=None,
+            citation_text="Bo luat Lao dong 2019, Dieu 3",
+            text="Dieu 3. Giai thich tu ngu",
+            dense_text="",
+            sparse_text="",
+            payload={"chunk_id": "dieu-3", "document_id": "45-2019-qh14", "article_number": "3"},
+        )
+        clause = RetrievedRecord(
+            chunk_id="dieu-3-k1",
+            parent_chunk_id="dieu-3",
+            citation_text="Bo luat Lao dong 2019, Dieu 3, khoan 1",
+            text="Nguoi lao dong la nguoi lam viec cho nguoi su dung lao dong theo thoa thuan.",
+            dense_text="",
+            sparse_text="",
+            payload={
+                "chunk_id": "dieu-3-k1",
+                "document_id": "45-2019-qh14",
+                "article_number": "3",
+                "clause_ref": "1",
+            },
+        )
+        records = {parent.chunk_id: parent, clause.chunk_id: clause}
+        retriever = HybridRetriever.__new__(HybridRetriever)
+        retriever._fetch_records = lambda chunk_ids: {
+            chunk_id: records[chunk_id] for chunk_id in chunk_ids if chunk_id in records
+        }
+
+        contexts = HybridRetriever._assemble_contexts(
+            retriever,
+            (
+                SearchHit(
+                    chunk_id="dieu-3-k1",
+                    qdrant_point_id="dieu-3-k1",
+                    score=2.0,
+                    citation_text=clause.citation_text,
+                    payload={"chunk_id": "dieu-3-k1", "retrieval_forced_reference": True},
+                ),
+            ),
+        )
+
+        self.assertEqual(len(contexts), 1)
+        self.assertEqual(contexts[0].chunk_id, "dieu-3-k1")
+        self.assertEqual(contexts[0].payload["article_number"], "3")
+        self.assertEqual(contexts[0].payload["clause_ref"], "1")
+        self.assertEqual(contexts[0].citation_text, clause.citation_text)
 
     def test_assemble_contexts_adds_article_siblings_for_remedy_queries(self) -> None:
         parent = RetrievedRecord(

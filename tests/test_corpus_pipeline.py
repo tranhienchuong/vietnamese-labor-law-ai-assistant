@@ -7,15 +7,21 @@ import unittest
 
 from src.vn_labor_law_ai_assistant.corpus_pipeline import (
     ARTICLE_RE,
+    CURATED_LEGAL_CHUNK_FILENAMES,
+    FULL_BLTTDS_FILENAME,
     PageRecord,
+    build_curated_chunk_records,
     build_corpus,
     chunk_sections,
     enrich_chunk,
     infer_document_title,
     infer_chunk_taxonomy,
     normalize_extracted_text,
+    resolve_curated_legal_chunk_paths,
     slugify_text,
+    split_main_text_and_appendix_text,
     split_sections,
+    summarize_legal_chunks,
 )
 
 
@@ -168,6 +174,50 @@ class CorpusPipelineTests(unittest.TestCase):
         self.assertGreaterEqual(len(chunks), 2)
         self.assertTrue(all(chunk["char_count"] <= 300 for chunk in chunks))
 
+    def test_chunk_sections_preserves_article_full_behavior_with_stable_chunk_id(self) -> None:
+        section = split_sections(
+            page_records=[
+                PageRecord(
+                    page_number=1,
+                    text=(
+                        "Điều 4. Tuổi nghỉ hưu trong điều kiện lao động bình thường\n\n"
+                        "Tuổi nghỉ hưu trong điều kiện lao động bình thường được điều chỉnh theo lộ trình."
+                    ),
+                )
+            ],
+            document_id="nghi-dinh-135-2020-nd-cp",
+            document_title="Nghị định 135/2020/NĐ-CP",
+        )[0]
+
+        chunks = chunk_sections([section], max_chars=1200)
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0]["chunk_type"], "article_full")
+        self.assertEqual(chunks[0]["chunk_id"], "ND135_2020_Dieu_4")
+
+    def test_chunk_sections_preserves_article_intro_behavior(self) -> None:
+        section = split_sections(
+            page_records=[
+                PageRecord(
+                    page_number=1,
+                    text=(
+                        "Điều 3. Nội dung chủ yếu của hợp đồng lao động\n"
+                        "Hợp đồng lao động phải có các nội dung chủ yếu sau đây:\n"
+                        "1. Tên, địa chỉ của người sử dụng lao động."
+                    ),
+                )
+            ],
+            document_id="thong-tu-10-2020-tt-bldtbxh",
+            document_title="Thông tư 10/2020/TT-BLĐTBXH",
+        )[0]
+
+        chunks = chunk_sections([section], max_chars=1200)
+
+        self.assertEqual(chunks[0]["chunk_type"], "article_intro")
+        self.assertEqual(chunks[0]["chunk_id"], "TT10_2020_Dieu_3_Intro")
+        self.assertEqual(chunks[1]["chunk_type"], "clause")
+        self.assertEqual(chunks[1]["chunk_id"], "TT10_2020_Dieu_3_Khoan_1")
+
     def test_chunk_sections_prefers_legal_boundaries_before_whitespace_fallback(self) -> None:
         page_records = [
             PageRecord(
@@ -218,9 +268,89 @@ class CorpusPipelineTests(unittest.TestCase):
         self.assertEqual(len(chunks), 1)
         self.assertEqual(chunks[0]["clause_ref"], "2")
         self.assertEqual(chunks[0]["point_refs"], ["a", "b", "c"])
+        self.assertEqual(chunks[0]["chunk_id"], "45_2019_QH14_Dieu_107_Khoan_2_Diem_a_b_c")
         self.assertIn("khi đáp ứng đầy đủ các yêu cầu", chunks[0]["text"])
         self.assertIn("a) Phải được sự đồng ý", chunks[0]["text"])
         self.assertIn("c) Bảo đảm số giờ làm thêm", chunks[0]["text"])
+
+    def test_enrich_chunk_cites_multiple_point_refs(self) -> None:
+        section = split_sections(
+            page_records=[
+                PageRecord(
+                    page_number=1,
+                    text=(
+                        "Điều 3. Nội dung chủ yếu của hợp đồng lao động\n"
+                        "5. Nội dung về công việc gồm:\n"
+                        "a) Tên công việc;\n"
+                        "b) Địa điểm làm việc."
+                    ),
+                )
+            ],
+            document_id="thong-tu-09-2020-tt-bldtbxh",
+            document_title="Thông tư 09/2020/TT-BLĐTBXH",
+        )[0]
+
+        chunks = chunk_sections([section], max_chars=1200)
+        enriched = enrich_chunk(
+            chunks[0],
+            document_title="Thông tư 09/2020/TT-BLĐTBXH",
+            source_kind="curated_text",
+        )
+
+        self.assertEqual(chunks[0]["point_refs"], ["a", "b"])
+        self.assertEqual(chunks[0]["chunk_id"], "TT09_2020_Dieu_3_Khoan_5_Diem_a_b")
+        self.assertIn("các điểm a, b", enriched["citation_text"])
+
+    def test_human_readable_chunk_id_distinguishes_d_and_dd_points(self) -> None:
+        section = split_sections(
+            page_records=[
+                PageRecord(
+                    page_number=1,
+                    text=(
+                        "Điều 5. Nhóm điểm kiểm tra\n"
+                        "1. Các nội dung gồm:\n"
+                        "d) Điểm d;\n"
+                        "đ) Điểm đ."
+                    ),
+                )
+            ],
+            document_id="45-2019-qh14",
+            document_title="Bộ luật số 45/2019/QH14",
+        )[0]
+
+        chunks = chunk_sections([section], max_chars=1200)
+
+        self.assertEqual(chunks[0]["point_refs"], ["d", "đ"])
+        self.assertEqual(chunks[0]["chunk_id"], "45_2019_QH14_Dieu_5_Khoan_1_Diem_d_dd")
+
+    def test_chunk_sections_creates_clause_part_chunks_for_large_point_sets(self) -> None:
+        long_a = " ".join(["Tên công việc và địa điểm làm việc"] * 20)
+        long_b = " ".join(["Thời hạn của hợp đồng lao động"] * 20)
+        section = split_sections(
+            page_records=[
+                PageRecord(
+                    page_number=1,
+                    text=(
+                        "Điều 3. Nội dung chủ yếu của hợp đồng lao động\n"
+                        "5. Nội dung về công việc gồm:\n"
+                        f"a) {long_a};\n"
+                        f"b) {long_b}."
+                    ),
+                )
+            ],
+            document_id="thong-tu-10-2020-tt-bldtbxh",
+            document_title="Thông tư 10/2020/TT-BLĐTBXH",
+        )[0]
+
+        chunks = chunk_sections([section], max_chars=300)
+
+        self.assertTrue(any(chunk["chunk_type"] == "clause_part" for chunk in chunks))
+        self.assertTrue(
+            any(
+                str(chunk["chunk_id"]).startswith("TT10_2020_Dieu_3_Khoan_5_Diem_")
+                for chunk in chunks
+            )
+        )
 
     def test_chunk_sections_uses_sequential_chunks_for_complex_amendment_article(self) -> None:
         section = split_sections(
@@ -281,6 +411,36 @@ class CorpusPipelineTests(unittest.TestCase):
         self.assertIn("4. Xác định thời gian", clause_with_points["text"])
         self.assertIn("c.2) Trường hợp hợp đồng lao động", clause_with_points["text"])
         self.assertIn("c.3) Người sử dụng lao động", clause_with_points["text"])
+
+    def test_split_sections_tracks_part_heading(self) -> None:
+        page_records = [
+            PageRecord(
+                page_number=1,
+                text=(
+                    "PHẦN THỨ SÁU\n"
+                    "THỦ TỤC GIẢI QUYẾT VIỆC DÂN SỰ\n"
+                    "Chương XXX\n"
+                    "THỦ TỤC GIẢI QUYẾT YÊU CẦU TUYÊN BỐ HỢP ĐỒNG LAO ĐỘNG VÔ HIỆU\n"
+                    "Điều 401. Yêu cầu tuyên bố hợp đồng lao động vô hiệu\n"
+                    "1. Người lao động có quyền yêu cầu Tòa án."
+                ),
+            )
+        ]
+
+        section = split_sections(
+            page_records=page_records,
+            document_id="92-2015-qh13-labor-only",
+            document_title="Bộ luật Tố tụng dân sự 2015",
+        )[0]
+        chunks = chunk_sections([section], max_chars=1200)
+
+        self.assertEqual(section.part_number, "THỨ SÁU")
+        self.assertEqual(
+            section.part_heading,
+            "PHẦN THỨ SÁU. THỦ TỤC GIẢI QUYẾT VIỆC DÂN SỰ",
+        )
+        self.assertEqual(chunks[0]["part_number"], "THỨ SÁU")
+        self.assertEqual(chunks[0]["chunk_id"], "BLTTDS_2015_Dieu_401_Khoan_1")
 
     def test_chunk_sections_assigns_nearest_parent_chunk_id(self) -> None:
         page_records = [
@@ -539,6 +699,189 @@ class CorpusPipelineTests(unittest.TestCase):
                 Path(manifest["documents"][0]["chunks_path"]).read_text(encoding="utf-8").splitlines()[0]
             )
             self.assertEqual(chunk_payload["document_title"], "Bộ luật số 45/2019/QH14")
+
+    def test_curated_chunk_build_uses_blttds_labor_only_and_excludes_full_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            for filename in CURATED_LEGAL_CHUNK_FILENAMES:
+                (root / filename).write_text(
+                    "Điều 1. Điều khoản kiểm tra\n\n1. Nội dung kiểm tra.",
+                    encoding="utf-8",
+                )
+            full_blttds_path = root / FULL_BLTTDS_FILENAME
+            full_blttds_path.write_text(
+                "Điều 1. Phạm vi điều chỉnh\n\n1. Nội dung toàn văn.",
+                encoding="utf-8",
+            )
+
+            paths = resolve_curated_legal_chunk_paths(root)
+            chunks, warnings = build_curated_chunk_records([*paths, full_blttds_path])
+            source_names = {Path(str(chunk["source_path"])).name for chunk in chunks}
+
+            self.assertIn("92_2015_QH13_labor_only.txt", [path.name for path in paths])
+            self.assertTrue(warnings)
+            self.assertIn("92_2015_QH13_labor_only.txt", source_names)
+            self.assertNotIn(FULL_BLTTDS_FILENAME, source_names)
+
+    def test_curated_chunk_build_uses_canonical_document_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            text_path = root / "thong_tu_09_2020_tt_bldtbxh_clean.txt"
+            text_path.write_text(
+                (
+                    "BỘ LAO ĐỘNG - THƯƠNG BINH VÀ XÃ HỘI\n\n"
+                    "Điều 1. Phạm vi điều chỉnh\n"
+                    "1. Nội dung kiểm tra."
+                ),
+                encoding="utf-8",
+            )
+
+            chunks, _ = build_curated_chunk_records([text_path])
+
+            self.assertEqual(chunks[0]["document_id"], "thong-tu-09-2020-tt-bldtbxh")
+            self.assertEqual(chunks[0]["document_title"], "Thông tư 09/2020/TT-BLĐTBXH")
+            self.assertEqual(chunks[0]["document_type"], "thong_tu")
+            self.assertNotIn("-clean", chunks[0]["document_id"])
+            self.assertIn("Thông tư 09/2020/TT-BLĐTBXH", chunks[0]["citation_text"])
+
+    def test_appendix_boundary_detection_splits_footer_and_appendix(self) -> None:
+        main_text, appendix_text = split_main_text_and_appendix_text(
+            (
+                "Điều 9. Trách nhiệm hướng dẫn thi hành\n"
+                "Các Bộ trưởng chịu trách nhiệm thi hành Nghị định này.\n"
+                "TM. CHÍNH PHỦ\n"
+                "THỦ TƯỚNG\n"
+                "Nơi nhận:\n"
+                "- Lưu: VT.\n"
+                "PHỤ LỤC I\n"
+                "LỘ TRÌNH TUỔI NGHỈ HƯU\n"
+                "Lao động nam\n"
+                "Tháng sinh | Năm sinh\n"
+            )
+        )
+
+        self.assertIn("Điều 9. Trách nhiệm hướng dẫn thi hành", main_text)
+        self.assertNotIn("TM. CHÍNH PHỦ", main_text)
+        self.assertNotIn("Nơi nhận", main_text)
+        self.assertIn("PHỤ LỤC I", appendix_text)
+
+    def test_nd135_appendices_are_not_attached_to_article_9(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            text_path = Path(tmpdir) / "nghi_dinh_135_2020_nd_cp_clean.txt"
+            text_path.write_text(
+                (
+                    "Điều 9. Trách nhiệm hướng dẫn thi hành\n"
+                    "Các Bộ trưởng chịu trách nhiệm thi hành Nghị định này.\n"
+                    "TM. CHÍNH PHỦ\n"
+                    "THỦ TƯỚNG\n"
+                    "Nơi nhận:\n"
+                    "- Lưu: VT.\n"
+                    "PHỤ LỤC I\n"
+                    "LỘ TRÌNH TUỔI NGHỈ HƯU TRONG ĐIỀU KIỆN LAO ĐỘNG BÌNH THƯỜNG\n"
+                    "Lao động nam\n"
+                    "Tháng sinh | Năm sinh | Tuổi nghỉ hưu\n"
+                    "1 | 1961 | 60 tuổi 3 tháng\n"
+                    "Lao động nữ\n"
+                    "Tháng sinh | Năm sinh | Tuổi nghỉ hưu\n"
+                    "1 | 1966 | 55 tuổi 4 tháng\n"
+                    "PHỤ LỤC III\n"
+                    "DANH MỤC CÔNG VIỆC KHAI THÁC THAN TRONG HẦM LÒ\n"
+                    "1. Khai thác mỏ hầm lò.\n"
+                ),
+                encoding="utf-8",
+            )
+
+            chunks, _ = build_curated_chunk_records([text_path])
+            article_9 = next(chunk for chunk in chunks if chunk.get("article_number") == "9")
+            appendix_chunks = [chunk for chunk in chunks if chunk.get("level") == "appendix"]
+
+            self.assertNotIn("PHỤ LỤC", article_9["text"])
+            self.assertNotIn("TM. CHÍNH PHỦ", article_9["text"])
+            self.assertTrue(appendix_chunks)
+            self.assertTrue(
+                any(
+                    chunk["chunk_id"].startswith("ND135_2020_Phu_Luc_I_Bang_Nam")
+                    for chunk in appendix_chunks
+                )
+            )
+            self.assertTrue(all(chunk.get("appendix_id") for chunk in appendix_chunks))
+
+    def test_nd145_forms_are_not_attached_to_article_115(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            text_path = Path(tmpdir) / "nghi_dinh_145_2020_nd_cp_clean.txt"
+            text_path.write_text(
+                (
+                    "Điều 115. Trách nhiệm thi hành\n"
+                    "Các Bộ trưởng, Thủ trưởng cơ quan ngang bộ chịu trách nhiệm thi hành Nghị định này.\n"
+                    "Nơi nhận: CHÍNH PHỦ\n"
+                    "- Lưu: VT.\n"
+                    "Mẫu số 01/PLI | Báo cáo tình hình sử dụng lao động\n"
+                    "TÊN DOANH NGHIỆP\n"
+                    "Nội dung mẫu báo cáo.\n"
+                ),
+                encoding="utf-8",
+            )
+
+            chunks, _ = build_curated_chunk_records([text_path])
+            article_115 = next(chunk for chunk in chunks if chunk.get("article_number") == "115")
+            appendix_chunk = next(chunk for chunk in chunks if chunk.get("level") == "appendix")
+
+            self.assertNotIn("Mẫu số", article_115["text"])
+            self.assertNotIn("Nơi nhận", article_115["text"])
+            self.assertEqual(appendix_chunk["chunk_id"], "ND145_2020_Phu_Luc_I_Mau_01_PLI")
+            self.assertEqual(appendix_chunk["appendix_id"], "ND145_2020_Phu_Luc_I_Mau_01_PLI")
+
+    def test_legal_chunks_summary_reports_required_quality_fields(self) -> None:
+        chunks = [
+            {
+                "chunk_id": "dup",
+                "document_id": "doc-a",
+                "level": "article",
+                "chunk_type": "article_full",
+                "article_number": "1",
+                "citation_text": "Điều 1",
+                "text": "ngắn",
+            },
+            {
+                "chunk_id": "dup",
+                "document_id": "doc-a",
+                "level": "clause",
+                "chunk_type": "clause",
+                "article_number": "1",
+                "citation_text": "",
+                "text": " ".join(["dài"] * 1200),
+            },
+            {
+                "chunk_id": "missing-article",
+                "document_id": "doc-b",
+                "level": "clause",
+                "chunk_type": "clause",
+                "article_number": None,
+                "citation_text": "Preamble",
+                "text": "preamble text",
+            },
+            {
+                "chunk_id": "appendix",
+                "document_id": "doc-b",
+                "level": "appendix",
+                "chunk_type": "appendix_table",
+                "article_number": None,
+                "citation_text": "Phụ lục",
+                "text": "appendix text",
+            },
+        ]
+
+        summary = summarize_legal_chunks(chunks)
+
+        self.assertEqual(summary["chunk_count_by_document"]["doc-a"], 2)
+        self.assertEqual(summary["chunk_count_by_level"]["clause"], 2)
+        self.assertEqual(summary["chunk_count_by_chunk_type"]["article_full"], 1)
+        self.assertEqual(summary["duplicate_chunk_id_count"], 1)
+        self.assertEqual(len(summary["chunks_missing_citation_text"]), 1)
+        self.assertEqual(len(summary["chunks_missing_article_number"]), 1)
+        self.assertEqual(len(summary["very_short_chunks"]), 3)
+        self.assertEqual(len(summary["very_long_chunks"]), 1)
+        self.assertEqual(len(summary["very_long_normal_chunks"]), 1)
 
 
 if __name__ == "__main__":

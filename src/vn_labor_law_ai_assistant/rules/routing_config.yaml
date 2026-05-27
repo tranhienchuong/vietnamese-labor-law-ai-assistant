@@ -871,8 +871,17 @@ query_types:
     - la ai
     - the nao la
     - duoc hieu la
+    - duoc dinh nghia nhu the nao
     - dinh nghia
+    - khai niem
     description: asks what a legal term means
+  comparison:
+    keywords:
+    - so sanh
+    - khac gi
+    - khac nhau
+    - doi chieu
+    description: asks to compare legal cases, duties, rights, or consequences
   classification:
     keywords:
     - co phai la
@@ -930,7 +939,9 @@ direct_reference_rules:
   - la ai
   - la gi
   - duoc dinh nghia
+  - duoc dinh nghia nhu the nao
   - dinh nghia
+  - khai niem
   - duoc hieu nhu the nao
   - the nao la
   excluded_phrases:
@@ -940,6 +951,7 @@ direct_reference_rules:
   - noi quy
   - xu ly
   - sa thai
+  - to chuc dai dien
   document_scope:
   - 45-2019-qh14
   topics:
@@ -961,7 +973,9 @@ direct_reference_rules:
   - la ai
   - la gi
   - duoc dinh nghia
+  - duoc dinh nghia nhu the nao
   - dinh nghia
+  - khai niem
   - duoc hieu nhu the nao
   - the nao la
   excluded_phrases:
@@ -982,6 +996,38 @@ direct_reference_rules:
   - document_id: 45-2019-qh14
     article: '3'
     clause: '2'
+- name: definition_to_chuc_dai_dien_nguoi_lao_dong
+  confidence: high
+  canonical_term: to chuc dai dien nguoi lao dong
+  query_types:
+  - definition
+  definition_markers:
+  - la ai
+  - la gi
+  - duoc dinh nghia
+  - duoc dinh nghia nhu the nao
+  - dinh nghia
+  - khai niem
+  - duoc hieu nhu the nao
+  - the nao la
+  excluded_phrases:
+  - quyen
+  - nghia vu
+  - trach nhiem
+  - xu ly
+  - sa thai
+  document_scope:
+  - 45-2019-qh14
+  topics:
+  - general_provisions
+  issues:
+  - giai_thich_tu_ngu
+  expansions:
+  - Dieu 3 khoan 3 giai thich to chuc dai dien nguoi lao dong tai co so
+  references:
+  - document_id: 45-2019-qh14
+    article: '3'
+    clause: '3'
 - name: definition_quan_he_lao_dong
   confidence: high
   canonical_term: quan he lao dong
@@ -990,7 +1036,9 @@ direct_reference_rules:
   definition_markers:
   - la gi
   - duoc dinh nghia
+  - duoc dinh nghia nhu the nao
   - dinh nghia
+  - khai niem
   - duoc hieu nhu the nao
   - the nao la
   - bao gom
@@ -1224,6 +1272,384 @@ direct_reference_rules:
   references:
   - document_id: 45-2019-qh14
     article: '118'
+- name: labor_contract_form
+  confidence: high
+  canonical_term: hop dong lao dong
+  markers:
+  - hinh thuc
+  - bang van ban
+  - lap bang van ban
+  - loi noi
+  - dien tu
+  - bat buoc phai lap
+  excluded_phrases:
+  - noi dung
+  - phu luc
+  document_scope:
+  - 45-2019-qh14
+  topics:
+  - hop_dong_lao_dong
+  issues:
+  - giao_ket_hop_dong
+  expansions:
+  - Dieu 14 hinh thuc hop dong lao dong bang van ban dien tu loi noi
+  references:
+  - document_id: 45-2019-qh14
+    article: '14'
+- name: labor_contract_appendix
+  confidence: high
+  canonical_term: phu luc hop dong
+  markers:
+  - gia tri
+  - hop dong
+  - sua doi
+  - bo sung
+  document_scope:
+  - 45-2019-qh14
+  topics:
+  - hop_dong_lao_dong
+  issues:
+  - sua_doi_bo_sung_hop_dong
+  expansions:
+  - Dieu 22 phu luc hop dong lao dong
+  references:
+  - document_id: 45-2019-qh14
+    article: '22'
+- name: prohibited_contracting_original_papers
+  confidence: high
+  canonical_term: nguoi su dung lao dong
+  markers:
+  - giu ban chinh
+  - can cuoc
+  - bang cap
+  - giay to
+  - giu cccd
+  - giu cmnd
+  - dat coc
+  - tai san bao dam
+  document_scope:
+  - 45-2019-qh14
+  topics:
+  - hop_dong_lao_dong
+  issues:
+  - hanh_vi_cam_khi_giao_ket
+  - giu_giay_to_goc
+  expansions:
+  - Dieu 17 hanh vi nguoi su dung lao dong khong duoc lam khi giao ket thuc hien hop dong lao dong
+  references:
+  - document_id: 45-2019-qh14
+    article: '17'
+- name: probation_agreement
+  confidence: high
+  canonical_term: thu viec
+  markers:
+  - thoa thuan
+  - hop dong thu viec
+  - noi dung thu viec
+  - duoc thoa thuan
+  excluded_phrases:
+  - thoi gian
+  - bao lau
+  - tien luong
+  - ket thuc
+  document_scope:
+  - 45-2019-qh14
+  topics:
+  - thu_viec
+  issues:
+  - thu_viec
+  expansions:
+  - Dieu 24 thu viec thoa thuan noi dung thu viec
+  references:
+  - document_id: 45-2019-qh14
+    article: '24'
+- name: probation_end_result
+  confidence: high
+  canonical_term: thu viec
+  markers:
+  - ket thuc
+  - het thoi gian
+  - dat yeu cau
+  - khong dat yeu cau
+  document_scope:
+  - 45-2019-qh14
+  topics:
+  - thu_viec
+  issues:
+  - thu_viec
+  expansions:
+  - Dieu 27 ket thuc thoi gian thu viec
+  references:
+  - document_id: 45-2019-qh14
+    article: '27'
+- name: employer_unlawful_unilateral_termination
+  confidence: high
+  canonical_term: cong ty
+  markers:
+  - don phuong cham dut
+  - trai phap luat
+  - trai luat
+  - nhan nguoi lao dong lai
+  - phai nhan lai
+  - boi thuong
+  document_scope:
+  - 45-2019-qh14
+  topics:
+  - cham_dut_hop_dong_lao_dong
+  - don_phuong_cham_dut
+  issues:
+  - trai_phap_luat
+  - boi_thuong
+  expansions:
+  - Dieu 41 nghia vu cua nguoi su dung lao dong khi don phuong cham dut hop dong lao dong trai phap luat
+  references:
+  - document_id: 45-2019-qh14
+    article: '41'
+- name: structural_change_labor_usage_plan
+  confidence: high
+  canonical_term: thay doi co cau
+  markers:
+  - phai lam gi
+  - phuong an su dung lao dong
+  - voi nguoi lao dong
+  - co cau cong nghe
+  document_scope:
+  - 45-2019-qh14
+  topics:
+  - thay_doi_co_cau_kinh_te
+  issues:
+  - thay_doi_co_cau_kinh_te
+  expansions:
+  - Dieu 44 phuong an su dung lao dong khi thay doi co cau cong nghe
+  references:
+  - document_id: 45-2019-qh14
+    article: '44'
+- name: night_work_definition
+  confidence: high
+  canonical_term: gio lam viec ban dem
+  markers:
+  - tu may gio
+  - den may gio
+  - duoc tinh
+  - ban dem
+  - ca dem
+  document_scope:
+  - 45-2019-qh14
+  topics:
+  - thoi_gio_lam_viec
+  issues:
+  - lam_ban_dem
+  expansions:
+  - Dieu 106 gio lam viec ban dem
+  references:
+  - document_id: 45-2019-qh14
+    article: '106'
+- name: weekly_rest
+  confidence: high
+  canonical_term: nghi hang tuan
+  markers:
+  - nhu the nao
+  - bao nhieu
+  - duoc nghi
+  - hang tuan
+  document_scope:
+  - 45-2019-qh14
+  topics:
+  - thoi_gio_lam_viec
+  issues:
+  - thoi_gio_lam_viec
+  expansions:
+  - Dieu 111 nghi hang tuan
+  references:
+  - document_id: 45-2019-qh14
+    article: '111'
+- name: annual_leave
+  confidence: high
+  canonical_term: nghi hang nam
+  markers:
+  - du 12 thang
+  - bao nhieu ngay
+  - nghi phep nam
+  - nghi hang nam
+  document_scope:
+  - 45-2019-qh14
+  topics:
+  - thoi_gio_lam_viec
+  issues:
+  - thoi_gio_lam_viec
+  expansions:
+  - Dieu 113 nghi hang nam
+  references:
+  - document_id: 45-2019-qh14
+    article: '113'
+- name: minor_worker_prohibited_jobs
+  confidence: high
+  canonical_term: nguoi chua thanh nien
+  markers:
+  - khong duoc lam
+  - cong viec nao
+  - noi lam viec nao
+  - cam
+  document_scope:
+  - 45-2019-qh14
+  topics:
+  - lao_dong_chua_thanh_nien
+  issues:
+  - lao_dong_chua_thanh_nien
+  expansions:
+  - Dieu 147 cong viec va noi lam viec cam su dung nguoi lao dong chua thanh nien
+  references:
+  - document_id: 45-2019-qh14
+    article: '147'
+- name: female_worker_maternity_protection
+  confidence: high
+  canonical_term: lao dong nu
+  markers:
+  - mang thai
+  - sa thai
+  - don phuong cham dut
+  - nuoi con duoi 12 thang
+  document_scope:
+  - 45-2019-qh14
+  topics:
+  - bao_ve_thai_san
+  issues:
+  - bao_ve_thai_san
+  expansions:
+  - Dieu 137 bao ve thai san lao dong nu mang thai
+  references:
+  - document_id: 45-2019-qh14
+    article: '137'
+- name: maternity_leave
+  confidence: high
+  canonical_term: lao dong nu
+  markers:
+  - sinh con
+  - nghi thai san
+  - thai san bao lau
+  - duoc nghi thai san
+  document_scope:
+  - 45-2019-qh14
+  topics:
+  - bao_ve_thai_san
+  issues:
+  - bao_ve_thai_san
+  expansions:
+  - Dieu 139 nghi thai san
+  references:
+  - document_id: 45-2019-qh14
+    article: '139'
+- name: retirement_age_table_lookup
+  confidence: high
+  canonical_term: nghi huu
+  markers:
+  - nu
+  - nam 2026
+  - bao nhieu tuoi
+  - bang tuoi nghi huu
+  - can cu van ban
+  document_scope:
+  - 45-2019-qh14
+  - nghi-dinh-135-2020-nd-cp
+  topics:
+  - nguoi_cao_tuoi
+  issues:
+  - tuoi_nghi_huu
+  expansions:
+  - Dieu 169 tuoi nghi huu
+  - Nghi dinh 135 Dieu 4 Phu luc I bang tuoi nghi huu lao dong nu nam 2026 57 tuoi
+  references:
+  - document_id: 45-2019-qh14
+    article: '169'
+  - document_id: nghi-dinh-135-2020-nd-cp
+    article: '4'
+- name: early_retirement_hazardous_work
+  confidence: high
+  canonical_term: nghi huu
+  markers:
+  - nghe nang nhoc
+  - doc hai
+  - nghi huu som
+  - tuoi thap hon
+  document_scope:
+  - 45-2019-qh14
+  - nghi-dinh-135-2020-nd-cp
+  topics:
+  - nguoi_cao_tuoi
+  issues:
+  - tuoi_nghi_huu
+  expansions:
+  - Dieu 169 khoan 3 nghi huu tuoi thap hon
+  - Nghi dinh 135 Dieu 5 nghi huu o tuoi thap hon
+  references:
+  - document_id: 45-2019-qh14
+    article: '169'
+    clause: '3'
+  - document_id: nghi-dinh-135-2020-nd-cp
+    article: '5'
+- name: compare_overtime_conditions_vs_pay
+  confidence: high
+  canonical_term: phan biet
+  phrases:
+  - phan biet dieu kien lam them gio voi tien luong lam them gio
+  - so sanh dieu kien lam them gio voi tien luong lam them gio
+  - khac nhau giua dieu kien lam them gio va tien luong lam them gio
+  markers:
+  - phan biet
+  - dieu kien
+  - tien luong lam them
+  - lam them gio
+  excluded_phrases:
+  - nghi hang tuan
+  document_scope:
+  - 45-2019-qh14
+  - nghi-dinh-145-2020-nd-cp
+  topics:
+  - thoi_gio_lam_viec
+  - tien_luong
+  issues:
+  - lam_them_gio
+  - tien_luong
+  expansions:
+  - Dieu 107 dieu kien lam them gio
+  - Dieu 98 tien luong lam them gio
+  - Nghi dinh 145 Dieu 55 tien luong lam them gio
+  references:
+  - document_id: 45-2019-qh14
+    article: '107'
+  - document_id: 45-2019-qh14
+    article: '98'
+  - document_id: nghi-dinh-145-2020-nd-cp
+    article: '55'
+- name: labor_contract_content_guidance
+  confidence: high
+  canonical_term: hop dong lao dong
+  markers:
+  - noi dung
+  - thong tu
+  - huong dan
+  - chi tiet
+  excluded_phrases:
+  - ky quy
+  - dat coc
+  - bao dam
+  - cho thue lai lao dong
+  document_scope:
+  - 45-2019-qh14
+  - thong-tu-10-2020-tt-bldtbxh
+  topics:
+  - hop_dong_lao_dong
+  issues:
+  - giao_ket_hop_dong
+  expansions:
+  - Dieu 21 noi dung hop dong lao dong
+  - Thong tu 10 Dieu 3 huong dan noi dung hop dong lao dong
+  references:
+  - document_id: 45-2019-qh14
+    article: '21'
+    clause: '1'
+  - document_id: thong-tu-10-2020-tt-bldtbxh
+    article: '3'
 legal_high_precision_rules:
 - name: high_precision_001
   phrases:
@@ -2966,6 +3392,7 @@ query_type_descriptions:
   procedure: asks about process, paperwork, steps, meeting, or authority
   remedy: asks what to claim, how to fix a violation, reinstatement, or compensation
   definition: asks what a legal term means
+  comparison: asks to compare legal cases, duties, rights, or consequences
   classification: asks which legal category or case applies
   enumeration: asks to list all cases or conditions
   missing_fact: contains conditional facts that may require more information

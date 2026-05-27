@@ -46,7 +46,8 @@ def format_answer_for_user(
         parts.append("")
         parts.append("Nội dung cụ thể như sau:")
         for evidence_quote in answer_payload.evidence_quotes[:3]:
-            parts.append(f"- {evidence_quote.quote}")
+            quote = re.sub(r"\s+", " ", evidence_quote.quote).strip()
+            parts.append(f"- {quote} ({evidence_quote.citation})")
 
     if "tom lai" not in normalized_answer:
         parts.append("")

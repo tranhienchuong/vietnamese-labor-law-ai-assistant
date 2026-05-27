@@ -15,12 +15,27 @@ def document_node_id(document_id: str) -> str:
     return f"document:{document_id}"
 
 
+def _article_id_part(article_number: str) -> str:
+    value = str(article_number or "").strip()
+    return value if value.startswith("dieu-") else f"dieu-{value}"
+
+
+def _clause_id_part(clause_ref: str) -> str:
+    value = str(clause_ref or "").strip()
+    return value if value.startswith("khoan-") else f"khoan-{value}"
+
+
+def _point_id_part(point_ref: str) -> str:
+    value = str(point_ref or "").strip()
+    return value if value.startswith("diem-") else f"diem-{value}"
+
+
 def article_node_id(document_id: str, article_number: str) -> str:
-    return f"article:{document_id}:{article_number}"
+    return f"article:{document_id}:{_article_id_part(article_number)}"
 
 
 def clause_node_id(document_id: str, article_number: str, clause_ref: str) -> str:
-    return f"clause:{document_id}:{article_number}:{clause_ref}"
+    return f"clause:{document_id}:{_article_id_part(article_number)}:{_clause_id_part(clause_ref)}"
 
 
 def point_node_id(
@@ -29,15 +44,37 @@ def point_node_id(
     clause_ref: str,
     point_ref: str,
 ) -> str:
-    return f"point:{document_id}:{article_number}:{clause_ref}:{point_ref}"
+    return (
+        f"point:{document_id}:{_article_id_part(article_number)}:"
+        f"{_clause_id_part(clause_ref)}:{_point_id_part(point_ref)}"
+    )
 
 
 def evidence_chunk_node_id(chunk_id: str) -> str:
     return f"chunk:{chunk_id}"
 
 
+def appendix_node_id(document_id: str, appendix_id: str) -> str:
+    return f"appendix:{document_id}:{compact_id_part(appendix_id)}"
+
+
 def concept_node_id(kind: str, normalized_name: str) -> str:
     return f"{kind}:{normalized_name.replace(' ', '_')}"
+
+
+def taxonomy_node_id(kind: str, value: object) -> str:
+    return f"{kind}:{compact_id_part(value)}"
+
+
+def canonical_legal_node_id(node_id: str) -> str:
+    parts = str(node_id or "").split(":")
+    if len(parts) >= 3 and parts[0] == "article":
+        return article_node_id(parts[1], parts[2])
+    if len(parts) >= 4 and parts[0] == "clause":
+        return clause_node_id(parts[1], parts[2], parts[3])
+    if len(parts) >= 5 and parts[0] == "point":
+        return point_node_id(parts[1], parts[2], parts[3], parts[4])
+    return str(node_id or "")
 
 
 def legal_unit_node_ids_for_payload(payload: dict[str, Any]) -> tuple[str, ...]:
@@ -208,6 +245,8 @@ def dedupe_edges_by_id(edges: Sequence[Any]) -> tuple[Any, ...]:
 
 __all__ = [
     "article_node_id",
+    "appendix_node_id",
+    "canonical_legal_node_id",
     "clause_node_id",
     "compact_id_part",
     "concept_node_id",
@@ -224,4 +263,5 @@ __all__ = [
     "payload_to_record",
     "point_node_id",
     "record_to_payload",
+    "taxonomy_node_id",
 ]

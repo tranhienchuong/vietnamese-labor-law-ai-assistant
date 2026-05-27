@@ -8,9 +8,9 @@ import uuid
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from ...answering import build_messages, format_answer_for_user, parse_answer_payload
+from ...answering import format_answer_for_user, generate_grounded_answer
 from ...auth_store import AuthUser
-from ...llm import DEFAULT_PROVIDER, chat_completion
+from ...llm import DEFAULT_PROVIDER
 from ...observability import ChatTraceService
 from ...retriever import (
     DEFAULT_MAX_CONTEXT_CHARS,
@@ -269,13 +269,14 @@ async def chat(
     )
     generation_start = time.perf_counter()
     try:
-        response = chat_completion(
+        answer_result = generate_grounded_answer(
+            question,
+            contexts,
             provider=provider,
             model=model,
-            messages=build_messages(question, contexts),
             temperature=float(payload.get("temperature") or 0),
         )
-        parsed = parse_answer_payload(response.content, contexts, question=question)
+        parsed = answer_result.parsed
         generation_latency_ms = elapsed_ms(generation_start)
     except Exception as exc:
         record_chat_trace_best_effort(
@@ -318,8 +319,8 @@ async def chat(
         request_id=request_id,
         conversation_id=conversation_id,
         message_id=str(assistant_message["id"]),
-        provider=response.provider,
-        model=response.model,
+        provider=answer_result.provider,
+        model=answer_result.model,
         retrieve_only=False,
         insufficient_context=bool(parsed.insufficient_context),
         total_start=total_start,

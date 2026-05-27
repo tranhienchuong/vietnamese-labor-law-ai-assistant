@@ -96,7 +96,10 @@ def parse_answer_payload(
     override = contextual_answer_override(question, contexts) if question else None
     if override is not None:
         insufficient_context = False
-        payload["answer"] = override.answer
+        if normalize_quote_surface(override.evidence_quote.citation) in normalize_quote_surface(override.answer):
+            payload["answer"] = override.answer
+        else:
+            payload["answer"] = f"{override.answer} ({override.evidence_quote.citation})"
         legal_basis = dedupe_preserve_order(
             (override.evidence_quote.citation, *legal_basis)
         )

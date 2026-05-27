@@ -10,6 +10,10 @@ class NodeType(str, Enum):
     LEGAL_ARTICLE = "Legal_Article"
     LEGAL_CLAUSE = "Legal_Clause"
     LEGAL_POINT = "Legal_Point"
+    LEGAL_APPENDIX = "Legal_Appendix"
+    LEGAL_TOPIC = "Legal_Topic"
+    LEGAL_ACTOR = "Legal_Actor"
+    LEGAL_ISSUE_TYPE = "Legal_IssueType"
     LEGAL_RULE = "Legal_Rule"
     SUBJECT = "Subject"
     LEGAL_CONCEPT = "Legal_Concept"
@@ -32,14 +36,23 @@ class EdgeType(str, Enum):
     HAS_ARTICLE = "HAS_ARTICLE"
     HAS_CLAUSE = "HAS_CLAUSE"
     HAS_POINT = "HAS_POINT"
+    HAS_APPENDIX = "HAS_APPENDIX"
     HAS_SOURCE_CHUNK = "HAS_SOURCE_CHUNK"
     SOURCE_OF = "SOURCE_OF"
     REFERENCES = "REFERENCES"
     GUIDED_BY = "GUIDED_BY"
+    GUIDES = "GUIDES"
     DETAILS = "DETAILS"
+    SUPERIOR_TO = "SUPERIOR_TO"
+    SUBORDINATE_TO = "SUBORDINATE_TO"
+    MUST_COMPLY_WITH = "MUST_COMPLY_WITH"
+    IMPLEMENTS = "IMPLEMENTS"
     AMENDS = "AMENDS"
     REPLACES = "REPLACES"
     APPLIES_TO = "APPLIES_TO"
+    MENTIONS_TOPIC = "MENTIONS_TOPIC"
+    APPLIES_TO_ACTOR = "APPLIES_TO_ACTOR"
+    HAS_ISSUE_TYPE = "HAS_ISSUE_TYPE"
     MENTIONS_CONCEPT = "MENTIONS_CONCEPT"
     REGULATES_ACTION = "REGULATES_ACTION"
     HAS_CONDITION = "HAS_CONDITION"
@@ -55,22 +68,19 @@ class EdgeType(str, Enum):
 
 
 GRAPH_EXPANSION_EDGE_TYPES: tuple[EdgeType, ...] = (
-    EdgeType.HAS_ARTICLE,
-    EdgeType.HAS_CLAUSE,
-    EdgeType.HAS_POINT,
+    EdgeType.REFERENCES,
+    EdgeType.DETAILS,
+    EdgeType.GUIDED_BY,
+    EdgeType.GUIDES,
+    EdgeType.SUPERIOR_TO,
+    EdgeType.SUBORDINATE_TO,
+    EdgeType.MUST_COMPLY_WITH,
+    EdgeType.IMPLEMENTS,
+    EdgeType.MENTIONS_TOPIC,
+    EdgeType.APPLIES_TO_ACTOR,
+    EdgeType.HAS_ISSUE_TYPE,
     EdgeType.HAS_SOURCE_CHUNK,
     EdgeType.SOURCE_OF,
-    EdgeType.REFERENCES,
-    EdgeType.GUIDED_BY,
-    EdgeType.MENTIONS_CONCEPT,
-    EdgeType.APPLIES_TO,
-    EdgeType.HAS_CONDITION,
-    EdgeType.HAS_EXCEPTION,
-    EdgeType.HAS_DEADLINE,
-    EdgeType.HAS_FORMULA,
-    EdgeType.GRANTS_RIGHT,
-    EdgeType.IMPOSES_OBLIGATION,
-    EdgeType.TRIGGERS_CONSEQUENCE,
 )
 
 

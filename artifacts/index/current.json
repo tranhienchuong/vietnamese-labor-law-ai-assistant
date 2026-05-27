@@ -1,22 +1,151 @@
 {
-  "build_id": "20260516T143900Z",
-  "generated_at": "2026-05-16T14:41:13.698930+00:00",
+  "build_id": "20260526T121738Z",
+  "generated_at": "2026-05-26T12:28:15.032286+00:00",
+  "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "chunk_count": 1556,
+  "document_count": 6,
+  "source_chunks_file": "artifacts/chunks/legal_chunks_enriched.jsonl",
+  "source_chunks_file_hash": "c7c3938598717c0256cf6fd5ad4c3d3b8581fd7a2385df2474d1928d9c1bb922",
+  "vector_dimension": 384,
+  "indexed_documents": [
+    {
+      "document_id": "45-2019-qh14",
+      "document_title": "Bộ luật Lao động 2019",
+      "document_type": "bo_luat",
+      "normative_rank": 1,
+      "rank_label": "highest",
+      "chunk_count": 697
+    },
+    {
+      "document_id": "92-2015-qh13-labor-only",
+      "document_title": "Bộ luật Tố tụng dân sự 2015 - phần liên quan lao động",
+      "document_type": "bo_luat",
+      "normative_rank": 1,
+      "rank_label": "highest",
+      "chunk_count": 159
+    },
+    {
+      "document_id": "nghi-dinh-135-2020-nd-cp",
+      "document_title": "Nghị định 135/2020/NĐ-CP",
+      "document_type": "nghi_dinh",
+      "normative_rank": 2,
+      "rank_label": "middle",
+      "chunk_count": 41
+    },
+    {
+      "document_id": "nghi-dinh-145-2020-nd-cp",
+      "document_title": "Nghị định 145/2020/NĐ-CP",
+      "document_type": "nghi_dinh",
+      "normative_rank": 2,
+      "rank_label": "middle",
+      "chunk_count": 520
+    },
+    {
+      "document_id": "thong-tu-09-2020-tt-bldtbxh",
+      "document_title": "Thông tư 09/2020/TT-BLĐTBXH",
+      "document_type": "thong_tu",
+      "normative_rank": 3,
+      "rank_label": "lowest",
+      "chunk_count": 73
+    },
+    {
+      "document_id": "thong-tu-10-2020-tt-bldtbxh",
+      "document_title": "Thông tư 10/2020/TT-BLĐTBXH",
+      "document_type": "thong_tu",
+      "normative_rank": 3,
+      "rank_label": "lowest",
+      "chunk_count": 66
+    }
+  ],
+  "warnings": [],
   "collection_name": "vietnamese_labor_law_chunks",
   "qdrant_storage": "cloud",
   "record_source": "qdrant_payload",
   "dense_model_name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
   "dense_vector_name": "dense",
   "sparse_vector_name": "sparse",
-  "record_count": 716,
-  "corpus_signature": "662cccf380af0bc276fbb9d1707ff1047da4a45615a6ab9ac232228ed678c29d",
+  "record_count": 1556,
+  "corpus_signature": "36cbcad221187deddb2e7625ff79afc4321610fdbd902fb622be478e3fe600f9",
   "chunk_paths": [
-    "labor_law_rechunked_hierarchical.jsonl"
+    "artifacts/chunks/legal_chunks_enriched.jsonl"
   ],
-  "build_dir": "artifacts/index/builds/build_20260516T143900Z",
-  "qdrant_path": "artifacts/index/builds/build_20260516T143900Z/qdrant",
-  "records_db_path": "artifacts/index/builds/build_20260516T143900Z/records.db",
-  "records_jsonl_path": "artifacts/index/builds/build_20260516T143900Z/records.jsonl",
-  "sparse_encoder_path": "artifacts/index/builds/build_20260516T143900Z/sparse_encoder.json",
-  "batch_size": 32,
-  "device": "cpu"
+  "build_dir": "artifacts/index/builds/build_20260526T121738Z",
+  "qdrant_path": "artifacts/index/builds/build_20260526T121738Z/qdrant",
+  "records_db_path": "artifacts/index/builds/build_20260526T121738Z/records.db",
+  "records_jsonl_path": "artifacts/index/builds/build_20260526T121738Z/records.jsonl",
+  "sparse_encoder_path": "artifacts/index/builds/build_20260526T121738Z/sparse_encoder.json",
+  "batch_size": 8,
+  "device": "cuda",
+  "validation": {
+    "chunk_count": 1556,
+    "duplicate_chunk_ids": [],
+    "duplicate_chunk_id_count": 0,
+    "missing_retrieval_text_count": 0,
+    "missing_citation_text_count": 0,
+    "missing_document_id_count": 0,
+    "missing_normative_rank_count": 0,
+    "missing_fields": {
+      "chunk_id": [],
+      "retrieval_text": [],
+      "citation_text": [],
+      "document_id": [],
+      "normative_rank": []
+    },
+    "passed": true,
+    "indexed_chunk_count": 1556,
+    "all_chunks_indexed": true,
+    "missing_indexed_chunk_ids": [],
+    "extra_indexed_chunk_ids": [],
+    "dense_vector_count": 1556,
+    "sparse_vector_count": 1556,
+    "dense_vector_dimensions": [
+      384
+    ],
+    "empty_vector_payload_count": 0,
+    "empty_vector_payload_chunk_ids": [],
+    "payload_missing_by_field": {
+      "chunk_id": [],
+      "document_id": [],
+      "document_title": [],
+      "document_type": [],
+      "normative_rank": [],
+      "rank_label": [],
+      "article_number": [],
+      "article_title": [],
+      "clause_ref": [],
+      "point_ref": [],
+      "point_refs": [],
+      "level": [],
+      "chunk_type": [],
+      "parent_chunk_id": [],
+      "topic": [],
+      "actor": [],
+      "issue_type": [],
+      "citation_text": [],
+      "source_file": [],
+      "document_hierarchy": []
+    },
+    "source_document_types": [
+      "bo_luat",
+      "nghi_dinh",
+      "thong_tu"
+    ],
+    "indexed_document_types": [
+      "bo_luat",
+      "nghi_dinh",
+      "thong_tu"
+    ],
+    "all_document_types_preserved": true,
+    "source_normative_ranks": [
+      1,
+      2,
+      3
+    ],
+    "indexed_normative_ranks": [
+      1,
+      2,
+      3
+    ],
+    "all_normative_ranks_preserved": true
+  }
 }

@@ -18,15 +18,22 @@ if hasattr(sys.stdout, "reconfigure"):
 from vn_labor_law_ai_assistant.indexing import build_hybrid_index, resolve_chunk_paths
 
 
+DEFAULT_CHUNK_FILE = REPO_ROOT / "artifacts" / "chunks" / "legal_chunks_enriched.jsonl"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build dense+sparse hybrid index artifacts for legal retrieval.")
-    parser.add_argument("--chunks-dir", type=Path, default=REPO_ROOT / "corpus" / "chunks")
+    parser.add_argument("--chunks-dir", type=Path, default=REPO_ROOT / "artifacts" / "chunks")
     parser.add_argument(
         "--chunk-file",
         type=Path,
         nargs="*",
-        default=[],
-        help="Optional explicit chunk JSONL files. Defaults to all JSONL files in --chunks-dir.",
+        default=None,
+        help=(
+            "Optional explicit chunk JSONL files. Defaults to "
+            "artifacts/chunks/legal_chunks_enriched.jsonl; pass --chunk-file with no values "
+            "to index all JSONL files in --chunks-dir."
+        ),
     )
     parser.add_argument("--artifacts-dir", type=Path, default=REPO_ROOT / "artifacts" / "index")
     parser.add_argument(
@@ -48,7 +55,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    chunk_paths = resolve_chunk_paths(args.chunks_dir, args.chunk_file)
+    chunk_files = [DEFAULT_CHUNK_FILE] if args.chunk_file is None else args.chunk_file
+    chunk_paths = resolve_chunk_paths(args.chunks_dir, chunk_files)
 
     if not chunk_paths:
         raise SystemExit("No chunk JSONL files were found to index.")

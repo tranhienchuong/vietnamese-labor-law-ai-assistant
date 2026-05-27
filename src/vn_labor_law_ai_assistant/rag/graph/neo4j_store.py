@@ -12,6 +12,31 @@ from .ontology import EdgeType, NodeType, edge_type_label, node_type_label
 logger = logging.getLogger(__name__)
 
 
+PATH_RELATION_WEIGHTS: dict[str, float] = {
+    "DETAILS": 0.24,
+    "GUIDED_BY": 0.22,
+    "REFERENCES": 0.20,
+    "GUIDES": 0.18,
+    "IMPLEMENTS": 0.16,
+    "MUST_COMPLY_WITH": 0.14,
+    "SUPERIOR_TO": 0.12,
+    "SUBORDINATE_TO": 0.10,
+    "MENTIONS_TOPIC": 0.11,
+    "APPLIES_TO_ACTOR": 0.09,
+    "HAS_ISSUE_TYPE": 0.09,
+    "HAS_SOURCE_CHUNK": 0.06,
+    "SOURCE_OF": 0.06,
+}
+
+
+def _path_strength(path: dict[str, Any]) -> float:
+    edge_path = tuple(str(value) for value in path.get("graph_edge_path") or ())
+    relation_weight = max((PATH_RELATION_WEIGHTS.get(edge, 0.03) for edge in edge_path), default=0.03)
+    confidence = float(path.get("graph_confidence") or 0.0)
+    depth = max(1, int(path.get("graph_depth") or 1))
+    return relation_weight + (confidence * 0.05) - (depth * 0.005)
+
+
 def _coerce_neo4j_value(value: Any) -> Any:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
@@ -64,19 +89,54 @@ class Neo4jLegalGraphStore:
         return self._driver.session(database=self.database)
 
     def setup_schema(self) -> None:
+        legacy_conflicting_indexes = (
+            "evidence_chunk_chunk_id",
+        )
         statements = (
             "CREATE CONSTRAINT legal_node_node_id IF NOT EXISTS "
             "FOR (n:LegalNode) REQUIRE n.node_id IS UNIQUE",
+            "CREATE CONSTRAINT legal_document_document_id IF NOT EXISTS "
+            "FOR (n:Legal_Document) REQUIRE n.document_id IS UNIQUE",
+            "CREATE CONSTRAINT legal_article_node_id IF NOT EXISTS "
+            "FOR (n:Legal_Article) REQUIRE n.node_id IS UNIQUE",
+            "CREATE CONSTRAINT legal_clause_node_id IF NOT EXISTS "
+            "FOR (n:Legal_Clause) REQUIRE n.node_id IS UNIQUE",
+            "CREATE CONSTRAINT legal_point_node_id IF NOT EXISTS "
+            "FOR (n:Legal_Point) REQUIRE n.node_id IS UNIQUE",
+            "CREATE CONSTRAINT legal_appendix_node_id IF NOT EXISTS "
+            "FOR (n:Legal_Appendix) REQUIRE n.node_id IS UNIQUE",
+            "CREATE CONSTRAINT evidence_chunk_chunk_id_unique IF NOT EXISTS "
+            "FOR (n:Evidence_Chunk) REQUIRE n.chunk_id IS UNIQUE",
             "CREATE INDEX legal_node_node_type IF NOT EXISTS "
             "FOR (n:LegalNode) ON (n.node_type)",
-            "CREATE INDEX evidence_chunk_chunk_id IF NOT EXISTS "
-            "FOR (n:Evidence_Chunk) ON (n.chunk_id)",
+            "CREATE INDEX evidence_chunk_topic IF NOT EXISTS "
+            "FOR (n:Evidence_Chunk) ON (n.topic)",
+            "CREATE INDEX evidence_chunk_actor IF NOT EXISTS "
+            "FOR (n:Evidence_Chunk) ON (n.actor)",
+            "CREATE INDEX evidence_chunk_issue_type IF NOT EXISTS "
+            "FOR (n:Evidence_Chunk) ON (n.issue_type)",
+            "CREATE INDEX legal_document_document_id IF NOT EXISTS "
+            "FOR (n:Legal_Document) ON (n.document_id)",
+            "CREATE INDEX legal_article_article_number IF NOT EXISTS "
+            "FOR (n:Legal_Article) ON (n.article_number)",
+            "CREATE INDEX legal_clause_document_id IF NOT EXISTS "
+            "FOR (n:Legal_Clause) ON (n.document_id)",
+            "CREATE INDEX legal_point_document_id IF NOT EXISTS "
+            "FOR (n:Legal_Point) ON (n.document_id)",
+            "CREATE INDEX legal_topic_value IF NOT EXISTS "
+            "FOR (n:Legal_Topic) ON (n.value)",
+            "CREATE INDEX legal_actor_value IF NOT EXISTS "
+            "FOR (n:Legal_Actor) ON (n.value)",
+            "CREATE INDEX legal_issue_type_value IF NOT EXISTS "
+            "FOR (n:Legal_IssueType) ON (n.value)",
             "CREATE INDEX legal_node_source_chunk_id IF NOT EXISTS "
             "FOR (n:LegalNode) ON (n.source_chunk_id)",
             "CREATE INDEX legal_node_normalized_name IF NOT EXISTS "
             "FOR (n:LegalNode) ON (n.normalized_name)",
         )
         with self._session() as session:
+            for index_name in legacy_conflicting_indexes:
+                session.run(f"DROP INDEX {index_name} IF EXISTS")
             for statement in statements:
                 session.run(statement)
 
@@ -86,6 +146,133 @@ class Neo4jLegalGraphStore:
     def reset_graph(self) -> None:
         with self._session() as session:
             session.run("MATCH (n:LegalNode) DETACH DELETE n")
+
+    def validate_loaded_graph(
+        self,
+        *,
+        expected_chunk_count: int | None = None,
+        expected_document_count: int | None = None,
+        expected_normative_ranks: dict[str, int] | None = None,
+    ) -> dict[str, Any]:
+        with self._session() as session:
+            counts_record = session.run(
+                """
+                MATCH (n:LegalNode)
+                RETURN
+                  sum(CASE WHEN n:Legal_Document THEN 1 ELSE 0 END) AS documents,
+                  sum(CASE WHEN n:Legal_Article THEN 1 ELSE 0 END) AS articles,
+                  sum(CASE WHEN n:Legal_Clause THEN 1 ELSE 0 END) AS clauses,
+                  sum(CASE WHEN n:Legal_Point THEN 1 ELSE 0 END) AS points,
+                  sum(CASE WHEN n:Legal_Appendix THEN 1 ELSE 0 END) AS appendices,
+                  sum(CASE WHEN n:Evidence_Chunk THEN 1 ELSE 0 END) AS evidence_chunks,
+                  sum(CASE WHEN n:Legal_Topic THEN 1 ELSE 0 END) AS topic_nodes,
+                  sum(CASE WHEN n:Legal_Actor THEN 1 ELSE 0 END) AS actor_nodes,
+                  sum(CASE WHEN n:Legal_IssueType THEN 1 ELSE 0 END) AS issue_type_nodes
+                """
+            ).single()
+            counts = dict(counts_record or {})
+
+            documents_without_chunks = [
+                str(record["document_id"])
+                for record in session.run(
+                    """
+                    MATCH (d:Legal_Document)
+                    WHERE NOT EXISTS {
+                      MATCH (c:Evidence_Chunk {document_id: d.document_id})
+                    }
+                    RETURN d.document_id AS document_id
+                    ORDER BY document_id
+                    """
+                )
+            ]
+            orphan_evidence_chunks = int(
+                session.run(
+                    """
+                    MATCH (c:Evidence_Chunk)
+                    WHERE NOT EXISTS { MATCH (c)-[:SOURCE_OF]->(:LegalNode) }
+                    RETURN count(c) AS count
+                    """
+                ).single()["count"]
+            )
+            unresolved_reference_edges_loaded = int(
+                session.run(
+                    """
+                    MATCH ()-[r:REFERENCES|DETAILS|GUIDED_BY|GUIDES]->()
+                    WHERE r.resolved = false
+                    RETURN count(r) AS count
+                    """
+                ).single()["count"]
+            )
+            reference_counts = dict(
+                session.run(
+                    """
+                    MATCH ()-[r:REFERENCES|DETAILS|GUIDED_BY|GUIDES]->()
+                    WHERE r.source_artifact = 'reference_edges'
+                    RETURN type(r) AS edge_type, count(r) AS count
+                    """
+                ).values("edge_type", "count")
+            )
+            ranks = {
+                str(record["document_id"]): record["normative_rank"]
+                for record in session.run(
+                    """
+                    MATCH (d:Legal_Document)
+                    RETURN d.document_id AS document_id, d.normative_rank AS normative_rank
+                    """
+                )
+            }
+
+        normative_rank_mismatches: dict[str, dict[str, int | None]] = {}
+        for document_id, expected_rank in (expected_normative_ranks or {}).items():
+            if document_id not in ranks:
+                continue
+            actual_rank = ranks[document_id]
+            try:
+                actual_rank = int(actual_rank) if actual_rank is not None else None
+            except (TypeError, ValueError):
+                actual_rank = None
+            if actual_rank != expected_rank:
+                normative_rank_mismatches[document_id] = {
+                    "expected": expected_rank,
+                    "actual": actual_rank,
+                }
+
+        details_edges = int(reference_counts.get(EdgeType.DETAILS.value, 0))
+        guided_by_edges = int(reference_counts.get(EdgeType.GUIDED_BY.value, 0))
+        validation: dict[str, Any] = {
+            **counts,
+            "documents_without_chunks": documents_without_chunks,
+            "orphan_evidence_chunks": orphan_evidence_chunks,
+            "unresolved_reference_edges_loaded": unresolved_reference_edges_loaded,
+            "reference_edge_counts": reference_counts,
+            "normative_rank_mismatches": normative_rank_mismatches,
+            "evidence_chunk_count_matches_expected": (
+                expected_chunk_count is None
+                or int(counts.get("evidence_chunks") or 0) == expected_chunk_count
+            ),
+            "legal_document_count_matches_expected": (
+                expected_document_count is None
+                or int(counts.get("documents") or 0) == expected_document_count
+            ),
+            "all_documents_have_chunks": not documents_without_chunks,
+            "all_documents_have_correct_normative_rank": not normative_rank_mismatches,
+            "no_orphan_evidence_chunks": orphan_evidence_chunks == 0,
+            "no_unresolved_reference_edges_loaded": unresolved_reference_edges_loaded == 0,
+            "details_guided_by_balanced": details_edges == guided_by_edges,
+        }
+        validation["passed"] = all(
+            bool(validation[key])
+            for key in (
+                "evidence_chunk_count_matches_expected",
+                "legal_document_count_matches_expected",
+                "all_documents_have_chunks",
+                "all_documents_have_correct_normative_rank",
+                "no_orphan_evidence_chunks",
+                "no_unresolved_reference_edges_loaded",
+                "details_guided_by_balanced",
+            )
+        )
+        return validation
 
     def upsert_nodes(self, nodes: Sequence[LegalGraphNode]) -> None:
         if not nodes:
@@ -242,6 +429,11 @@ class Neo4jLegalGraphStore:
             return {value.value for value in values}.issubset(allowed_edge_types)
 
         query_limit = max(max(1, int(limit)) * 4, 20)
+        reference_relationships = (
+            "REFERENCES|DETAILS|GUIDED_BY|GUIDES|SUPERIOR_TO|SUBORDINATE_TO|"
+            "MUST_COMPLY_WITH|IMPLEMENTS"
+        )
+        taxonomy_relationships = "MENTIONS_TOPIC|APPLIES_TO_ACTOR|HAS_ISSUE_TYPE"
         expansion_queries: list[str] = []
         if relationship_depth >= 2 and allows(EdgeType.SOURCE_OF, EdgeType.HAS_SOURCE_CHUNK):
             expansion_queries.append(
@@ -262,13 +454,13 @@ class Neo4jLegalGraphStore:
                 """
             )
         if relationship_depth >= 2 and (
-            allows(EdgeType.MENTIONS_CONCEPT)
-            or allows(EdgeType.APPLIES_TO)
-            or allows(EdgeType.REGULATES_ACTION)
+            allows(EdgeType.MENTIONS_TOPIC)
+            or allows(EdgeType.APPLIES_TO_ACTOR)
+            or allows(EdgeType.HAS_ISSUE_TYPE)
         ):
             expansion_queries.append(
-                """
-                MATCH path = (seed:Evidence_Chunk)-[r1:MENTIONS_CONCEPT|APPLIES_TO|REGULATES_ACTION]->(:LegalNode)<-[r2:MENTIONS_CONCEPT|APPLIES_TO|REGULATES_ACTION]-(e:Evidence_Chunk)
+                f"""
+                MATCH path = (seed:Evidence_Chunk)-[r1:{taxonomy_relationships}]->(:LegalNode)<-[r2:{taxonomy_relationships}]-(e:Evidence_Chunk)
                 WHERE seed.chunk_id IN $seed_chunk_ids
                   AND e.chunk_id IS NOT NULL
                   AND NOT e.chunk_id IN $seed_chunk_ids
@@ -287,8 +479,8 @@ class Neo4jLegalGraphStore:
             )
         if relationship_depth >= 3 and allows(EdgeType.SOURCE_OF, EdgeType.HAS_SOURCE_CHUNK):
             expansion_queries.append(
-                """
-                MATCH path = (seed:Evidence_Chunk)-[r1:SOURCE_OF]->(:LegalNode)-[r2:REFERENCES|GUIDED_BY]-(:LegalNode)-[r3:HAS_SOURCE_CHUNK]->(e:Evidence_Chunk)
+                f"""
+                MATCH path = (seed:Evidence_Chunk)-[r1:SOURCE_OF]->(:LegalNode)-[r2:{reference_relationships}]-(:LegalNode)-[r3:HAS_SOURCE_CHUNK]->(e:Evidence_Chunk)
                 WHERE seed.chunk_id IN $seed_chunk_ids
                   AND e.chunk_id IS NOT NULL
                   AND NOT e.chunk_id IN $seed_chunk_ids
@@ -306,8 +498,8 @@ class Neo4jLegalGraphStore:
             )
         if relationship_depth >= 4 and allows(EdgeType.SOURCE_OF, EdgeType.HAS_SOURCE_CHUNK):
             expansion_queries.append(
-                """
-                MATCH path = (seed:Evidence_Chunk)-[r1:SOURCE_OF]->(:LegalNode)-[r2:MENTIONS_CONCEPT|APPLIES_TO|REGULATES_ACTION]->(:LegalNode)<-[r3:MENTIONS_CONCEPT|APPLIES_TO|REGULATES_ACTION]-(target:LegalNode)-[r4:HAS_SOURCE_CHUNK]->(e:Evidence_Chunk)
+                f"""
+                MATCH path = (seed:Evidence_Chunk)-[r1:SOURCE_OF]->(:LegalNode)-[r2:{taxonomy_relationships}]->(:LegalNode)<-[r3:{taxonomy_relationships}]-(target:LegalNode)-[r4:HAS_SOURCE_CHUNK]->(e:Evidence_Chunk)
                 WHERE seed.chunk_id IN $seed_chunk_ids
                   AND NOT target:Evidence_Chunk
                   AND e.chunk_id IS NOT NULL
@@ -325,7 +517,6 @@ class Neo4jLegalGraphStore:
                 LIMIT $query_limit
                 """
             )
-
         if not expansion_queries:
             return GraphExpansionResult(seed_chunk_ids=seed_chunk_ids, expanded_chunk_ids=())
 
@@ -349,12 +540,12 @@ class Neo4jLegalGraphStore:
                         paths_by_chunk_id[chunk_id] = path
                         continue
                     current_key = (
+                        -_path_strength(current),
                         int(current.get("graph_depth") or 10_000),
-                        -float(current.get("graph_confidence") or 0.0),
                     )
                     next_key = (
+                        -_path_strength(path),
                         int(path.get("graph_depth") or 10_000),
-                        -float(path.get("graph_confidence") or 0.0),
                     )
                     if next_key < current_key:
                         paths_by_chunk_id[chunk_id] = path
@@ -363,6 +554,7 @@ class Neo4jLegalGraphStore:
             sorted(
                 paths_by_chunk_id.values(),
                 key=lambda path: (
+                    -_path_strength(path),
                     int(path.get("graph_depth") or 10_000),
                     -float(path.get("graph_confidence") or 0.0),
                     str(path.get("chunk_id") or ""),

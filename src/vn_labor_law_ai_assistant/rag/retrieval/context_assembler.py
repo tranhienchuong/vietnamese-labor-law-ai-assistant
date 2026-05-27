@@ -163,6 +163,9 @@ class ContextAssembler:
             if key not in records_by_article:
                 expanded_contexts.append(context)
                 continue
+            if context.payload.get("retrieval_method") == "graph_query_policy":
+                expanded_contexts.append(context)
+                continue
             document_id, article_number = key
             expanded_context = context
             merge_enumeration_records = (
@@ -241,6 +244,39 @@ class ContextAssembler:
             for rank, sibling in enumerate(siblings, start=1):
                 added_sibling_ids.add(sibling.chunk_id)
                 payload = dict(sibling.payload)
+                payload.setdefault(
+                    "retrieval_source",
+                    context.payload.get("retrieval_source") or "vector",
+                )
+                payload.setdefault("retrieval_method", "article_sibling_context")
+                for debug_key in (
+                    "vector_score",
+                    "graph_score",
+                    "final_score",
+                    "seed_chunk_ids",
+                    "expanded_node_ids",
+                    "graph_path",
+                    "graph_paths",
+                    "graph_depth",
+                    "graph_edge_types",
+                    "applied_query_intent",
+                    "expansion_depth",
+                ):
+                    if debug_key in context.payload:
+                        payload.setdefault(debug_key, context.payload[debug_key])
+                payload["chunk_id"] = sibling.chunk_id
+                payload["document_id"] = sibling.payload.get("document_id")
+                payload["document_title"] = sibling.payload.get("document_title")
+                payload["document_type"] = sibling.payload.get("document_type")
+                payload["normative_rank"] = sibling.payload.get("normative_rank")
+                payload["rank_label"] = sibling.payload.get("rank_label")
+                payload["article_number"] = sibling.payload.get("article_number")
+                payload["article_title"] = sibling.payload.get("article_title")
+                payload["clause_ref"] = sibling.payload.get("clause_ref")
+                payload["point_ref"] = sibling.payload.get("point_ref")
+                payload["point_refs"] = sibling.payload.get("point_refs")
+                payload["citation_text"] = sibling.citation_text
+                payload["retrieval_text"] = sibling.payload.get("retrieval_text")
                 if force_include_siblings:
                     payload["retrieval_force_include"] = True
                 expanded_contexts.append(
@@ -277,7 +313,11 @@ class ContextAssembler:
             if matched_record is None:
                 continue
 
-            context_id = matched_record.parent_chunk_id or matched_record.chunk_id
+            context_id = (
+                matched_record.chunk_id
+                if hit.payload.get("retrieval_forced_reference")
+                else matched_record.parent_chunk_id or matched_record.chunk_id
+            )
             context_record = record_map.get(context_id, matched_record)
             group = grouped.setdefault(
                 context_record.chunk_id,
@@ -288,6 +328,7 @@ class ContextAssembler:
                     "matched_chunk_ids": [],
                     "matched_citations": [],
                     "matched_records": [],
+                    "hit_payloads": [],
                 },
             )
             group["score"] = max(float(group["score"]), hit.score)
@@ -295,6 +336,7 @@ class ContextAssembler:
             group["matched_chunk_ids"].append(hit.chunk_id)
             group["matched_citations"].append(hit.citation_text)
             group["matched_records"].append(matched_record)
+            group["hit_payloads"].append(hit.payload)
 
         ordered_groups = sorted(
             grouped.values(),
@@ -312,12 +354,29 @@ class ContextAssembler:
                 for record in item["matched_records"]
                 if isinstance(record, RetrievedRecord)
             )
+            payload = dict(record.payload)
+            for hit_payload in item["hit_payloads"]:
+                if isinstance(hit_payload, dict):
+                    payload.update(hit_payload)
+            payload["chunk_id"] = record.chunk_id
+            payload["document_id"] = record.payload.get("document_id")
+            payload["document_title"] = record.payload.get("document_title")
+            payload["document_type"] = record.payload.get("document_type")
+            payload["normative_rank"] = record.payload.get("normative_rank")
+            payload["rank_label"] = record.payload.get("rank_label")
+            payload["article_number"] = record.payload.get("article_number")
+            payload["article_title"] = record.payload.get("article_title")
+            payload["clause_ref"] = record.payload.get("clause_ref")
+            payload["point_ref"] = record.payload.get("point_ref")
+            payload["point_refs"] = record.payload.get("point_refs")
+            payload["citation_text"] = record.citation_text
+            payload["retrieval_text"] = record.payload.get("retrieval_text")
             contexts.append(
                 RetrievalContext(
                     chunk_id=record.chunk_id,
                     citation_text=record.citation_text,
                     text=build_expanded_context_text(record, matched_records),
-                    payload=record.payload,
+                    payload=payload,
                     score=float(item["score"]),
                     matched_chunk_ids=matched_chunk_ids,
                     matched_citations=matched_citations,

@@ -105,12 +105,16 @@ def metrics_for_case(case: dict[str, Any], result: Any, *, top_k: int) -> dict[s
     graph_hit_count = sum(
         1
         for hit in result.hits[:top_k]
-        if hit.payload.get("retrieval_source") == "neo4j_graph_expansion"
+        if hit.payload.get("retrieval_source") in {"graph", "hybrid"}
+        or hit.payload.get("retrieval_method") == "neo4j_graph_expansion"
     )
     relevant_graph_hit_count = sum(
         1
         for hit in result.hits[:top_k]
-        if hit.payload.get("retrieval_source") == "neo4j_graph_expansion"
+        if (
+            hit.payload.get("retrieval_source") in {"graph", "hybrid"}
+            or hit.payload.get("retrieval_method") == "neo4j_graph_expansion"
+        )
         and is_relevant(hit.citation_text, expected)
     )
 

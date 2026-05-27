@@ -137,6 +137,35 @@ ARTICLE_SPARSE_HINT_TOKENS = {
     "129": ("issue_material_liability", "damage_compensation", "salary_deduction"),
     "137": ("issue_maternity_protection", "pregnant_worker_protection"),
 }
+REQUIRED_INDEX_INPUT_FIELDS = (
+    "chunk_id",
+    "retrieval_text",
+    "citation_text",
+    "document_id",
+    "normative_rank",
+)
+REQUIRED_VECTOR_PAYLOAD_FIELDS = (
+    "chunk_id",
+    "document_id",
+    "document_title",
+    "document_type",
+    "normative_rank",
+    "rank_label",
+    "article_number",
+    "article_title",
+    "clause_ref",
+    "point_ref",
+    "point_refs",
+    "level",
+    "chunk_type",
+    "parent_chunk_id",
+    "topic",
+    "actor",
+    "issue_type",
+    "citation_text",
+    "source_file",
+    "document_hierarchy",
+)
 
 
 def normalize_metadata_token(prefix: str, value: object) -> str | None:
@@ -286,6 +315,9 @@ def is_sparse_stopword(token: str) -> bool:
 
 def build_dense_text(chunk: dict[str, object]) -> str:
     retrieval_text = str(chunk.get("retrieval_text") or "").strip()
+    if retrieval_text:
+        return retrieval_text
+
     page_content = str(chunk.get("page_content") or "").strip()
     heading = str(chunk.get("heading") or "").strip()
     text = str(chunk.get("text") or "").strip()
@@ -349,6 +381,16 @@ def build_sparse_text(tokens: Sequence[str]) -> str:
 
 def make_qdrant_point_id(chunk_id: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
+
+
+def source_file_for_chunk(chunk: dict[str, object]) -> str:
+    source_file = str(chunk.get("source_file") or "").strip()
+    if source_file:
+        return source_file
+    source_path = str(chunk.get("source_path") or "").strip()
+    if not source_path:
+        return ""
+    return Path(source_path).name
 
 
 @dataclass(frozen=True)
@@ -525,8 +567,13 @@ def build_index_records(
             "qdrant_point_id": make_qdrant_point_id(str(chunk["chunk_id"])),
             "document_id": chunk["document_id"],
             "document_title": chunk["document_title"],
+            "document_type": chunk.get("document_type"),
+            "normative_rank": chunk.get("normative_rank"),
+            "rank_label": chunk.get("rank_label"),
             "source_kind": chunk["source_kind"],
             "source_path": chunk["source_path"],
+            "source_file": source_file_for_chunk(chunk),
+            "document_hierarchy": dict(chunk.get("document_hierarchy") or {}),
             "section_id": chunk["section_id"],
             "article_number": chunk.get("article_number"),
             "article_title": chunk.get("article_title"),
@@ -540,6 +587,7 @@ def build_index_records(
             "point_refs": list(chunk.get("point_refs") or []),
             "parent_chunk_id": chunk.get("parent_chunk_id"),
             "citation_text": chunk.get("citation_text"),
+            "retrieval_text": str(chunk.get("retrieval_text") or ""),
             "topic": list(chunk.get("topic") or []),
             "actor": list(chunk.get("actor") or []),
             "issue_type": list(chunk.get("issue_type") or []),
@@ -693,6 +741,246 @@ def build_corpus_signature(chunk_paths: Sequence[Path]) -> str:
     return digest.hexdigest()
 
 
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def validate_index_inputs(chunk_payloads: Sequence[dict[str, object]]) -> dict[str, object]:
+    chunk_ids = [str(chunk.get("chunk_id") or "") for chunk in chunk_payloads]
+    duplicate_chunk_ids = sorted(
+        chunk_id for chunk_id, count in Counter(chunk_ids).items() if chunk_id and count > 1
+    )
+    missing: dict[str, list[str]] = {}
+    for field in REQUIRED_INDEX_INPUT_FIELDS:
+        missing[field] = [
+            str(chunk.get("chunk_id") or f"row-{index + 1}")
+            for index, chunk in enumerate(chunk_payloads)
+            if chunk.get(field) in (None, "", [])
+        ]
+
+    return {
+        "chunk_count": len(chunk_payloads),
+        "duplicate_chunk_ids": duplicate_chunk_ids,
+        "duplicate_chunk_id_count": len(duplicate_chunk_ids),
+        "missing_retrieval_text_count": len(missing["retrieval_text"]),
+        "missing_citation_text_count": len(missing["citation_text"]),
+        "missing_document_id_count": len(missing["document_id"]),
+        "missing_normative_rank_count": len(missing["normative_rank"]),
+        "missing_fields": missing,
+        "passed": (
+            not duplicate_chunk_ids
+            and all(not values for values in missing.values())
+        ),
+    }
+
+
+def raise_for_index_input_errors(report: dict[str, object]) -> None:
+    errors: list[str] = []
+    if report["duplicate_chunk_id_count"]:
+        errors.append(
+            "duplicate chunk_id values: "
+            + ", ".join(str(value) for value in report["duplicate_chunk_ids"])
+        )
+    for field in REQUIRED_INDEX_INPUT_FIELDS:
+        missing = dict(report["missing_fields"]).get(field, [])
+        if missing:
+            errors.append(f"missing {field}: {len(missing)} chunk(s)")
+    if errors:
+        raise ValueError("Cannot build vector index: " + "; ".join(errors))
+
+
+def validate_index_build(
+    *,
+    chunk_payloads: Sequence[dict[str, object]],
+    records: Sequence[IndexRecord],
+    dense_vectors: Sequence[Sequence[float]],
+    sparse_vectors: Sequence[SparseVectorData],
+) -> dict[str, object]:
+    input_report = validate_index_inputs(chunk_payloads)
+    record_chunk_ids = [record.chunk_id for record in records]
+    input_chunk_ids = [str(chunk.get("chunk_id") or "") for chunk in chunk_payloads]
+    missing_indexed_chunk_ids = sorted(set(input_chunk_ids) - set(record_chunk_ids))
+    extra_indexed_chunk_ids = sorted(set(record_chunk_ids) - set(input_chunk_ids))
+    empty_vector_payloads = [
+        record.chunk_id
+        for record in records
+        if not build_qdrant_payload(record)
+        or any(field not in build_qdrant_payload(record) for field in REQUIRED_VECTOR_PAYLOAD_FIELDS)
+    ]
+    payload_missing_by_field = {
+        field: [
+            record.chunk_id
+            for record in records
+            if field not in build_qdrant_payload(record)
+            or (
+                field
+                in {"chunk_id", "document_id", "document_title", "document_type", "normative_rank", "rank_label", "citation_text", "source_file"}
+                and build_qdrant_payload(record).get(field) in (None, "", [])
+            )
+        ]
+        for field in REQUIRED_VECTOR_PAYLOAD_FIELDS
+    }
+    source_document_types = sorted(
+        {str(chunk.get("document_type") or "") for chunk in chunk_payloads if chunk.get("document_type")}
+    )
+    indexed_document_types = sorted(
+        {str(record.payload.get("document_type") or "") for record in records if record.payload.get("document_type")}
+    )
+    source_normative_ranks = sorted(
+        {int(chunk["normative_rank"]) for chunk in chunk_payloads if chunk.get("normative_rank") not in (None, "", [])}
+    )
+    indexed_normative_ranks = sorted(
+        {int(record.payload["normative_rank"]) for record in records if record.payload.get("normative_rank") not in (None, "", [])}
+    )
+    dense_vector_dimensions = sorted({len(vector) for vector in dense_vectors})
+    validation = {
+        **input_report,
+        "indexed_chunk_count": len(records),
+        "all_chunks_indexed": (
+            len(records) == len(chunk_payloads)
+            and not missing_indexed_chunk_ids
+            and not extra_indexed_chunk_ids
+        ),
+        "missing_indexed_chunk_ids": missing_indexed_chunk_ids,
+        "extra_indexed_chunk_ids": extra_indexed_chunk_ids,
+        "dense_vector_count": len(dense_vectors),
+        "sparse_vector_count": len(sparse_vectors),
+        "dense_vector_dimensions": dense_vector_dimensions,
+        "empty_vector_payload_count": len(empty_vector_payloads),
+        "empty_vector_payload_chunk_ids": empty_vector_payloads,
+        "payload_missing_by_field": payload_missing_by_field,
+        "source_document_types": source_document_types,
+        "indexed_document_types": indexed_document_types,
+        "all_document_types_preserved": source_document_types == indexed_document_types,
+        "source_normative_ranks": source_normative_ranks,
+        "indexed_normative_ranks": indexed_normative_ranks,
+        "all_normative_ranks_preserved": source_normative_ranks == indexed_normative_ranks,
+    }
+    validation["passed"] = (
+        bool(input_report["passed"])
+        and bool(validation["all_chunks_indexed"])
+        and len(dense_vectors) == len(records)
+        and len(sparse_vectors) == len(records)
+        and len(empty_vector_payloads) == 0
+        and all(not values for values in payload_missing_by_field.values())
+        and bool(validation["all_document_types_preserved"])
+        and bool(validation["all_normative_ranks_preserved"])
+        and len(dense_vector_dimensions) == 1
+    )
+    return validation
+
+
+def raise_for_index_build_errors(report: dict[str, object]) -> None:
+    raise_for_index_input_errors(report)
+    errors: list[str] = []
+    if not report["all_chunks_indexed"]:
+        errors.append("not all chunks were indexed")
+    if report["dense_vector_count"] != report["indexed_chunk_count"]:
+        errors.append("dense vector count does not match indexed chunk count")
+    if report["sparse_vector_count"] != report["indexed_chunk_count"]:
+        errors.append("sparse vector count does not match indexed chunk count")
+    if report["empty_vector_payload_count"]:
+        errors.append(f"empty or incomplete vector payloads: {report['empty_vector_payload_count']}")
+    if not report["all_document_types_preserved"]:
+        errors.append("document types were not preserved in vector payloads")
+    if not report["all_normative_ranks_preserved"]:
+        errors.append("normative ranks were not preserved in vector payloads")
+    if len(report["dense_vector_dimensions"]) != 1:
+        errors.append("dense vectors have inconsistent dimensions")
+    if errors:
+        raise ValueError("Invalid vector index build: " + "; ".join(errors))
+
+
+def indexed_documents_for_manifest(records: Sequence[IndexRecord]) -> list[dict[str, object]]:
+    grouped: dict[str, dict[str, object]] = {}
+    for record in records:
+        document_id = str(record.payload.get("document_id") or "")
+        if not document_id:
+            continue
+        item = grouped.setdefault(
+            document_id,
+            {
+                "document_id": document_id,
+                "document_title": record.payload.get("document_title"),
+                "document_type": record.payload.get("document_type"),
+                "normative_rank": record.payload.get("normative_rank"),
+                "rank_label": record.payload.get("rank_label"),
+                "chunk_count": 0,
+            },
+        )
+        item["chunk_count"] = int(item["chunk_count"]) + 1
+    return sorted(grouped.values(), key=lambda item: str(item["document_id"]))
+
+
+def warnings_for_index_build(
+    validation_report: dict[str, object],
+    records: Sequence[IndexRecord],
+) -> list[str]:
+    warnings_list: list[str] = []
+    if not records:
+        warnings_list.append("no records were generated")
+    if not validation_report["passed"]:
+        warnings_list.append("index validation did not pass")
+    return warnings_list
+
+
+def render_vector_index_summary_markdown(manifest: dict[str, object]) -> str:
+    validation = dict(manifest.get("validation") or {})
+    lines = [
+        "# Vector Index Summary",
+        "",
+        f"- Build ID: {manifest['build_id']}",
+        f"- Generated at: {manifest['generated_at']}",
+        f"- Embedding model: {manifest['embedding_model']}",
+        f"- Chunk count: {manifest['chunk_count']}",
+        f"- Document count: {manifest['document_count']}",
+        f"- Vector dimension: {manifest['vector_dimension']}",
+        f"- Collection: {manifest['collection_name']}",
+        f"- Qdrant storage: {manifest['qdrant_storage']}",
+        f"- Source chunks file: {manifest['source_chunks_file']}",
+        f"- Source chunks file hash: {manifest['source_chunks_file_hash']}",
+        "",
+        "## Validation",
+        "",
+        f"- All chunks indexed: {validation.get('all_chunks_indexed')}",
+        f"- Duplicate chunk IDs: {validation.get('duplicate_chunk_id_count')}",
+        f"- Missing retrieval_text: {validation.get('missing_retrieval_text_count')}",
+        f"- Missing citation_text: {validation.get('missing_citation_text_count')}",
+        f"- Missing document_id: {validation.get('missing_document_id_count')}",
+        f"- Missing normative_rank: {validation.get('missing_normative_rank_count')}",
+        f"- Empty vector payloads: {validation.get('empty_vector_payload_count')}",
+        f"- All document types preserved: {validation.get('all_document_types_preserved')}",
+        f"- All normative ranks preserved: {validation.get('all_normative_ranks_preserved')}",
+        f"- Passed: {validation.get('passed')}",
+        "",
+        "## Indexed Documents",
+        "",
+        "| Document | Type | Rank | Chunks |",
+        "| --- | --- | ---: | ---: |",
+    ]
+    for document in manifest.get("indexed_documents") or []:
+        if not isinstance(document, dict):
+            continue
+        lines.append(
+            "| {document_id} | {document_type} | {normative_rank} | {chunk_count} |".format(
+                document_id=document.get("document_id"),
+                document_type=document.get("document_type"),
+                normative_rank=document.get("normative_rank"),
+                chunk_count=document.get("chunk_count"),
+            )
+        )
+    warnings_list = manifest.get("warnings") or []
+    lines.extend(["", "## Warnings", ""])
+    if warnings_list:
+        for warning in warnings_list:
+            lines.append(f"- {warning}")
+    else:
+        lines.append("- None")
+    return "\n".join(lines).strip() + "\n"
+
+
 def build_qdrant_collection(
     *,
     records: Sequence[IndexRecord],
@@ -777,6 +1065,24 @@ def update_current_pointer(artifacts_dir: Path, manifest: dict[str, object]) -> 
     temp_manifest_path.replace(current_manifest_path)
 
 
+def write_root_index_artifacts(artifacts_dir: Path, manifest: dict[str, object]) -> None:
+    manifest_path = artifacts_dir / "manifest.json"
+    summary_json_path = artifacts_dir / "vector_index_summary.json"
+    summary_md_path = artifacts_dir / "vector_index_summary.md"
+    temp_manifest_path = artifacts_dir / ".manifest.json.tmp"
+    temp_summary_json_path = artifacts_dir / ".vector_index_summary.json.tmp"
+    temp_summary_md_path = artifacts_dir / ".vector_index_summary.md.tmp"
+    temp_manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp_summary_json_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    temp_summary_md_path.write_text(render_vector_index_summary_markdown(manifest), encoding="utf-8")
+    temp_manifest_path.replace(manifest_path)
+    temp_summary_json_path.replace(summary_json_path)
+    temp_summary_md_path.replace(summary_md_path)
+
+
 def build_hybrid_index(
     *,
     chunk_paths: Sequence[Path],
@@ -802,6 +1108,8 @@ def build_hybrid_index(
     temp_build_dir.mkdir(parents=True, exist_ok=True)
 
     chunk_payloads = load_chunk_payloads(chunk_paths)
+    input_validation_report = validate_index_inputs(chunk_payloads)
+    raise_for_index_input_errors(input_validation_report)
     records = build_index_records(chunk_payloads)
     dense_vectors = embed_dense_texts(
         [record.dense_text for record in records],
@@ -812,6 +1120,13 @@ def build_hybrid_index(
 
     sparse_encoder = SparseBM25Encoder.fit([record.sparse_tokens for record in records])
     sparse_vectors = [sparse_encoder.encode_document(record.sparse_tokens) for record in records]
+    validation_report = validate_index_build(
+        chunk_payloads=chunk_payloads,
+        records=records,
+        dense_vectors=dense_vectors,
+        sparse_vectors=sparse_vectors,
+    )
+    raise_for_index_build_errors(validation_report)
 
     qdrant_path = temp_build_dir / "qdrant"
     records_db_path = temp_build_dir / "records.db"
@@ -832,9 +1147,28 @@ def build_hybrid_index(
     )
 
     storage_mode = qdrant_storage_mode()
+    vector_dimension = len(dense_vectors[0]) if dense_vectors else 0
+    source_chunks_file = (
+        path_for_manifest(chunk_paths[0])
+        if len(chunk_paths) == 1
+        else [path_for_manifest(path) for path in chunk_paths]
+    )
+    source_chunks_file_hash = (
+        file_sha256(chunk_paths[0])
+        if len(chunk_paths) == 1
+        else build_corpus_signature(chunk_paths)
+    )
     manifest = {
         "build_id": timestamp,
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "embedding_model": dense_model_name,
+        "chunk_count": len(records),
+        "document_count": len({record.document_id for record in records}),
+        "source_chunks_file": source_chunks_file,
+        "source_chunks_file_hash": source_chunks_file_hash,
+        "vector_dimension": vector_dimension,
+        "indexed_documents": indexed_documents_for_manifest(records),
+        "warnings": warnings_for_index_build(validation_report, records),
         "collection_name": collection_name,
         "qdrant_storage": storage_mode,
         "record_source": "qdrant_payload" if storage_mode == "cloud" else "sqlite",
@@ -851,11 +1185,13 @@ def build_hybrid_index(
         "sparse_encoder_path": path_for_manifest(final_build_dir / "sparse_encoder.json"),
         "batch_size": batch_size,
         "device": resolve_device(device),
+        "validation": validation_report,
     }
     write_build_manifest(manifest, manifest_path)
 
     temp_build_dir.replace(final_build_dir)
     update_current_pointer(artifacts_dir, manifest)
+    write_root_index_artifacts(artifacts_dir, manifest)
     return manifest
 
 
@@ -870,15 +1206,23 @@ __all__ = [
     "build_qdrant_payload",
     "build_sparse_text",
     "build_sparse_tokens",
+    "file_sha256",
     "ensure_qdrant_payload_indexes",
     "extract_legal_hint_tokens",
+    "indexed_documents_for_manifest",
     "is_sparse_stopword",
     "load_sparse_encoder",
     "load_chunk_payloads",
     "make_qdrant_point_id",
     "normalize_reference_token",
+    "raise_for_index_build_errors",
+    "raise_for_index_input_errors",
+    "render_vector_index_summary_markdown",
     "qdrant_storage_mode",
     "require_cross_encoder",
     "require_qdrant",
     "resolve_chunk_paths",
+    "source_file_for_chunk",
+    "validate_index_build",
+    "validate_index_inputs",
 ]

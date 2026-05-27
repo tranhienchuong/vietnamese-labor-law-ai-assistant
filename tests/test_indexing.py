@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -9,6 +10,8 @@ from unittest.mock import patch
 from src.vn_labor_law_ai_assistant.indexing import (
     PyViWordSegmenter,
     SparseBM25Encoder,
+    build_dense_text,
+    build_hybrid_index,
     build_index_records,
     build_qdrant_client,
     build_qdrant_payload,
@@ -18,6 +21,8 @@ from src.vn_labor_law_ai_assistant.indexing import (
     is_sparse_stopword,
     make_qdrant_point_id,
     path_for_manifest,
+    validate_index_build,
+    validate_index_inputs,
     write_records_sqlite,
 )
 
@@ -25,6 +30,46 @@ from src.vn_labor_law_ai_assistant.indexing import (
 class FakeSegmenter:
     def segment(self, text: str) -> list[str]:
         return text.lower().replace("\n", " ").split()
+
+
+def enriched_chunk(**overrides: object) -> dict[str, object]:
+    chunk: dict[str, object] = {
+        "chunk_id": "45_2019_QH14_Dieu_46_Khoan_1",
+        "document_id": "45-2019-qh14",
+        "document_title": "Bộ luật Lao động 2019",
+        "document_type": "bo_luat",
+        "normative_rank": 1,
+        "rank_label": "primary_law",
+        "document_hierarchy": {
+            "chapter_heading": "Chương III. Hợp đồng lao động",
+            "section_heading": "Mục 3. Chấm dứt hợp đồng lao động",
+        },
+        "source_kind": "curated_text",
+        "source_path": "corpus/data/curated/45_2019_QH14.txt",
+        "section_id": "45-2019-qh14-dieu-46",
+        "article_number": "46",
+        "article_title": "Trợ cấp thôi việc",
+        "heading": "Điều 46. Trợ cấp thôi việc",
+        "chapter_heading": "Chương III. Hợp đồng lao động",
+        "section_heading": "Mục 3. Chấm dứt hợp đồng lao động",
+        "level": "clause",
+        "chunk_type": "clause",
+        "clause_ref": "1",
+        "point_ref": None,
+        "point_refs": [],
+        "parent_chunk_id": "45_2019_QH14_Dieu_46",
+        "citation_text": "Bộ luật Lao động 2019, Điều 46, khoản 1",
+        "topic": ["tro_cap"],
+        "actor": ["nguoi_lao_dong"],
+        "issue_type": ["tro_cap_thoi_viec"],
+        "retrieval_text": (
+            "Bộ luật Lao động 2019, Điều 46, khoản 1 quy định: "
+            "Người lao động được trợ cấp thôi việc."
+        ),
+        "text": "Điều 46. Trợ cấp thôi việc\n\n1. Người lao động được trợ cấp thôi việc.",
+    }
+    chunk.update(overrides)
+    return chunk
 
 
 class IndexingTests(unittest.TestCase):
@@ -178,6 +223,56 @@ class IndexingTests(unittest.TestCase):
         self.assertIn("formula_half_month_salary", record.sparse_tokens)
         self.assertIn("người", record.dense_text.lower())
 
+    def test_build_dense_text_uses_retrieval_text_as_embedding_text(self) -> None:
+        chunk = enriched_chunk(
+            retrieval_text="retrieval text used for embeddings",
+            page_content="page content should not be embedded",
+            text="raw text should not be embedded",
+        )
+
+        self.assertEqual(build_dense_text(chunk), "retrieval text used for embeddings")
+
+    def test_build_index_records_preserves_enriched_metadata_payload(self) -> None:
+        chunk = enriched_chunk(
+            point_ref="a",
+            point_refs=["a"],
+            source_file="45_2019_QH14.txt",
+        )
+
+        record = build_index_records([chunk], segmenter=FakeSegmenter())[0]
+        payload = build_qdrant_payload(record)
+
+        for field in (
+            "chunk_id",
+            "document_id",
+            "document_title",
+            "document_type",
+            "normative_rank",
+            "rank_label",
+            "article_number",
+            "article_title",
+            "clause_ref",
+            "point_ref",
+            "point_refs",
+            "level",
+            "chunk_type",
+            "parent_chunk_id",
+            "topic",
+            "actor",
+            "issue_type",
+            "citation_text",
+            "source_file",
+            "document_hierarchy",
+        ):
+            self.assertIn(field, payload)
+
+        self.assertEqual(payload["document_type"], "bo_luat")
+        self.assertEqual(payload["normative_rank"], 1)
+        self.assertEqual(payload["rank_label"], "primary_law")
+        self.assertEqual(payload["source_file"], "45_2019_QH14.txt")
+        self.assertEqual(payload["document_hierarchy"], chunk["document_hierarchy"])
+        self.assertEqual(payload["dense_text"], chunk["retrieval_text"])
+
     def test_build_qdrant_payload_contains_runtime_text_fields(self) -> None:
         chunk = {
             "chunk_id": "bo-luat-dieu-46-chunk-01",
@@ -255,6 +350,102 @@ class IndexingTests(unittest.TestCase):
 
         self.assertEqual(first, second)
         self.assertNotEqual(first, third)
+
+    def test_validate_index_inputs_flags_duplicate_chunk_ids(self) -> None:
+        report = validate_index_inputs(
+            [
+                enriched_chunk(chunk_id="duplicate"),
+                enriched_chunk(chunk_id="duplicate"),
+            ]
+        )
+
+        self.assertFalse(report["passed"])
+        self.assertEqual(report["duplicate_chunk_ids"], ["duplicate"])
+        self.assertEqual(report["duplicate_chunk_id_count"], 1)
+
+    def test_validate_index_build_reports_required_acceptance_checks(self) -> None:
+        chunks = [enriched_chunk()]
+        record = build_index_records(chunks, segmenter=FakeSegmenter())[0]
+        sparse_encoder = SparseBM25Encoder.fit([record.sparse_tokens])
+        report = validate_index_build(
+            chunk_payloads=chunks,
+            records=[record],
+            dense_vectors=[[0.1, 0.2, 0.3]],
+            sparse_vectors=[sparse_encoder.encode_document(record.sparse_tokens)],
+        )
+
+        self.assertTrue(report["passed"])
+        self.assertTrue(report["all_chunks_indexed"])
+        self.assertEqual(report["duplicate_chunk_id_count"], 0)
+        self.assertEqual(report["missing_retrieval_text_count"], 0)
+        self.assertEqual(report["missing_citation_text_count"], 0)
+        self.assertEqual(report["missing_document_id_count"], 0)
+        self.assertEqual(report["missing_normative_rank_count"], 0)
+        self.assertEqual(report["empty_vector_payload_count"], 0)
+        self.assertTrue(report["all_document_types_preserved"])
+        self.assertTrue(report["all_normative_ranks_preserved"])
+
+    def test_build_hybrid_index_writes_manifest_and_summary_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            chunks_path = root / "chunks.jsonl"
+            second_chunk = enriched_chunk(
+                chunk_id="ND145_2020_Dieu_1",
+                document_id="nghi-dinh-145-2020-nd-cp",
+                document_title="Nghị định 145/2020/NĐ-CP",
+                document_type="nghi_dinh",
+                normative_rank=2,
+                rank_label="decree",
+                source_path="corpus/data/curated/nghi_dinh_145_2020_nd_cp_clean.txt",
+                article_number="1",
+                citation_text="Nghị định 145/2020/NĐ-CP, Điều 1",
+                retrieval_text="Nghị định 145/2020/NĐ-CP, Điều 1 quy định phạm vi điều chỉnh.",
+            )
+            chunks_path.write_text(
+                "\n".join(
+                    json.dumps(chunk, ensure_ascii=False)
+                    for chunk in [enriched_chunk(), second_chunk]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            artifacts_dir = root / "index"
+
+            with (
+                patch(
+                    "src.vn_labor_law_ai_assistant.indexing.PyViWordSegmenter",
+                    return_value=FakeSegmenter(),
+                ),
+                patch(
+                    "src.vn_labor_law_ai_assistant.indexing.embed_dense_texts",
+                    return_value=[[0.1, 0.2], [0.3, 0.4]],
+                ) as embed_dense,
+                patch("src.vn_labor_law_ai_assistant.indexing.build_qdrant_collection") as build_qdrant,
+                patch("src.vn_labor_law_ai_assistant.indexing.qdrant_storage_mode", return_value="local"),
+            ):
+                manifest = build_hybrid_index(
+                    chunk_paths=[chunks_path],
+                    artifacts_dir=artifacts_dir,
+                    dense_model_name="test-model",
+                    collection_name="test-collection",
+                    build_id="test-build",
+                )
+
+            embed_dense.assert_called_once()
+            embedded_texts = embed_dense.call_args.args[0]
+            self.assertEqual(embedded_texts[0], enriched_chunk()["retrieval_text"])
+            build_qdrant.assert_called_once()
+            self.assertEqual(manifest["build_id"], "test-build")
+            self.assertEqual(manifest["embedding_model"], "test-model")
+            self.assertEqual(manifest["chunk_count"], 2)
+            self.assertEqual(manifest["record_count"], 2)
+            self.assertEqual(manifest["document_count"], 2)
+            self.assertEqual(manifest["vector_dimension"], 2)
+            self.assertEqual(manifest["source_chunks_file"], chunks_path.resolve().as_posix())
+            self.assertTrue((artifacts_dir / "current.json").exists())
+            self.assertTrue((artifacts_dir / "manifest.json").exists())
+            self.assertTrue((artifacts_dir / "vector_index_summary.json").exists())
+            self.assertTrue((artifacts_dir / "vector_index_summary.md").exists())
 
     def test_write_records_sqlite_persists_parent_lookup_fields(self) -> None:
         chunk = {

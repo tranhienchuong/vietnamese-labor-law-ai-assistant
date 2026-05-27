@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Sequence
 
+from ...corpus_pipeline import normalize_for_matching
 from ...retriever import (
     DEFAULT_MAX_CONTEXT_CHARS,
     DEFAULT_MAX_CONTEXT_TOKENS,
     RetrievalContext,
     dedupe_preserve_order,
-    format_context_for_prompt,
     select_contexts_for_prompt,
 )
 
@@ -18,6 +18,8 @@ Quy tac bat buoc:
 1a. Khong duoc dung kien thuc nen ngoai CONTEXT, ke ca khi ban tin rang minh biet cau tra loi.
 1b. Truoc khi ket luan, phai tu kiem tra rang ket luan duoc ho tro truc tiep boi cau chu trong CONTEXT.
 1c. Neu noi dung trong CONTEXT mau thuan voi kien thuc nen cua ban, phai uu tien CONTEXT.
+1d. Neu co xung dot giua van ban thi uu tien theo thu bac hieu luc: Bo luat/Luat > Nghi dinh > Thong tu. Thong tu chi duoc dung nhu huong dan chi tiet neu phu hop voi van ban cap cao hon.
+1e. Khi van ban cap duoi giai thich van ban cap tren, phai neu can cu cap tren truoc, sau do moi neu van ban huong dan.
 2. Khong duoc tu bia so Dieu, khoan, diem hoac ten van ban.
 3. Chi dat insufficient_context = true neu khong co context nao lien quan truc tiep, hoac context lien quan nhung thieu dieu kien bat buoc de tra loi.
 3a. Khi thieu context, phai tra loi bang ngon ngu tu nhien, lich su va neu ro thong tin nao con thieu hoac van de nao chua duoc context giai quyet.
@@ -65,6 +67,106 @@ Ban phai tra dung JSON voi cau truc:
   "notes": "neu can thi ghi them 1 cau ngan, neu khong thi de chuoi rong"
 }
 """
+
+DOCUMENT_TYPE_ORDER = {
+    "bo_luat": 1,
+    "luat": 1,
+    "nghi_dinh": 2,
+    "thong_tu": 3,
+}
+
+
+def _context_normative_rank(context: RetrievalContext) -> int:
+    try:
+        rank = int(context.payload.get("normative_rank") or 0)
+    except (TypeError, ValueError):
+        rank = 0
+    if rank > 0:
+        return rank
+    document_type = str(context.payload.get("document_type") or "").strip()
+    return DOCUMENT_TYPE_ORDER.get(document_type, 99)
+
+
+def _context_article_number(context: RetrievalContext) -> int:
+    try:
+        return int(str(context.payload.get("article_number") or "999999"))
+    except ValueError:
+        return 999999
+
+
+def _context_clause_number(context: RetrievalContext) -> int:
+    try:
+        return int(str(context.payload.get("clause_ref") or "999999"))
+    except ValueError:
+        return 999999
+
+
+def _is_appendix_context(context: RetrievalContext) -> bool:
+    level = normalize_for_matching(str(context.payload.get("level") or ""))
+    chunk_type = normalize_for_matching(str(context.payload.get("chunk_type") or ""))
+    appendix_id = str(context.payload.get("appendix_id") or "").strip()
+    return bool(appendix_id) or "appendix" in {level, chunk_type} or "phu luc" in level or "phu luc" in chunk_type
+
+
+def order_contexts_for_answer(contexts: Sequence[RetrievalContext]) -> tuple[RetrievalContext, ...]:
+    indexed_contexts = list(enumerate(contexts))
+    indexed_contexts.sort(
+        key=lambda item: (
+            _context_normative_rank(item[1]),
+            1 if _is_appendix_context(item[1]) and not item[1].payload.get("retrieval_force_include") else 0,
+            item[0],
+            _context_article_number(item[1]),
+            _context_clause_number(item[1]),
+            -float(item[1].score),
+        )
+    )
+    return tuple(context for _, context in indexed_contexts)
+
+
+def build_answer_context_block(context: RetrievalContext, index: int) -> str:
+    payload = context.payload
+    point_refs = payload.get("point_refs") or ()
+    graph_path = payload.get("graph_path") or payload.get("graph_paths") or ()
+    metadata_lines = [
+        f"[NGU CANH {index}]",
+        f"Co so phap ly: {context.citation_text}",
+        f"document_id: {payload.get('document_id') or ''}",
+        f"document_type: {payload.get('document_type') or ''}",
+        f"normative_rank: {payload.get('normative_rank') or ''}",
+        f"article_number: {payload.get('article_number') or ''}",
+        f"clause_ref: {payload.get('clause_ref') or ''}",
+        f"point_refs: {', '.join(str(value) for value in point_refs) if isinstance(point_refs, (list, tuple)) else point_refs}",
+        f"graph_path: {graph_path}",
+    ]
+
+    unique_matched_citations = dedupe_preserve_order(context.matched_citations)
+    if unique_matched_citations and unique_matched_citations != (context.citation_text,):
+        metadata_lines.append("Match goc:")
+        metadata_lines.extend(f"- {citation}" for citation in unique_matched_citations)
+
+    metadata_lines.extend(
+        [
+            "Noi dung:",
+            str(payload.get("retrieval_text") or context.text).strip(),
+        ]
+    )
+    return "\n".join(metadata_lines).strip()
+
+
+def format_answer_context_for_prompt(
+    contexts: Sequence[RetrievalContext],
+    *,
+    max_chars: int = DEFAULT_MAX_CONTEXT_CHARS,
+    max_tokens: int | None = DEFAULT_MAX_CONTEXT_TOKENS,
+) -> str:
+    blocks = [
+        build_answer_context_block(context, index)
+        for index, context in enumerate(contexts, start=1)
+    ]
+    text = "\n\n".join(blocks).strip()
+    if max_chars > 0 and len(text) > max_chars:
+        return text[:max_chars].rstrip()
+    return text
 
 ANSWER_FEW_SHOT_PROMPT = """VI DU DINH DANG:
 
@@ -133,13 +235,14 @@ def build_messages(
     max_context_chars: int = DEFAULT_MAX_CONTEXT_CHARS,
     max_context_tokens: int | None = DEFAULT_MAX_CONTEXT_TOKENS,
 ) -> list[dict[str, str]]:
+    ordered_contexts = order_contexts_for_answer(contexts)
     selected_contexts = select_contexts_for_prompt(
-        contexts,
+        ordered_contexts,
         max_chars=max_context_chars,
         max_tokens=max_context_tokens,
     )
     allowed_citations = build_allowed_citations(selected_contexts)
-    context_text = format_context_for_prompt(
+    context_text = format_answer_context_for_prompt(
         selected_contexts,
         max_chars=max_context_chars,
         max_tokens=max_context_tokens,
@@ -148,6 +251,11 @@ def build_messages(
         [
             ANSWER_FEW_SHOT_PROMPT,
             f"Cau hoi:\n{question.strip()}",
+            (
+                "QUY TAC THU BAC VAN BAN: Neu co xung dot, Bo luat/Luat uu tien hon Nghi dinh; "
+                "Nghi dinh uu tien hon Thong tu. Neu dung van ban cap duoi de huong dan, "
+                "hay neu van ban cap tren truoc."
+            ),
             "ALLOWED_CITATIONS:",
             "\n".join(f"- {citation}" for citation in allowed_citations),
             f"CONTEXT:\n{context_text.strip()}",
@@ -163,5 +271,8 @@ __all__ = [
     "ANSWER_FEW_SHOT_PROMPT",
     "SYSTEM_PROMPT",
     "build_allowed_citations",
+    "build_answer_context_block",
     "build_messages",
+    "format_answer_context_for_prompt",
+    "order_contexts_for_answer",
 ]

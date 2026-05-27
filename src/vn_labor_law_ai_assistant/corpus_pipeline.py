@@ -13,6 +13,7 @@ from pypdf import PdfReader
 
 
 ARTICLE_RE = re.compile(r"^Điều\s+(?P<number>\d+[A-Za-z]?)\.\s*(?P<title>.+)$")
+PART_RE = re.compile(r"^Phần\s+(?P<number>.+)$", re.IGNORECASE)
 CHAPTER_RE = re.compile(r"^Chương\s+(?P<number>[IVXLCDM0-9]+)\.?\s*(?P<title>.*)$", re.IGNORECASE)
 SECTION_RE = re.compile(r"^Mục\s+(?P<number>[IVXLCDM0-9]+)\.?\s*(?P<title>.*)$", re.IGNORECASE)
 GROUP_RE = re.compile(r"^[IVXLCDM]+\.\s+.+$")
@@ -28,6 +29,64 @@ SUBPOINT_START_RE = re.compile(r"^(?P<label>[a-zđ]\.\d+)\)\s", re.IGNORECASE)
 POINT_START_RE = re.compile(r"^(?P<label>[a-zđ])\)\s", re.IGNORECASE)
 LEGAL_MARKER_BOUNDARY_RE = re.compile(r"(?m)^(?:[a-zđ]\.\d+\)\s|[a-zđ]\)\s|\d+\.\s)", re.IGNORECASE)
 SEQUENTIAL_CHUNK_ARTICLES = {"219"}
+NORMAL_LEGAL_CHUNK_TYPES = {
+    "article_full",
+    "article_intro",
+    "article_sequential",
+    "clause",
+    "clause_part",
+}
+CURATED_LEGAL_CHUNK_FILENAMES = (
+    "45_2019_QH14.txt",
+    "nghi_dinh_145_2020_nd_cp_clean.txt",
+    "nghi_dinh_135_2020_nd_cp_clean.txt",
+    "thong_tu_09_2020_tt_bldtbxh_clean.txt",
+    "thong_tu_10_2020_tt_bldtbxh_clean.txt",
+    "92_2015_QH13_labor_only.txt",
+)
+FULL_BLTTDS_FILENAME = "bo_luat_92_2015_qh13_to_tung_dan_su_2015_clean.txt"
+VERY_SHORT_CHUNK_THRESHOLD = 20
+VERY_LONG_CHUNK_THRESHOLD = 3000
+CANONICAL_DOCUMENT_METADATA_BY_FILENAME = {
+    "45_2019_QH14.txt": {
+        "document_id": "45-2019-qh14",
+        "document_title": "Bộ luật Lao động 2019",
+        "document_type": "bo_luat",
+    },
+    "nghi_dinh_145_2020_nd_cp_clean.txt": {
+        "document_id": "nghi-dinh-145-2020-nd-cp",
+        "document_title": "Nghị định 145/2020/NĐ-CP",
+        "document_type": "nghi_dinh",
+    },
+    "nghi_dinh_135_2020_nd_cp_clean.txt": {
+        "document_id": "nghi-dinh-135-2020-nd-cp",
+        "document_title": "Nghị định 135/2020/NĐ-CP",
+        "document_type": "nghi_dinh",
+    },
+    "thong_tu_09_2020_tt_bldtbxh_clean.txt": {
+        "document_id": "thong-tu-09-2020-tt-bldtbxh",
+        "document_title": "Thông tư 09/2020/TT-BLĐTBXH",
+        "document_type": "thong_tu",
+    },
+    "thong_tu_10_2020_tt_bldtbxh_clean.txt": {
+        "document_id": "thong-tu-10-2020-tt-bldtbxh",
+        "document_title": "Thông tư 10/2020/TT-BLĐTBXH",
+        "document_type": "thong_tu",
+    },
+    "92_2015_QH13_labor_only.txt": {
+        "document_id": "92-2015-qh13-labor-only",
+        "document_title": "Bộ luật Tố tụng dân sự 2015 - phần liên quan lao động",
+        "document_type": "bo_luat",
+    },
+}
+APPENDIX_HEADING_RE = re.compile(r"^PHỤ\s+LỤC(?:\s+(?P<label>[IVXLCDM0-9A-Z]+))?\b", re.IGNORECASE)
+FORM_HEADING_RE = re.compile(r"^Mẫu\s+số\s+(?P<number>\d+)\s*/?\s*(?P<code>PL[IVXLCDM]+)", re.IGNORECASE)
+TABLE_HEADING_RE = re.compile(r"^BẢNG\b", re.IGNORECASE)
+CATALOG_HEADING_RE = re.compile(r"^DANH\s+MỤC\b", re.IGNORECASE)
+ADMIN_FOOTER_RE = re.compile(
+    r"^(?:Nơi nhận\b|TM\.\s|KT\.\s)",
+    re.IGNORECASE,
+)
 
 TOPIC_RULES = {
     "cham_dut_hop_dong_lao_dong": ["cham dut hop dong lao dong"],
@@ -159,6 +218,8 @@ class SectionRecord:
     section_heading: str | None
     source_pages: list[int]
     text: str
+    part_number: str | None = None
+    part_heading: str | None = None
 
 
 @dataclass
@@ -181,6 +242,22 @@ class CuratedTextCandidate:
     canonical_title_key: str
     cleaned_text_length: int
     is_partial_extract: bool
+
+
+@dataclass(frozen=True)
+class CanonicalDocumentMetadata:
+    document_id: str
+    document_title: str
+    document_type: str
+
+
+@dataclass(frozen=True)
+class AppendixBlock:
+    chunk_id: str
+    appendix_id: str
+    appendix_heading: str
+    chunk_type: str
+    text: str
 
 
 def slugify_text(value: str) -> str:
@@ -340,6 +417,12 @@ def inspect_curated_text_candidate(text_path: Path) -> CuratedTextCandidate:
 
 
 def select_curated_text_sources(curated_text_paths: Sequence[Path]) -> tuple[list[Path], list[str]]:
+    skipped_full_blttds = [
+        path for path in curated_text_paths if path.name == FULL_BLTTDS_FILENAME
+    ]
+    curated_text_paths = [
+        path for path in curated_text_paths if path.name != FULL_BLTTDS_FILENAME
+    ]
     grouped_candidates: dict[str, list[CuratedTextCandidate]] = {}
     for path in curated_text_paths:
         candidate = inspect_curated_text_candidate(path)
@@ -347,6 +430,11 @@ def select_curated_text_sources(curated_text_paths: Sequence[Path]) -> tuple[lis
 
     selected_paths: list[Path] = []
     warnings: list[str] = []
+    if skipped_full_blttds:
+        warnings.append(
+            "Skipped full Bộ luật Tố tụng dân sự source; use "
+            "92_2015_QH13_labor_only.txt for labor graph/index chunking."
+        )
 
     for candidates in grouped_candidates.values():
         preferred = sorted(
@@ -370,6 +458,316 @@ def select_curated_text_sources(curated_text_paths: Sequence[Path]) -> tuple[lis
     return sorted(selected_paths), warnings
 
 
+def resolve_canonical_document_metadata(text_path: Path, cleaned_text: str) -> CanonicalDocumentMetadata:
+    if metadata := CANONICAL_DOCUMENT_METADATA_BY_FILENAME.get(text_path.name):
+        return CanonicalDocumentMetadata(
+            document_id=metadata["document_id"],
+            document_title=metadata["document_title"],
+            document_type=metadata["document_type"],
+        )
+    return CanonicalDocumentMetadata(
+        document_id=slugify_text(text_path.stem),
+        document_title=infer_document_title(cleaned_text, fallback_title=text_path.stem),
+        document_type="unknown",
+    )
+
+
+def is_appendix_boundary(line: str) -> bool:
+    stripped = line.strip()
+    return bool(
+        APPENDIX_HEADING_RE.match(stripped)
+        or FORM_HEADING_RE.match(stripped)
+        or TABLE_HEADING_RE.match(stripped)
+        or CATALOG_HEADING_RE.match(stripped)
+    )
+
+
+def find_last_article_line(lines: Sequence[str]) -> int | None:
+    last_article_index: int | None = None
+    for index, line in enumerate(lines):
+        if ARTICLE_RE.match(line.strip()):
+            last_article_index = index
+    return last_article_index
+
+
+def find_admin_footer_start(lines: Sequence[str], start_index: int) -> int | None:
+    for index in range(start_index, len(lines)):
+        if is_admin_footer_line(lines[index]):
+            return index
+    return None
+
+
+def is_admin_footer_line(line: str) -> bool:
+    stripped = line.strip()
+    if ADMIN_FOOTER_RE.match(stripped):
+        return True
+    return stripped.isupper() and stripped in {"BỘ TRƯỞNG", "THỦ TƯỚNG", "CHÍNH PHỦ"}
+
+
+def find_first_admin_footer_after_article(lines: Sequence[str]) -> int | None:
+    seen_article = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if ARTICLE_RE.match(stripped):
+            seen_article = True
+            continue
+        if seen_article and is_admin_footer_line(stripped):
+            return index
+    return None
+
+
+def find_appendix_start(lines: Sequence[str], start_index: int) -> int | None:
+    for index in range(start_index, len(lines)):
+        stripped = lines[index].strip()
+        if APPENDIX_HEADING_RE.match(stripped) or FORM_HEADING_RE.match(stripped):
+            return index
+    return None
+
+
+def split_main_text_and_appendix_text(text: str) -> tuple[str, str]:
+    cleaned = normalize_extracted_text(text)
+    lines = cleaned.splitlines()
+    if find_last_article_line(lines) is None:
+        return cleaned, ""
+
+    footer_start = find_first_admin_footer_after_article(lines)
+    if footer_start is not None:
+        appendix_start = find_appendix_start(lines, footer_start + 1)
+        return "\n".join(lines[:footer_start]).strip(), (
+            "\n".join(lines[appendix_start:]).strip() if appendix_start is not None else ""
+        )
+
+    last_article_index = find_last_article_line(lines)
+    appendix_start = find_appendix_start(lines, (last_article_index or 0) + 1)
+    footer_start = find_admin_footer_start(lines, (last_article_index or 0) + 1)
+
+    main_end_candidates = [index for index in [footer_start, appendix_start] if index is not None]
+    main_end = min(main_end_candidates) if main_end_candidates else len(lines)
+
+    appendix_search_start = footer_start + 1 if footer_start is not None else main_end
+    appendix_start = appendix_start
+    if appendix_start is None or appendix_start < appendix_search_start:
+        appendix_start = find_appendix_start(lines, appendix_search_start)
+
+    main_text = "\n".join(lines[:main_end]).strip()
+    appendix_text = "\n".join(lines[appendix_start:]).strip() if appendix_start is not None else ""
+    return main_text, appendix_text
+
+
+def normalize_appendix_label(label: str | None) -> str:
+    if not label:
+        return "Khong_Ro"
+    return normalize_legal_id_token(label.strip().upper())
+
+
+def infer_appendix_label_from_form_code(code: str) -> str:
+    normalized_code = normalize_legal_id_token(code).upper()
+    if not normalized_code.startswith("PL"):
+        return "Khong_Ro"
+    label = normalized_code[2:] or "I"
+    return label
+
+
+def appendix_chunk_base(document_id: str, *parts: object) -> str:
+    return "_".join(
+        part
+        for part in [infer_chunk_id_prefix(document_id), *[normalize_legal_id_token(value) for value in parts]]
+        if part
+    )
+
+
+def pack_appendix_lines(heading: str, body_lines: Sequence[str], max_chars: int) -> list[str]:
+    groups: list[list[str]] = []
+    current: list[str] = []
+
+    for line in body_lines:
+        candidate = [*current, line]
+        candidate_text = "\n".join([heading, *candidate]).strip()
+        if current and len(candidate_text) > max_chars:
+            groups.append(current)
+            current = [line]
+            continue
+        current = candidate
+
+    if current:
+        groups.append(current)
+
+    if not groups:
+        return [heading]
+    return ["\n".join([heading, *group]).strip() for group in groups]
+
+
+def make_appendix_blocks_from_lines(
+    *,
+    document_id: str,
+    base_id: str,
+    appendix_heading: str,
+    chunk_type: str,
+    body_lines: Sequence[str],
+    max_chars: int,
+    split_suffix: str = "Nhom",
+) -> list[AppendixBlock]:
+    texts = pack_appendix_lines(appendix_heading, body_lines, max_chars)
+    blocks: list[AppendixBlock] = []
+    for index, text in enumerate(texts, start=1):
+        chunk_id = base_id if len(texts) == 1 else f"{base_id}_{split_suffix}_{index:02d}"
+        blocks.append(
+            AppendixBlock(
+                chunk_id=chunk_id,
+                appendix_id=base_id,
+                appendix_heading=appendix_heading,
+                chunk_type=chunk_type,
+                text=text,
+            )
+        )
+    return blocks
+
+
+def split_lines_at_headings(lines: Sequence[str], pattern: re.Pattern[str]) -> list[list[str]]:
+    starts = [index for index, line in enumerate(lines) if pattern.match(line.strip())]
+    if not starts:
+        return [list(lines)] if lines else []
+    sections: list[list[str]] = []
+    for position, start in enumerate(starts):
+        end = starts[position + 1] if position + 1 < len(starts) else len(lines)
+        section_lines = [line for line in lines[start:end] if line.strip()]
+        if section_lines:
+            sections.append(section_lines)
+    return sections
+
+
+def build_nd135_appendix_blocks(
+    appendix_text: str,
+    document_id: str,
+    max_chars: int,
+) -> list[AppendixBlock]:
+    lines = [line.strip() for line in appendix_text.splitlines()]
+    appendix_sections = split_lines_at_headings(lines, APPENDIX_HEADING_RE)
+    blocks: list[AppendixBlock] = []
+
+    for section_lines in appendix_sections:
+        heading_line = section_lines[0]
+        appendix_match = APPENDIX_HEADING_RE.match(heading_line)
+        label = normalize_appendix_label(appendix_match.group("label") if appendix_match else None)
+        title_line = section_lines[1] if len(section_lines) > 1 else ""
+        appendix_heading = f"{heading_line}. {title_line}".strip(". ")
+        content_lines = section_lines[2:]
+
+        male_index = next(
+            (index for index, line in enumerate(content_lines) if normalize_for_matching(line) == "lao dong nam"),
+            None,
+        )
+        female_index = next(
+            (index for index, line in enumerate(content_lines) if normalize_for_matching(line) == "lao dong nu"),
+            None,
+        )
+
+        if male_index is not None and female_index is not None and male_index < female_index:
+            table_specs = [
+                ("Bang_Nam", "Lao động nam", content_lines[male_index + 1 : female_index]),
+                ("Bang_Nu", "Lao động nữ", content_lines[female_index + 1 :]),
+            ]
+            for table_token, table_heading, table_lines in table_specs:
+                base_id = appendix_chunk_base(document_id, "Phu_Luc", label, table_token)
+                blocks.extend(
+                    make_appendix_blocks_from_lines(
+                        document_id=document_id,
+                        base_id=base_id,
+                        appendix_heading=f"{appendix_heading}. {table_heading}",
+                        chunk_type="appendix_table",
+                        body_lines=table_lines,
+                        max_chars=max_chars,
+                    )
+                )
+            continue
+
+        base_id = appendix_chunk_base(document_id, "Phu_Luc", label)
+        blocks.extend(
+            make_appendix_blocks_from_lines(
+                document_id=document_id,
+                base_id=base_id,
+                appendix_heading=appendix_heading,
+                chunk_type="appendix_list",
+                body_lines=content_lines,
+                max_chars=max_chars,
+            )
+        )
+
+    return blocks
+
+
+def build_generic_appendix_blocks(
+    appendix_text: str,
+    document_id: str,
+    max_chars: int,
+) -> list[AppendixBlock]:
+    lines = [line.strip() for line in appendix_text.splitlines() if line.strip()]
+    starts = [
+        index
+        for index, line in enumerate(lines)
+        if FORM_HEADING_RE.match(line) or APPENDIX_HEADING_RE.match(line)
+    ]
+    if not starts:
+        return []
+
+    blocks: list[AppendixBlock] = []
+    for position, start in enumerate(starts):
+        end = starts[position + 1] if position + 1 < len(starts) else len(lines)
+        segment_lines = lines[start:end]
+        heading_line = segment_lines[0]
+
+        if form_match := FORM_HEADING_RE.match(heading_line):
+            form_number = normalize_legal_id_token(form_match.group("number"))
+            form_code = normalize_legal_id_token(form_match.group("code")).upper()
+            appendix_label = infer_appendix_label_from_form_code(form_code)
+            base_id = appendix_chunk_base(
+                document_id,
+                "Phu_Luc",
+                appendix_label,
+                "Mau",
+                form_number,
+                form_code,
+            )
+            appendix_heading = heading_line
+            chunk_type = "appendix_form"
+            split_suffix = "Phan"
+        else:
+            appendix_match = APPENDIX_HEADING_RE.match(heading_line)
+            appendix_label = normalize_appendix_label(
+                appendix_match.group("label") if appendix_match else None
+            )
+            base_id = appendix_chunk_base(document_id, "Phu_Luc", appendix_label)
+            appendix_heading = heading_line
+            chunk_type = "appendix"
+            split_suffix = "Nhom"
+
+        blocks.extend(
+            make_appendix_blocks_from_lines(
+                document_id=document_id,
+                base_id=base_id,
+                appendix_heading=appendix_heading,
+                chunk_type=chunk_type,
+                body_lines=segment_lines[1:],
+                max_chars=max_chars,
+                split_suffix=split_suffix,
+            )
+        )
+
+    return blocks
+
+
+def build_appendix_blocks(
+    appendix_text: str,
+    document_id: str,
+    max_chars: int,
+) -> list[AppendixBlock]:
+    if not appendix_text.strip():
+        return []
+    if document_id == "nghi-dinh-135-2020-nd-cp":
+        return build_nd135_appendix_blocks(appendix_text, document_id, max_chars)
+    return build_generic_appendix_blocks(appendix_text, document_id, max_chars)
+
+
 def list_pages_for_citation(source_pages: list[int]) -> str | None:
     if not source_pages:
         return None
@@ -387,6 +785,96 @@ def normalize_point_refs(point_ref: str | None = None, point_refs: Sequence[obje
         if ref and ref not in refs:
             refs.append(ref)
     return refs
+
+
+def infer_part_number(part_line: str) -> str:
+    match = PART_RE.match(part_line.strip())
+    if not match:
+        return ""
+    value = match.group("number").strip()
+    return value.split(".", 1)[0].strip()
+
+
+def normalize_legal_id_token(value: object) -> str:
+    text = str(value).strip()
+    text = text.replace("đ", "d").replace("Đ", "D")
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(character for character in text if not unicodedata.combining(character))
+    text = re.sub(r"[^A-Za-z0-9]+", "_", text).strip("_")
+    return text
+
+
+def normalize_point_id_token(value: str) -> str:
+    text = str(value).strip().replace("đ", "dd").replace("Đ", "DD")
+    return normalize_legal_id_token(text.replace(".", ""))
+
+
+def infer_article_occurrence_from_section_id(section_id: str) -> str | None:
+    occurrence_match = re.search(r"-occurrence-(?P<number>\d+)$", section_id)
+    if not occurrence_match:
+        return None
+    return occurrence_match.group("number")
+
+
+def infer_chunk_id_prefix(section_id: str) -> str:
+    normalized = normalize_for_matching(section_id).replace("_", "-")
+    if "45-2019-qh14" in normalized:
+        return "45_2019_QH14"
+    if "nghi-dinh-145-2020" in normalized or "nghi-dinh-145" in normalized:
+        return "ND145_2020"
+    if "nghi-dinh-135-2020" in normalized or "nghi-dinh-135" in normalized:
+        return "ND135_2020"
+    if "thong-tu-09-2020" in normalized or "thong-tu-09" in normalized:
+        return "TT09_2020"
+    if "thong-tu-10-2020" in normalized or "thong-tu-10" in normalized:
+        return "TT10_2020"
+    if "92-2015-qh13" in normalized or "blttds" in normalized:
+        return "BLTTDS_2015"
+    return normalize_legal_id_token(section_id).upper()
+
+
+def build_stable_chunk_id(
+    *,
+    section: SectionRecord,
+    index: int,
+    clause_ref: str | None,
+    point_refs: Sequence[str],
+    chunk_type: str,
+) -> str:
+    if not section.article_number:
+        return f"{section.section_id}-chunk-{index:02d}"
+
+    parts = [
+        infer_chunk_id_prefix(section.section_id),
+        "Dieu",
+        normalize_legal_id_token(section.article_number),
+    ]
+    if article_occurrence := infer_article_occurrence_from_section_id(section.section_id):
+        parts.extend(["Lan", normalize_legal_id_token(article_occurrence)])
+    if chunk_type == "article_intro":
+        parts.append("Intro")
+    elif chunk_type == "article_sequential":
+        parts.extend(["Chunk", f"{index:02d}"])
+
+    if clause_ref:
+        parts.extend(["Khoan", normalize_legal_id_token(clause_ref)])
+    point_ref_values = normalize_point_refs(point_refs=point_refs)
+    if point_ref_values:
+        parts.append("Diem")
+        parts.extend(normalize_point_id_token(point_ref) for point_ref in point_ref_values)
+
+    return "_".join(part for part in parts if part)
+
+
+def dedupe_chunk_ids(section_chunks: list[dict[str, object]]) -> list[dict[str, object]]:
+    seen: dict[str, int] = {}
+    for chunk in section_chunks:
+        chunk_id = str(chunk["chunk_id"])
+        count = seen.get(chunk_id, 0) + 1
+        seen[chunk_id] = count
+        if count > 1:
+            chunk["chunk_id"] = f"{chunk_id}_Chunk_{int(chunk['chunk_index']):02d}"
+    return section_chunks
 
 
 def format_point_refs_for_citation(point_refs: Sequence[str]) -> str | None:
@@ -599,6 +1087,7 @@ def enrich_chunk(
     article_title = chunk["article_title"]
     section_heading = chunk["section_heading"]
     chapter_heading = chunk["chapter_heading"]
+    appendix_heading = str(chunk.get("appendix_heading") or "")
     clause_ref = str(chunk["clause_ref"]) if chunk.get("clause_ref") else None
     point_ref = str(chunk["point_ref"]) if chunk.get("point_ref") else None
     point_refs = normalize_point_refs(point_ref, chunk.get("point_refs") if isinstance(chunk.get("point_refs"), list) else None)
@@ -622,10 +1111,12 @@ def enrich_chunk(
         source_pages=source_pages,
         point_refs=point_refs,
     )
+    if appendix_heading and not article_number:
+        citation_text = f"{document_title}, {appendix_heading}"
     retrieval_text = build_retrieval_text(
         document_title=document_title,
         heading=heading,
-        chapter_heading=str(chapter_heading) if chapter_heading else None,
+        chapter_heading=appendix_heading or (str(chapter_heading) if chapter_heading else None),
         section_heading=str(section_heading) if section_heading else None,
         citation_text=citation_text,
         topic=topic,
@@ -656,6 +1147,250 @@ def enrich_chunk(
         enriched.pop("source_pages", None)
 
     return enriched
+
+
+def resolve_curated_legal_chunk_paths(
+    input_dir: Path,
+    filenames: Sequence[str] = CURATED_LEGAL_CHUNK_FILENAMES,
+) -> list[Path]:
+    paths: list[Path] = []
+    missing: list[str] = []
+    for filename in filenames:
+        path = input_dir / filename
+        if path.exists():
+            paths.append(path)
+        else:
+            missing.append(filename)
+    if missing:
+        raise FileNotFoundError(
+            "Missing required curated legal text file(s): " + ", ".join(missing)
+        )
+    return paths
+
+
+def make_appendix_chunks(blocks: Sequence[AppendixBlock]) -> list[dict[str, object]]:
+    chunks: list[dict[str, object]] = []
+    for block in blocks:
+        if len(block.text.strip()) < VERY_SHORT_CHUNK_THRESHOLD:
+            continue
+        chunks.append(
+            {
+                "chunk_id": block.chunk_id,
+                "section_id": block.appendix_id,
+                "article_number": None,
+                "article_title": None,
+                "heading": block.appendix_heading,
+                "part_number": None,
+                "part_heading": None,
+                "chapter_heading": None,
+                "section_heading": None,
+                "appendix_id": block.appendix_id,
+                "appendix_heading": block.appendix_heading,
+                "source_pages": [],
+                "chunk_index": len(chunks) + 1,
+                "char_count": len(block.text),
+                "text": block.text,
+                "clause_ref": None,
+                "point_ref": None,
+                "point_refs": [],
+                "chunk_type": block.chunk_type,
+                "level": "appendix",
+                "parent_chunk_id": None,
+            }
+        )
+    return chunks
+
+
+def build_curated_chunk_records(
+    text_paths: Sequence[Path],
+    *,
+    max_chars: int = 1200,
+) -> tuple[list[dict[str, object]], list[str]]:
+    selected_paths, warnings = select_curated_text_sources(text_paths)
+    records: list[dict[str, object]] = []
+
+    for text_path in selected_paths:
+        source_text = text_path.read_text(encoding="utf-8")
+        main_text, appendix_text = split_main_text_and_appendix_text(source_text)
+        page_records = build_page_records_from_text(main_text)
+        cleaned_text = build_cleaned_text(page_records)
+        metadata = resolve_canonical_document_metadata(text_path, cleaned_text)
+        document_id = metadata.document_id
+        document_title = metadata.document_title
+        sections = split_sections(
+            page_records=page_records,
+            document_id=document_id,
+            document_title=document_title,
+        )
+        chunks = chunk_sections(sections, max_chars=max_chars)
+        appendix_chunks = dedupe_chunk_ids(
+            make_appendix_chunks(
+                blocks=build_appendix_blocks(appendix_text, document_id, max_chars),
+            )
+        )
+
+        for chunk in [*chunks, *appendix_chunks]:
+            records.append(
+                {
+                    "document_id": document_id,
+                    "document_title": document_title,
+                    "document_type": metadata.document_type,
+                    "source_kind": "curated_text",
+                    "source_path": str(text_path.resolve().as_posix()),
+                    **enrich_chunk(
+                        chunk=chunk,
+                        document_title=document_title,
+                        source_kind="curated_text",
+                    ),
+                }
+            )
+
+    return records, warnings
+
+
+def summarize_legal_chunks(chunks: Sequence[dict[str, object]]) -> dict[str, object]:
+    chunk_count_by_document: dict[str, int] = {}
+    chunk_count_by_level: dict[str, int] = {}
+    chunk_count_by_chunk_type: dict[str, int] = {}
+    chunk_ids: dict[str, int] = {}
+    missing_citation: list[dict[str, object]] = []
+    missing_article_number: list[dict[str, object]] = []
+    very_short_chunks: list[dict[str, object]] = []
+    very_long_chunks: list[dict[str, object]] = []
+    very_long_normal_chunks: list[dict[str, object]] = []
+
+    for chunk in chunks:
+        document_id = str(chunk.get("document_id") or "")
+        level = str(chunk.get("level") or "")
+        chunk_type = str(chunk.get("chunk_type") or "")
+        chunk_id = str(chunk.get("chunk_id") or "")
+        text = str(chunk.get("text") or "")
+        char_count = int(chunk.get("char_count") or len(text))
+
+        chunk_count_by_document[document_id] = chunk_count_by_document.get(document_id, 0) + 1
+        chunk_count_by_level[level] = chunk_count_by_level.get(level, 0) + 1
+        chunk_count_by_chunk_type[chunk_type] = chunk_count_by_chunk_type.get(chunk_type, 0) + 1
+        chunk_ids[chunk_id] = chunk_ids.get(chunk_id, 0) + 1
+
+        preview_record = {
+            "chunk_id": chunk_id,
+            "document_id": document_id,
+            "source_path": chunk.get("source_path"),
+            "article_number": chunk.get("article_number"),
+            "appendix_id": chunk.get("appendix_id"),
+            "appendix_heading": chunk.get("appendix_heading"),
+            "clause_ref": chunk.get("clause_ref"),
+            "point_refs": chunk.get("point_refs") or [],
+            "chunk_type": chunk_type,
+            "char_count": char_count,
+        }
+        if not chunk.get("citation_text"):
+            missing_citation.append(preview_record)
+        if chunk_type in NORMAL_LEGAL_CHUNK_TYPES and not chunk.get("article_number"):
+            missing_article_number.append(preview_record)
+        if 0 < char_count < VERY_SHORT_CHUNK_THRESHOLD:
+            very_short_chunks.append({**preview_record, "text": text})
+        if char_count > VERY_LONG_CHUNK_THRESHOLD:
+            very_long_chunks.append(preview_record)
+            if chunk_type in NORMAL_LEGAL_CHUNK_TYPES:
+                very_long_normal_chunks.append(preview_record)
+
+    duplicate_ids = {
+        chunk_id: count for chunk_id, count in chunk_ids.items() if chunk_id and count > 1
+    }
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "chunk_count": len(chunks),
+        "chunk_count_by_document": chunk_count_by_document,
+        "chunk_count_by_level": chunk_count_by_level,
+        "chunk_count_by_chunk_type": chunk_count_by_chunk_type,
+        "duplicate_chunk_id_count": sum(count - 1 for count in duplicate_ids.values()),
+        "duplicate_chunk_ids": duplicate_ids,
+        "chunks_missing_citation_text": missing_citation,
+        "chunks_missing_article_number": missing_article_number,
+        "very_short_chunks": very_short_chunks,
+        "very_long_chunks": very_long_chunks,
+        "very_long_normal_chunks": very_long_normal_chunks,
+    }
+
+
+def render_legal_chunks_summary_markdown(summary: dict[str, object]) -> str:
+    lines = [
+        "# Legal Chunks Summary",
+        "",
+        f"- Chunk count: {summary['chunk_count']}",
+        f"- Duplicate chunk IDs: {summary['duplicate_chunk_id_count']}",
+        f"- Missing citation text: {len(summary['chunks_missing_citation_text'])}",
+        f"- Missing article number: {len(summary['chunks_missing_article_number'])}",
+        f"- Very short chunks: {len(summary['very_short_chunks'])}",
+        f"- Very long chunks: {len(summary['very_long_chunks'])}",
+        f"- Very long normal legal chunks: {len(summary['very_long_normal_chunks'])}",
+        "",
+        "## Chunks By Document",
+        "",
+        "| Document ID | Chunks |",
+        "| --- | ---: |",
+    ]
+    for document_id, count in sorted(summary["chunk_count_by_document"].items()):
+        lines.append(f"| {document_id} | {count} |")
+
+    lines.extend(["", "## Chunks By Level", "", "| Level | Chunks |", "| --- | ---: |"])
+    for level, count in sorted(summary["chunk_count_by_level"].items()):
+        lines.append(f"| {level} | {count} |")
+
+    lines.extend(["", "## Chunks By Type", "", "| Chunk type | Chunks |", "| --- | ---: |"])
+    for chunk_type, count in sorted(summary["chunk_count_by_chunk_type"].items()):
+        lines.append(f"| {chunk_type} | {count} |")
+
+    if summary["duplicate_chunk_ids"]:
+        lines.extend(["", "## Duplicate Chunk IDs", ""])
+        for chunk_id, count in sorted(summary["duplicate_chunk_ids"].items()):
+            lines.append(f"- `{chunk_id}`: {count}")
+
+    if summary["very_short_chunks"]:
+        lines.extend(["", "## Very Short Chunks", ""])
+        for chunk in summary["very_short_chunks"][:50]:
+            lines.append(
+                f"- `{chunk['chunk_id']}` ({chunk['char_count']} chars): {chunk.get('text', '')}"
+            )
+
+    if summary["very_long_chunks"]:
+        lines.extend(["", "## Very Long Chunks", ""])
+        for chunk in summary["very_long_chunks"][:50]:
+            lines.append(f"- `{chunk['chunk_id']}` ({chunk['char_count']} chars)")
+
+    if summary["very_long_normal_chunks"]:
+        lines.extend(["", "## Very Long Normal Legal Chunks", ""])
+        for chunk in summary["very_long_normal_chunks"][:50]:
+            lines.append(f"- `{chunk['chunk_id']}` ({chunk['char_count']} chars)")
+
+    return "\n".join(lines).strip() + "\n"
+
+
+def write_legal_chunk_artifacts(
+    chunks: Sequence[dict[str, object]],
+    output_dir: Path,
+) -> tuple[Path, Path, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    chunks_path = output_dir / "legal_chunks.jsonl"
+    summary_json_path = output_dir / "legal_chunks_summary.json"
+    summary_md_path = output_dir / "legal_chunks_summary.md"
+
+    with chunks_path.open("w", encoding="utf-8", newline="\n") as handle:
+        for chunk in chunks:
+            handle.write(json.dumps(chunk, ensure_ascii=False) + "\n")
+
+    summary = summarize_legal_chunks(chunks)
+    summary_json_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    summary_md_path.write_text(
+        render_legal_chunks_summary_markdown(summary),
+        encoding="utf-8",
+    )
+    return chunks_path, summary_json_path, summary_md_path
 
 
 def split_by_regex_boundaries(text: str, pattern: re.Pattern[str]) -> list[str]:
@@ -787,9 +1522,13 @@ def split_sections(page_records: list[PageRecord], document_id: str, document_ti
     sections: list[SectionRecord] = []
     preamble: list[dict[str, object]] = []
     current_section: dict[str, object] | None = None
+    current_part_number: str | None = None
+    current_part_heading: str | None = None
     current_chapter: str | None = None
     current_heading_group: str | None = None
+    pending_part_line: str | None = None
     pending_chapter_line: str | None = None
+    article_occurrences: dict[str, int] = {}
 
     def flush_current() -> None:
         nonlocal current_section
@@ -808,6 +1547,8 @@ def split_sections(page_records: list[PageRecord], document_id: str, document_ti
                 section_heading=current_section["section_heading"],
                 source_pages=sorted(current_section["source_pages"]),
                 text=text,
+                part_number=current_section["part_number"],
+                part_heading=current_section["part_heading"],
             )
         )
         current_section = None
@@ -817,10 +1558,28 @@ def split_sections(page_records: list[PageRecord], document_id: str, document_ti
         lines = [line.strip() for line in str(entry["text"]).splitlines() if line.strip()]
 
         for line in lines:
+            part_match = PART_RE.match(line)
             chapter_match = CHAPTER_RE.match(line)
             section_match = SECTION_RE.match(line)
             group_match = GROUP_RE.match(line)
             article_match = ARTICLE_RE.match(line)
+
+            if part_match:
+                flush_current()
+                current_part_number = infer_part_number(line)
+                current_part_heading = line
+                current_chapter = None
+                current_heading_group = None
+                pending_part_line = line
+                pending_chapter_line = None
+                continue
+
+            if pending_part_line and not (section_match or group_match or article_match or chapter_match or part_match):
+                current_part_heading = f"{pending_part_line}. {line}"
+                pending_part_line = None
+                continue
+
+            pending_part_line = None
 
             if chapter_match:
                 flush_current()
@@ -850,11 +1609,18 @@ def split_sections(page_records: list[PageRecord], document_id: str, document_ti
                 flush_current()
                 article_number = article_match.group("number")
                 article_title = article_match.group("title").strip()
+                article_occurrence = article_occurrences.get(article_number, 0) + 1
+                article_occurrences[article_number] = article_occurrence
+                section_id = f"{document_id}-dieu-{article_number}"
+                if article_occurrence > 1:
+                    section_id = f"{section_id}-occurrence-{article_occurrence}"
                 current_section = {
-                    "section_id": f"{document_id}-dieu-{article_number}",
+                    "section_id": section_id,
                     "heading": line,
                     "article_number": article_number,
                     "article_title": article_title,
+                    "part_number": current_part_number,
+                    "part_heading": current_part_heading,
                     "chapter_heading": current_chapter,
                     "section_heading": current_heading_group,
                     "source_pages": {page_number},
@@ -884,6 +1650,8 @@ def split_sections(page_records: list[PageRecord], document_id: str, document_ti
                 section_heading=None,
                 source_pages=sorted({int(item["page_number"]) for item in preamble}),
                 text=preamble_text,
+                part_number=None,
+                part_heading=None,
             ),
         )
 
@@ -901,6 +1669,8 @@ def split_sections(page_records: list[PageRecord], document_id: str, document_ti
             section_heading=None,
             source_pages=[record.page_number for record in page_records if record.text],
             text=cleaned_text,
+            part_number=None,
+            part_heading=None,
         )
     ]
 
@@ -986,11 +1756,19 @@ def make_section_chunk(
 ) -> dict[str, object]:
     point_ref_values = normalize_point_refs(point_refs=point_refs)
     return {
-        "chunk_id": f"{section.section_id}-chunk-{index:02d}",
+        "chunk_id": build_stable_chunk_id(
+            section=section,
+            index=index,
+            clause_ref=clause_ref,
+            point_refs=point_ref_values,
+            chunk_type=chunk_type,
+        ),
         "section_id": section.section_id,
         "article_number": section.article_number,
         "article_title": section.article_title,
         "heading": section.heading,
+        "part_number": section.part_number,
+        "part_heading": section.part_heading,
         "chapter_heading": section.chapter_heading,
         "section_heading": section.section_heading,
         "source_pages": section.source_pages,
@@ -1193,7 +1971,7 @@ def chunk_sections(sections: list[SectionRecord], max_chars: int = 1200) -> list
                 )
             )
 
-        chunks.extend(assign_parent_chunk_ids(section_chunks))
+        chunks.extend(assign_parent_chunk_ids(dedupe_chunk_ids(section_chunks)))
 
     return chunks
 
@@ -1367,7 +2145,9 @@ def build_corpus(
 
 __all__ = [
     "ARTICLE_RE",
+    "PART_RE",
     "SectionRecord",
+    "build_curated_chunk_records",
     "build_corpus",
     "build_cleaned_text",
     "build_page_records",
@@ -1379,9 +2159,12 @@ __all__ = [
     "pack_text_units",
     "process_document",
     "process_curated_text",
+    "resolve_curated_legal_chunk_paths",
     "split_by_nearest_whitespace",
     "split_by_sentences",
     "slugify_text",
     "split_sections",
     "split_text_for_chunking",
+    "summarize_legal_chunks",
+    "write_legal_chunk_artifacts",
 ]

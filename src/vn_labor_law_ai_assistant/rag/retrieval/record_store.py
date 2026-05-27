@@ -37,6 +37,16 @@ class RecordStore:
     ) -> tuple[RetrievedRecord, ...]:
         raise NotImplementedError
 
+    def fetch_records_by_chunk_id_contains(
+        self,
+        *,
+        document_ids: Sequence[str] = (),
+        chunk_id_contains: str,
+        exclude_chunk_ids: Sequence[str] = (),
+        limit: int = 12,
+    ) -> tuple[RetrievedRecord, ...]:
+        raise NotImplementedError
+
     def fetch_article_siblings(
         self,
         *,
@@ -155,6 +165,44 @@ class SQLiteRecordStore(RecordStore):
                 point_ref,
                 point_refs,
                 chunk_id
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+        return tuple(self.records_from_rows(rows).values())
+
+    def fetch_records_by_chunk_id_contains(
+        self,
+        *,
+        document_ids: Sequence[str] = (),
+        chunk_id_contains: str,
+        exclude_chunk_ids: Sequence[str] = (),
+        limit: int = 12,
+    ) -> tuple[RetrievedRecord, ...]:
+        if not chunk_id_contains:
+            return ()
+        where_parts = ["chunk_id LIKE ?"]
+        params: list[object] = [f"%{chunk_id_contains}%"]
+
+        ordered_document_ids = dedupe_preserve_order(tuple(value for value in document_ids if value))
+        if ordered_document_ids:
+            placeholders = ", ".join("?" for _ in ordered_document_ids)
+            where_parts.append(f"document_id IN ({placeholders})")
+            params.extend(ordered_document_ids)
+
+        excluded_ids = dedupe_preserve_order(tuple(value for value in exclude_chunk_ids if value))
+        if excluded_ids:
+            placeholders = ", ".join("?" for _ in excluded_ids)
+            where_parts.append(f"chunk_id NOT IN ({placeholders})")
+            params.extend(excluded_ids)
+
+        params.append(max(1, int(limit)))
+        rows = self.sqlite.execute(
+            f"""
+            SELECT chunk_id, parent_chunk_id, citation_text, text, dense_text, sparse_text, payload_json
+            FROM records
+            WHERE {" AND ".join(where_parts)}
+            ORDER BY chunk_id
             LIMIT ?
             """,
             params,
@@ -355,6 +403,36 @@ class QdrantPayloadRecordStore(RecordStore):
         )
         records = tuple(self.records_from_qdrant_points(points).values())
         return tuple(sorted(records, key=record_reference_sort_key)[: max(1, int(limit))])
+
+    def fetch_records_by_chunk_id_contains(
+        self,
+        *,
+        document_ids: Sequence[str] = (),
+        chunk_id_contains: str,
+        exclude_chunk_ids: Sequence[str] = (),
+        limit: int = 12,
+    ) -> tuple[RetrievedRecord, ...]:
+        if not chunk_id_contains:
+            return ()
+        query_filter = self.build_reference_payload_filter(
+            document_ids=document_ids,
+            exclude_chunk_ids=exclude_chunk_ids,
+        )
+        points, _ = self.scroll_with_retry(
+            collection_name=self.collection_name,
+            scroll_filter=query_filter,
+            limit=max(128, max(1, int(limit)) * 16),
+            with_payload=True,
+            with_vectors=False,
+        )
+        records = tuple(self.records_from_qdrant_points(points).values())
+        needle = chunk_id_contains.lower()
+        filtered = tuple(
+            record
+            for record in sorted(records, key=record_reference_sort_key)
+            if needle in record.chunk_id.lower()
+        )
+        return filtered[: max(1, int(limit))]
 
 
 __all__ = [

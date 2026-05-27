@@ -56,6 +56,7 @@ from .utils import (
 
 
 _RULE_CONFIG_EXPORTS = frozenset(("LEGAL_ISSUE_ARTICLE_MAP", "TERMINATION_ARTICLE_MAP"))
+MAX_GRAPH_POLICY_SEEDS = 8
 
 
 def __getattr__(name: str) -> object:
@@ -806,6 +807,238 @@ class HybridRetriever:
         return reranked_candidates + remainder
 
     @staticmethod
+    def _merge_list_payload_values(*values: object) -> list[object]:
+        merged: list[object] = []
+        seen: set[str] = set()
+        for value in values:
+            current_values = value if isinstance(value, list) else [value]
+            for item in current_values:
+                if item in (None, "", []):
+                    continue
+                key = json_key = str(item)
+                if isinstance(item, (list, dict)):
+                    key = json_key = repr(item)
+                if key in seen:
+                    continue
+                seen.add(json_key)
+                merged.append(item)
+        return merged
+
+    @staticmethod
+    def _annotate_vector_hits(
+        hits: Sequence[SearchHit],
+        *,
+        intent: QueryIntent,
+        graph_query_types: Sequence[str],
+        expansion_depth: int,
+    ) -> tuple[SearchHit, ...]:
+        annotated: list[SearchHit] = []
+        for hit in hits:
+            payload = dict(hit.payload)
+            payload.setdefault("retrieval_source", "vector")
+            payload.setdefault("retrieval_method", "qdrant_hybrid_search")
+            payload.setdefault("vector_score", hit.score)
+            payload.setdefault("graph_score", 0.0)
+            payload.setdefault("final_score", hit.score)
+            payload.setdefault("seed_chunk_ids", [])
+            payload.setdefault("expanded_node_ids", [])
+            payload.setdefault("graph_paths", [])
+            payload.setdefault("graph_path", [])
+            payload.setdefault("graph_edge_types", [])
+            payload.setdefault("applied_query_intent", list(graph_query_types))
+            payload.setdefault("expansion_depth", expansion_depth)
+            annotated.append(
+                SearchHit(
+                    chunk_id=hit.chunk_id,
+                    qdrant_point_id=hit.qdrant_point_id,
+                    score=hit.score,
+                    citation_text=hit.citation_text,
+                    payload=payload,
+                )
+            )
+        return tuple(annotated)
+
+    def _merge_vector_and_graph_hits(
+        self,
+        vector_hits: Sequence[SearchHit],
+        graph_hits: Sequence[SearchHit],
+    ) -> tuple[SearchHit, ...]:
+        merged: dict[str, SearchHit] = {}
+        ordered_chunk_ids: list[str] = []
+
+        def upsert(hit: SearchHit) -> None:
+            current = merged.get(hit.chunk_id)
+            if current is None:
+                merged[hit.chunk_id] = hit
+                ordered_chunk_ids.append(hit.chunk_id)
+                return
+
+            current_payload = dict(current.payload)
+            hit_payload = dict(hit.payload)
+            current_source = str(current_payload.get("retrieval_source") or "")
+            hit_source = str(hit_payload.get("retrieval_source") or "")
+            retrieval_source = (
+                "hybrid"
+                if {current_source, hit_source}.intersection({"vector", "hybrid"})
+                and {current_source, hit_source}.intersection({"graph"})
+                else current_source or hit_source or "vector"
+            )
+            vector_score = max(
+                float(current_payload.get("vector_score") or 0.0),
+                float(hit_payload.get("vector_score") or 0.0),
+            )
+            graph_score = max(
+                float(current_payload.get("graph_score") or 0.0),
+                float(hit_payload.get("graph_score") or 0.0),
+            )
+            graph_paths = self._merge_list_payload_values(
+                current_payload.get("graph_paths"),
+                hit_payload.get("graph_paths"),
+                current_payload.get("graph_path"),
+                hit_payload.get("graph_path"),
+            )
+            graph_edge_types = self._merge_list_payload_values(
+                current_payload.get("graph_edge_types"),
+                hit_payload.get("graph_edge_types"),
+                current_payload.get("graph_edge_path"),
+                hit_payload.get("graph_edge_path"),
+            )
+            payload = {
+                **current_payload,
+                **hit_payload,
+                "retrieval_source": retrieval_source,
+                "vector_score": vector_score,
+                "graph_score": graph_score,
+                "final_score": max(current.score, hit.score),
+                "seed_chunk_ids": self._merge_list_payload_values(
+                    current_payload.get("seed_chunk_ids"),
+                    hit_payload.get("seed_chunk_ids"),
+                    current_payload.get("graph_seed_chunk_ids"),
+                    hit_payload.get("graph_seed_chunk_ids"),
+                ),
+                "expanded_node_ids": self._merge_list_payload_values(
+                    current_payload.get("expanded_node_ids"),
+                    hit_payload.get("expanded_node_ids"),
+                    current_payload.get("graph_node_path"),
+                    hit_payload.get("graph_node_path"),
+                ),
+                "graph_paths": graph_paths,
+                "graph_path": graph_paths[0] if graph_paths else [],
+                "graph_edge_types": graph_edge_types,
+            }
+            merged[hit.chunk_id] = SearchHit(
+                chunk_id=hit.chunk_id,
+                qdrant_point_id=current.qdrant_point_id or hit.qdrant_point_id,
+                score=max(current.score, hit.score),
+                citation_text=current.citation_text or hit.citation_text,
+                payload=payload,
+            )
+
+        for hit in vector_hits:
+            upsert(hit)
+        for hit in graph_hits:
+            upsert(hit)
+        return tuple(merged[chunk_id] for chunk_id in ordered_chunk_ids)
+
+    def _graph_policy_hits(
+        self,
+        *,
+        intent: QueryIntent,
+        graph_expander: object,
+        seed_hits: Sequence[SearchHit],
+        existing_chunk_ids: Sequence[str],
+    ) -> tuple[SearchHit, ...]:
+        if not hasattr(graph_expander, "priority_references_for_intent"):
+            return ()
+        priority_references = graph_expander.priority_references_for_intent(intent)
+        if not priority_references:
+            return ()
+        graph_query_types = (
+            graph_expander.query_types_for_intent(intent)
+            if hasattr(graph_expander, "query_types_for_intent")
+            else ()
+        )
+        expansion_depth = (
+            graph_expander.expansion_depth_for_intent(intent)
+            if hasattr(graph_expander, "expansion_depth_for_intent")
+            else 2
+        )
+        existing = set(existing_chunk_ids)
+        emitted: set[str] = set()
+        seed_chunk_ids = [hit.chunk_id for hit in seed_hits[:MAX_GRAPH_POLICY_SEEDS]]
+        max_seed_score = max((hit.score for hit in seed_hits), default=0.0)
+        hits: list[SearchHit] = []
+        rank = 0
+        for reference in priority_references:
+            records: tuple[RetrievedRecord, ...] = ()
+            if getattr(reference, "chunk_id_contains", ""):
+                records = self._record_store.fetch_records_by_chunk_id_contains(
+                    document_ids=(reference.document_id,),
+                    chunk_id_contains=str(reference.chunk_id_contains),
+                    exclude_chunk_ids=tuple(emitted),
+                    limit=max(1, int(reference.limit)),
+                )
+            elif reference.article_numbers:
+                for article_number in reference.article_numbers:
+                    records = (
+                        *records,
+                        *self._record_store.fetch_records_by_reference(
+                            document_ids=(reference.document_id,),
+                            article_numbers=(article_number,),
+                            exclude_chunk_ids=tuple(emitted),
+                            limit=max(1, int(reference.limit)),
+                        ),
+                    )
+            else:
+                records = self._record_store.fetch_records_by_reference(
+                    document_ids=(reference.document_id,),
+                    exclude_chunk_ids=tuple(emitted),
+                    limit=max(1, int(reference.limit)),
+                )
+            for record in records:
+                if record.chunk_id in emitted:
+                    continue
+                emitted.add(record.chunk_id)
+                rank += 1
+                graph_score = max(max_seed_score - 0.015 - (rank * 0.001), 0.01)
+                payload = {
+                    **record.payload,
+                    "chunk_id": record.chunk_id,
+                    "qdrant_point_id": make_qdrant_point_id(record.chunk_id),
+                    "parent_chunk_id": record.parent_chunk_id,
+                    "citation_text": record.citation_text,
+                    "text": record.text,
+                    "dense_text": record.dense_text,
+                    "sparse_text": record.sparse_text,
+                    "retrieval_source": "graph",
+                    "retrieval_method": "graph_query_policy",
+                    "vector_score": 0.0,
+                    "graph_score": graph_score,
+                    "final_score": graph_score,
+                    "seed_chunk_ids": seed_chunk_ids,
+                    "graph_seed_chunk_ids": seed_chunk_ids,
+                    "expanded_node_ids": [],
+                    "graph_path": [],
+                    "graph_paths": [],
+                    "graph_edge_types": [],
+                    "graph_depth": expansion_depth,
+                    "applied_query_intent": list(graph_query_types),
+                    "expansion_depth": expansion_depth,
+                    "graph_policy_reason": reference.reason,
+                    "graph_policy_duplicate_of_vector_hit": record.chunk_id in existing,
+                }
+                hits.append(
+                    SearchHit(
+                        chunk_id=record.chunk_id,
+                        qdrant_point_id=str(payload["qdrant_point_id"]),
+                        score=graph_score,
+                        citation_text=record.citation_text,
+                        payload=payload,
+                    )
+                )
+        return tuple(hits)
+
+    @staticmethod
     def _enrich_hits_with_records(
         hits: Sequence[SearchHit],
         direct_records: dict[str, RetrievedRecord],
@@ -889,22 +1122,46 @@ class HybridRetriever:
         hits = self._reference_expander.append_reference_fallback_hits(hits, intent, limit=max(4, top_k))
         direct_records = self._record_store.fetch_records_from_hits(hits)
         graph_expander = getattr(self, "_legal_graph_expander", None)
+        graph_query_types: tuple[str, ...] = ()
+        graph_expansion_depth = 0
         if graph_expander is not None:
-            from ..graph.expander import dedupe_search_hits
+            if hasattr(graph_expander, "query_types_for_intent"):
+                graph_query_types = tuple(graph_expander.query_types_for_intent(intent))
+            if hasattr(graph_expander, "expansion_depth_for_intent"):
+                graph_expansion_depth = int(graph_expander.expansion_depth_for_intent(intent))
+            hits = self._annotate_vector_hits(
+                hits,
+                intent=intent,
+                graph_query_types=graph_query_types,
+                expansion_depth=graph_expansion_depth,
+            )
 
             graph_hits = graph_expander.expand_from_hits(
                 hits=hits,
                 direct_records=direct_records,
                 intent=intent,
             )
-            if graph_hits:
-                hits = dedupe_search_hits((*hits, *graph_hits))
+            policy_hits = self._graph_policy_hits(
+                intent=intent,
+                graph_expander=graph_expander,
+                seed_hits=hits,
+                existing_chunk_ids=[hit.chunk_id for hit in (*hits, *graph_hits)],
+            )
+            if graph_hits or policy_hits:
+                hits = self._merge_vector_and_graph_hits(hits, (*graph_hits, *policy_hits))
                 missing_chunk_ids = [
                     hit.chunk_id for hit in hits if hit.chunk_id not in direct_records
                 ]
                 if missing_chunk_ids:
                     direct_records.update(self._record_store.fetch_records(missing_chunk_ids))
                 hits = self._enrich_hits_with_records(hits, direct_records)
+        else:
+            hits = self._annotate_vector_hits(
+                hits,
+                intent=intent,
+                graph_query_types=(),
+                expansion_depth=0,
+            )
         hits = self._scorer.rerank_hits(hits, intent, direct_records)
         hits = self._semantic_reranker.semantic_rerank_hits(query, hits, direct_records)
         hits = self._reference_expander.pin_forced_reference_hits(hits, intent)[:top_k]

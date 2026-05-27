@@ -73,6 +73,9 @@ class Neo4jLegalGraphStoreTests(unittest.TestCase):
 
         queries = "\n".join(query for query, _ in driver.session_obj.calls)
         self.assertIn("CREATE CONSTRAINT legal_node_node_id", queries)
+        self.assertIn("CREATE INDEX evidence_chunk_topic", queries)
+        self.assertIn("CREATE INDEX evidence_chunk_actor", queries)
+        self.assertIn("CREATE INDEX evidence_chunk_issue_type", queries)
         self.assertIn("UNWIND $rows AS row", queries)
         self.assertIn("SET n:Legal_Article", queries)
         self.assertIn("MERGE (source)-[r:HAS_ARTICLE", queries)

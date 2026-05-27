@@ -137,7 +137,19 @@ def quote_appears_in_text(quote: str, text: str) -> bool:
     normalized_quote = normalize_quote_surface(quote)
     if len(normalized_quote) < 8:
         return False
-    return normalized_quote in normalize_quote_surface(text)
+    normalized_text = normalize_quote_surface(text)
+    if normalized_quote in normalized_text:
+        return True
+
+    segments = [
+        normalize_quote_surface(segment)
+        for segment in EVIDENCE_SENTENCE_SPLIT_RE.split(quote)
+        if segment.strip()
+    ]
+    meaningful_segments = [segment for segment in segments if len(segment) >= 8]
+    return bool(meaningful_segments) and all(
+        segment in normalized_text for segment in meaningful_segments
+    )
 
 
 def quote_supported_by_context(
@@ -146,12 +158,18 @@ def quote_supported_by_context(
     quote: str,
     contexts: Sequence[RetrievalContext],
 ) -> bool:
+    def context_supports_quote(context: RetrievalContext) -> bool:
+        retrieval_text = str(context.payload.get("retrieval_text") or "")
+        return quote_appears_in_text(quote, context.text) or (
+            bool(retrieval_text) and quote_appears_in_text(quote, retrieval_text)
+        )
+
     matching_contexts = [
         context for context in contexts if context_matches_citation(context, citation)
     ]
     if matching_contexts:
-        return any(quote_appears_in_text(quote, context.text) for context in matching_contexts)
-    return any(quote_appears_in_text(quote, context.text) for context in contexts)
+        return any(context_supports_quote(context) for context in matching_contexts)
+    return any(context_supports_quote(context) for context in contexts)
 
 
 def sanitize_evidence_quotes(
