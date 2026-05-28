@@ -1,98 +1,108 @@
 # Thesis Restructure Summary
 
-Prepared: 2026-05-27
+Prepared: 2026-05-28
 
 ## Files Changed
 
-- `main.tex`
-- `chapters/01_introduction.tex`
 - `chapters/02_background.tex`
 - `chapters/03_methodology.tex`
 - `chapters/04_implementation.tex`
 - `chapters/05_evaluation.tex`
-- `chapters/06_discussion.tex`
 - `chapters/07_conclusion.tex`
-- `appendices/appendix_a.tex`
-- `references.bib`
+- `main.pdf`
 - `thesis_restructure_summary.md`
 
-## Current Structure Identified
+## Sections Removed
 
-- Main thesis file: `main.tex`
-- Chapter files: `chapters/01_introduction.tex` through `chapters/07_conclusion.tex`
-- Bibliography file: `references.bib`
-- Appendix source: `appendices/appendix_a.tex`
-- Asset folder: `assets/`
-- No separate figure or table folders currently exist; figure and table placeholders are embedded directly in LaTeX.
+Removed numbered third-level subsections from:
 
-## Old Sections Moved, Renamed, or Demoted
+- Chapter 3: all former `3.x.x` subsections under corpus, preprocessing, cross-reference extraction, vector retrieval, graph design, query routing, and answer generation.
+- Chapter 4: all former `4.x.x` implementation subsections.
+- Chapter 5: all former `5.x.x` evaluation, results, and case-study subsections.
+- Chapter 7: former `7.2.1`--`7.2.6` future-work subsections.
 
-- `Objectives` renamed to `Research Objectives`.
-- Old RAG/background placeholders moved into Chapter 2.
-- Old legal QA and graph retrieval placeholders moved into Chapter 2.
-- Old `Data Sources` moved to Chapter 3 as `Legal Corpus and Data Sources` and split by document group.
-- Old preprocessing, chunking, metadata, and rechunking notes moved into Chapter 3 preprocessing subsections.
-- Old `Graph Construction with Neo4j` split between Chapter 3 methodology and Chapter 4 implementation.
-- Old query routing and retrieval strategy content split into intent classification, retrieval boosting, and graph expansion policy.
-- Old backend/vector/Neo4j implementation content reorganized into Chapter 4.
-- Old prompt design content moved under `Grounded Answer Generator`.
-- Frontend, deployment, observability, and CI/CD content demoted; only reproducibility-relevant details remain as TODOs.
-- Old RAGAS, LLM-as-Judge, and human-review wording removed from the final evaluation method and kept only as future work where appropriate.
-- Old experiment/evaluation placeholders moved into Chapter 5 and replaced with final generated metrics from the evaluation artifacts.
-- Old limitations and future-work placeholders moved into Chapters 6 and 7.
-- Old appendix sections were replaced by Appendices A--G from the requested outline.
+No technical topics were deleted; they were merged into parent sections as prose-level TODOs or compact labels.
 
-## New Sections Created
+## Sections Merged
 
-- Chapter 2 now includes legal document structure, citation, knowledge graphs, graph-augmented retrieval, and RAG evaluation methods.
-- Chapter 3 now follows the requested methodology outline from architecture through rule-based citation validation.
-- Chapter 4 now follows the requested implementation outline from stack through reproducibility setup.
-- Chapter 5 now follows the requested evaluation outline and explicitly states deterministic rule-based validation.
-- Chapter 6 now includes normative hierarchy, citation grounding, and a limitations table.
-- Chapter 7 now includes future-work subsections for expert validation, LLM-as-Judge, human review, corpus expansion, generative answering, and deployment.
-- Appendices A--G were created inside the existing appendix source file.
+- Chapter 2 now has 5 sections instead of 7:
+  - `Legal Question Answering` and `Legal Document Structure and Citation` were merged into `Legal Question Answering and Domain Challenges`.
+  - `Knowledge Graphs for Legal Retrieval` and `Graph-Augmented Retrieval` were merged into `Knowledge Graphs and Graph-Augmented RAG`.
+- Chapter 3 now has 7 sections:
+  - `Legal Document Preprocessing` and metadata details were merged into `Legal Document Preprocessing and Enrichment`.
+  - Cross-reference extraction and graph schema material were merged into `Legal Cross-Reference Extraction and Graph Design`.
+  - Vector and hybrid retrieval material was merged into `Vector-based and Hybrid Retrieval`.
+  - Query routing and graph retrieval flow were merged into `Query Routing and Graph-Augmented Retrieval`.
+- Chapter 4 now has 8 sections:
+  - Data processing subsections were merged into `Data Processing Implementation`.
+  - Vector database subsections were merged into `Vector Index and Hybrid Retrieval Implementation`.
+  - Neo4j subsections were merged into `Neo4j Graph Implementation`.
+  - Retriever subsections were merged into `Graph-Augmented Retriever Implementation`.
+  - Answer generator subsections were merged into `Grounded Answer Generator and Validation`.
+  - Evaluation scripts and reproducibility were merged into `Evaluation Scripts and Reproducibility`.
+- Chapter 5 now has 7 sections:
+  - Setup and benchmark details were merged into `Evaluation Setup and Benchmark Design`.
+  - Answer and citation evaluation were merged into `Answer and Citation Evaluation Methodology`.
+  - Retrieval result subsections were merged into `Retrieval Results`.
+  - End-to-end result subsections were merged into `End-to-End Results`.
+  - Case-study subsections were merged into `Case Studies`.
+- Chapter 7 now has only `Conclusion` and `Future Work`.
 
-## Sections Still Need Writing
+## Content Moved to Prose
 
-All chapters remain skeletons with TODO placeholders. The highest-priority writing work is:
+The following topics are now inline bold labels inside parent sections rather than numbered subsections:
 
-- Abstract
-- Chapter 1 introduction narrative and thesis contributions
-- Chapter 2 literature review with verified citations
-- Chapter 3 methodology prose and diagrams
-- Chapter 4 implementation details with module/script references
-- Chapter 5 case studies and careful results discussion
-- Chapter 6 discussion prose
-- Chapter 7 conclusion and future-work prose
-- Appendices A--G details and examples
+- Labor Code 2019
+- Decrees and circulars
+- Labor-related civil procedure provisions
+- Text cleaning
+- Hierarchical chunking
+- Appendix and table handling
+- Metadata enrichment
+- Citation pattern detection
+- Document alias resolution
+- Reference edge generation
+- Embedding model
+- Vector index payload design
+- Hybrid retrieval
+- Graph schema
+- Structural edges
+- Cross-reference edges
+- Normative hierarchy edges
+- Query intent classification
+- Intent-specific retrieval boosting
+- Graph expansion policy
+- Context ordering by normative rank
+- Citation-aware answer construction
+- Rule-based citation validation
+- Implementation details for Qdrant, Neo4j, graph expansion, reranking, and answer validation
+- Evaluation setup, benchmark labels, retrieval metrics, deterministic answer checks, citation checks, per-category results, difficulty-level results, and case-study prompts
+- Future-work items: expert-validated benchmark, LLM-as-Judge evaluation, human legal review, larger corpus, improved generative answering, and real-world deployment
 
-## Figures Still Needed
+## Content Moved to Appendices
 
-- Overall system architecture
-- Data processing pipeline
-- Legal graph schema
-- Graph-augmented retrieval flow
-- Answer generation and citation validation flow
+The chapter TODOs now explicitly direct verbose technical details to appendices when appropriate:
 
-## Tables Still Needed
+- Neo4j constraints, indexes, schema listings, and detailed graph metadata should go to Appendix C.
+- Long reproducibility commands should go to Appendix F.
+- Detailed retrieved contexts, generated answers, failure examples, and case-study artifacts should go to Appendix G.
 
-- Corpus document table
-- Chunking validation table
-- Graph node/edge count table
-- Retrieval modes comparison table
-- End-to-end evaluation summary table
-- Category-level result table
-- Limitations table
-- Appendix legal document list with official titles and source URLs
+Appendices A--G remain in the existing appendix source file.
 
-## Evaluation Interpretation Added
+## Remaining TODOs
 
-- Chapter 5 states: "Answer quality is evaluated using deterministic rule-based validation, not human legal expert review or LLM-as-Judge evaluation."
-- Chapters 5 and 6 state: "The 100% result is measured on the constructed 69-query benchmark and should not be interpreted as universal legal correctness."
+All chapters intentionally remain skeletons. The main remaining work is:
+
+- Write the abstract and chapter prose.
+- Replace TODO citation keys with verified bibliographic metadata.
+- Draw the five required figures.
+- Fill official legal document titles, source URLs, and legal metadata in Appendix A.
+- Expand chunk schema, graph schema, benchmark samples, evaluation metrics, reproducibility commands, and example contexts in Appendices B--G.
+- Add final case-study examples from the evaluation artifacts.
 
 ## Metrics Preserved
 
-The final metrics were copied from the provided evaluation context and generated artifacts without changing values:
+The final metrics remain unchanged:
 
 - Corpus documents: 6
 - Legal chunks: 1,556
@@ -108,3 +118,18 @@ The final metrics were copied from the provided evaluation context and generated
 - Low-information quotes: 0
 - Unsupported article numbers: None
 - Unretrieved citations: None
+
+## Evaluation Interpretation Preserved
+
+- Chapter 5 states: "Answer quality is evaluated using deterministic rule-based validation, not human legal expert review or LLM-as-Judge evaluation."
+- Chapters 5 and 6 state: "The 100% result is measured on the constructed 69-query benchmark and should not be interpreted as universal legal correctness."
+
+## Compilation Status
+
+Compiled successfully with:
+
+```powershell
+latexmk -xelatex -interaction=nonstopmode -halt-on-error main.tex
+```
+
+The build regenerated `thesis/main.pdf`. Remaining LaTeX messages are nonfatal layout warnings from placeholder text and narrow tables, not broken includes or failed references.

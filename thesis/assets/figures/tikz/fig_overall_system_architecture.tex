@@ -1,0 +1,46 @@
+\begin{tikzpicture}[
+  node distance=8mm and 9mm,
+  every node/.style={font=\footnotesize},
+  archbox/.style={block, minimum height=8mm, minimum width=28mm, text width=28mm, align=center},
+  archstore/.style={archbox, fill=black!10},
+  vectorstore/.style={archbox, fill=blue!8},
+  graphstore/.style={archbox, fill=green!12},
+  archgroup/.style={container, fill=black!3, inner sep=7pt,
+    label={[anchor=west, fill=black!3, inner sep=2pt, font=\footnotesize\bfseries]north west:#1}}
+]
+  \node[archbox] (corpus) {Legal Corpus};
+  \node[archbox, below=of corpus] (chunking) {Legal Chunking};
+  \node[archbox, below=of chunking] (enriched) {Enriched Chunks};
+
+  \node[vectorstore, right=20mm of corpus] (qdrant) {Qdrant\\Vector Index};
+  \node[graphstore, below=of qdrant] (neo4j) {Neo4j Legal Graph};
+  \node[archbox, below=of neo4j] (edges) {Reference Edges};
+
+  \node[archbox, right=20mm of qdrant] (query) {User Query};
+  \node[archbox, below=of query] (retriever) {Graph-Augmented\\Retriever};
+  \node[archbox, below=of retriever] (generator) {Grounded Answer\\Generator};
+  \node[archbox, below=of generator] (validation) {Citation Validation};
+  \node[archbox, below=of validation] (final) {Final Answer};
+
+  \begin{scope}[on background layer]
+    \node[archgroup=Corpus Processing, fit=(corpus) (chunking) (enriched)] {};
+    \node[archgroup=Knowledge Stores, fit=(qdrant) (neo4j) (edges)] {};
+    \node[archgroup=Question Answering, fit=(query) (retriever) (generator) (validation) (final)] {};
+  \end{scope}
+
+  \draw[arrow] (corpus) -- (chunking);
+  \draw[arrow] (chunking) -- (enriched);
+
+  \draw[arrow] (enriched.east) -- ++(6mm,0) |- (qdrant.west);
+  \draw[arrow] (enriched.east) -- ++(6mm,0) |- (neo4j.west);
+  \draw[arrow] (edges) -- (neo4j);
+  \draw[Latex-Latex, dashed, line width=0.6pt] (qdrant) -- node[right, font=\scriptsize] {shared chunk\_id} (neo4j);
+
+  \draw[arrow] (query) -- (retriever);
+  \draw[arrow] (retriever) -- (generator);
+  \draw[arrow] (generator) -- (validation);
+  \draw[arrow] (validation) -- (final);
+
+  \draw[arrow] (qdrant.east) -- ++(6mm,0) |- (retriever.west);
+  \draw[arrow] (neo4j.east) -- ++(6mm,0) |- (retriever.west);
+\end{tikzpicture}

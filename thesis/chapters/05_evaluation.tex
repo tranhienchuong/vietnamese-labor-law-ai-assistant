@@ -1,10 +1,8 @@
 \chapter{Evaluation and Results}
 
-\section{Evaluation Setup}
+\section{Evaluation Setup and Benchmark Design}
 \todotext{Introduce the evaluation package and reference \texttt{artifacts/evaluation/final\_thesis\_evaluation\_report.md}. Do not add metrics beyond the generated artifacts.}
-
-\subsection{Corpus Statistics}
-\todotext{Summarize corpus, chunk, vector index, and graph statistics from the final evaluation report.}
+\todotext{\textbf{Corpus statistics.} Summarize corpus, chunk, vector index, and graph statistics from the final evaluation report.}
 
 \begin{table}[H]
   \centering
@@ -30,68 +28,26 @@
   \end{tabular}
 \end{table}
 
-\subsection{Benchmark Construction}
-\todotext{Describe construction of the 69-query benchmark, including query categories, required citation labels, forbidden citation checks, graph-required labels, difficulty labels, and normative-hierarchy-required labels.}
+\todotext{\textbf{Benchmark construction.} Describe construction of the 69-query benchmark, including query categories, required citation labels, forbidden citation checks, graph-required labels, difficulty labels, and normative-hierarchy-required labels.}
+\todotext{\textbf{Evaluation environment.} Document the evaluation environment from reproducibility notes: PowerShell on Windows, repository virtual environment, sentence-transformer embedding provider, Qdrant collection, Neo4j graph, top-k settings, and output artifacts.}
+\todotext{\textbf{Curated benchmark design.} Describe the curated benchmark without implying it is exhaustive or expert-certified. Cover query categories, required citation labels, forbidden citation checks, and difficulty levels in prose or a compact table. The final benchmark contains 15 easy, 32 medium, and 22 hard queries.}
 
-\subsection{Evaluation Environment}
-\todotext{Document the evaluation environment from reproducibility notes: PowerShell on Windows, repository virtual environment, sentence-transformer embedding provider, Qdrant collection, Neo4j graph, top-k settings, and output artifacts.}
-
-\section{Curated Legal QA Benchmark}
-\todotext{Describe the curated benchmark design without implying it is exhaustive or expert-certified.}
-
-\subsection{Query Categories}
-\todotext{List query categories and counts from the benchmark: calculation/table lookup, comparison, definition, direct, document guidance, exception-based, multi-hop, procedure, and scenario-based QA.}
-
-\subsection{Required Citation Labels}
-\todotext{Explain that each benchmark item contains required citation labels used to evaluate retrieval coverage and answer citation grounding.}
-
-\subsection{Forbidden Citation Checks}
-\todotext{Explain forbidden citation checks and report that the final retrieval comparison found forbidden citation violation rate 0.000 for graph-augmented, hybrid, and vector-only modes.}
-
-\subsection{Difficulty Levels}
-\todotext{Describe easy, medium, and hard difficulty labels. The final benchmark contains 15 easy, 32 medium, and 22 hard queries.}
-
-\section{Retrieval Evaluation}
+\section{Retrieval Evaluation Methodology}
 \todotext{Define the retrieval evaluation as a comparison among vector-only, hybrid, and graph-augmented retrieval on the same 69-query benchmark.}
+\todotext{\textbf{Retrieval modes.} Describe vector-only retrieval, hybrid retrieval, and graph-augmented retrieval. Explain that graph-augmented retrieval starts from seed results and expands through the legal graph.}
+\todotext{\textbf{Retrieval metrics.} Define Recall@5, Recall@10, Precision@5, Precision@10, MRR, required citation coverage, and forbidden citation violation.}
 
-\subsection{Retrieval Modes}
-\todotext{Describe vector-only retrieval, hybrid retrieval, and graph-augmented retrieval. Explain that graph-augmented retrieval starts from seed results and expands through the legal graph.}
-
-\subsection{Retrieval Metrics}
-\todotext{Define Recall@5, Recall@10, Precision@5, Precision@10, MRR, required citation coverage, and forbidden citation violation.}
-
-\section{Answer Generation Evaluation}
-\todotext{Describe the end-to-end evaluation of graph-augmented retrieval plus extractive answer generation.}
-
-\subsection{Deterministic Rule-based Validation}
+\section{Answer and Citation Evaluation Methodology}
 Answer quality is evaluated using deterministic rule-based validation, not human legal expert review or LLM-as-Judge evaluation.
-\todotext{Explain the implemented deterministic checks and avoid using RAGAS or LLM-as-Judge terminology as final evaluation methodology unless clearly marked as future work.}
 
-\subsection{Direct Answer Check}
-\todotext{Explain how the validator checks that an answer directly addresses the benchmark question.}
-
-\subsection{Required Legal Rule Check}
-\todotext{Explain how required legal rules and required citations are checked against generated answer fields and cited retrieved contexts.}
-
-\subsection{Low-information Answer Detection}
-\todotext{Explain how low-information quotes are detected. The final evaluation reports low-information quotes: 0.}
-
-\section{Citation Evaluation}
-\todotext{Describe citation-specific checks used by the deterministic validator.}
-
-\subsection{Citation Grounding}
-\todotext{Explain that answer citations must be supported by retrieved contexts and mapped to known legal citation surfaces.}
-
-\subsection{Unsupported Article Number Detection}
-\todotext{Explain unsupported article number detection. The final evaluation reports unsupported article numbers: None.}
-
-\subsection{Unretrieved Citation Detection}
-\todotext{Explain unretrieved citation detection. The final evaluation reports unretrieved citations: None.}
+\todotext{\textbf{Deterministic rule-based validation.} Explain the implemented deterministic checks and avoid using RAGAS or LLM-as-Judge terminology as final evaluation methodology unless clearly marked as future work.}
+\todotext{\textbf{Direct answer and legal rule checks.} Explain how the validator checks that an answer addresses the question and includes the required legal rule and required citations.}
+\todotext{\textbf{Low-information answer detection.} Explain how low-information quotes are detected. The final evaluation reports low-information quotes: 0.}
+\todotext{\textbf{Citation grounding.} Explain that answer citations must be supported by retrieved contexts and mapped to known legal citation surfaces.}
+\todotext{\textbf{Unsupported and unretrieved citations.} Explain unsupported article number detection and unretrieved citation detection. The final evaluation reports unsupported article numbers: None and unretrieved citations: None.}
 
 \section{Retrieval Results}
 \todotext{Insert and discuss retrieval comparison results from \texttt{retrieval\_modes\_expanded\_report.md}.}
-
-\subsection{Overall Retrieval Comparison}
 
 \begin{table}[H]
   \centering
@@ -108,9 +64,7 @@ Answer quality is evaluated using deterministic rule-based validation, not human
   \end{tabular}
 \end{table}
 
-\todotext{Explain that graph-augmented retrieval improved Recall@10 from 0.920 to 1.000 compared with hybrid retrieval on the constructed benchmark, while precision decreased slightly because graph expansion adds supporting context.}
-
-\subsection{Per-category Results}
+\todotext{\textbf{Overall comparison.} Explain that graph-augmented retrieval improved Recall@10 from 0.920 to 1.000 compared with hybrid retrieval on the constructed benchmark, while precision decreased slightly because graph expansion adds supporting context.}
 
 \begingroup
 \scriptsize
@@ -138,13 +92,10 @@ Answer quality is evaluated using deterministic rule-based validation, not human
 \end{longtable}
 \endgroup
 
-\subsection{Graph-required Query Results}
-\todotext{Report graph-required query results: 25 graph-required queries achieved 1.000 retrieval pass, answer pass, citation pass, end-to-end pass, and average quality score 100.00 in the final graph-augmented end-to-end run.}
+\todotext{\textbf{Graph-required query results.} Report graph-required query results: 25 graph-required queries achieved 1.000 retrieval pass, answer pass, citation pass, end-to-end pass, and average quality score 100.00 in the final graph-augmented end-to-end run.}
 
 \section{End-to-End Results}
 \todotext{Report only the final generated metrics. Do not generalize the pass rate beyond the benchmark scope.}
-
-\subsection{Overall End-to-End Pass Rate}
 
 \begin{table}[H]
   \centering
@@ -167,30 +118,19 @@ Answer quality is evaluated using deterministic rule-based validation, not human
   \end{tabular}
 \end{table}
 
-\subsection{Category-level Results}
-\todotext{Add category-level end-to-end pass rates from \texttt{final\_thesis\_evaluation\_report.md}. The final report states that all evaluated topics reached 1.000 retrieval, answer, citation, and end-to-end pass rates in the graph-augmented run.}
-
-\subsection{Difficulty-level Results}
-\todotext{Report difficulty-level results: easy 15 queries, medium 32 queries, hard 22 queries; each group reached 1.000 retrieval pass, answer pass, citation pass, and end-to-end pass in the final graph-augmented run.}
-
-\subsection{Normative-hierarchy-required Results}
-\todotext{Report normative-hierarchy-required results: 22 true and 47 false queries; both groups reached 1.000 end-to-end pass rate in the final graph-augmented run.}
+\todotext{\textbf{Overall pass rate.} Explain the 1.000 end-to-end pass rate on the constructed benchmark without extending the claim beyond benchmark scope.}
+\todotext{\textbf{Category-level results.} Add category-level end-to-end pass rates from \texttt{final\_thesis\_evaluation\_report.md}. The final report states that all evaluated topics reached 1.000 retrieval, answer, citation, and end-to-end pass rates in the graph-augmented run.}
+\todotext{\textbf{Difficulty-level results.} Report difficulty-level results: easy 15 queries, medium 32 queries, hard 22 queries; each group reached 1.000 retrieval pass, answer pass, citation pass, and end-to-end pass in the final graph-augmented run.}
+\todotext{\textbf{Normative-hierarchy-required results.} Report normative-hierarchy-required results: 22 true and 47 false queries; both groups reached 1.000 end-to-end pass rate in the final graph-augmented run.}
 
 \section{Case Studies}
 \todotext{Add concise case studies using actual retrieved contexts and generated answers from the final evaluation artifacts.}
-
-\subsection{Minor Worker Question}
-\todotext{Show how the system retrieves provisions for workers under 15 years old and cites the relevant Labor Code and guidance documents.}
-
-\subsection{Retirement Age Table Lookup}
-\todotext{Show how appendix or table chunks are retrieved and cited for retirement-age lookup questions.}
-
-\subsection{Labor Contract Content with Circular Guidance}
-\todotext{Show how graph expansion connects Labor Code contract provisions to circular guidance.}
-
-\subsection{Dismissal Dispute and Court Procedure}
-\todotext{Show how labor discipline or dismissal content is connected with labor-dispute procedure provisions.}
+\todotext{\textbf{Minor worker question.} Show how the system retrieves provisions for workers under 15 years old and cites the relevant Labor Code and guidance documents.}
+\todotext{\textbf{Retirement age table lookup.} Show how appendix or table chunks are retrieved and cited for retirement-age lookup questions.}
+\todotext{\textbf{Labor contract content with circular guidance.} Show how graph expansion connects Labor Code contract provisions to circular guidance.}
+\todotext{\textbf{Dismissal dispute and court procedure.} Show how labor discipline or dismissal content is connected with labor-dispute procedure provisions.}
 
 \section{Error Analysis and Limitations}
 The 100\% result is measured on the constructed 69-query benchmark and should not be interpreted as universal legal correctness.
-\todotext{Discuss remaining limitations: scoped corpus, constructed benchmark, deterministic validation rather than expert review, extractive answer style, dependence on chunking and reference parsing quality, and external legal updates outside the indexed corpus.}
+
+\todotext{Discuss remaining limitations: scoped corpus, constructed benchmark, deterministic validation rather than expert review, extractive answer style, dependence on chunking and reference parsing quality, and external legal updates outside the indexed corpus. Move verbose failure-taxonomy or raw examples to Appendix G if needed.}

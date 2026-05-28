@@ -6,24 +6,20 @@
 \section{Retrieval-Augmented Generation}
 \todotext{Move and expand the old RAG background here. Explain indexing, embeddings, retrieval, context assembly, and grounded generation. Cite foundational RAG work such as \cite{lewis2020retrieval} and add any newer verified RAG references.}
 
-\begin{figure}[H]
+\begin{figure}[htbp]
   \centering
-  \placeholderbox{Standard RAG pipeline: query encoding, vector search, retrieved context, prompt assembly, and answer generation.}
+  \resizebox{0.95\textwidth}{!}{\input{assets/figures/tikz/fig_standard_rag_pipeline}}
   \caption{Standard retrieval-augmented generation pipeline.}
   \label{fig:standard-rag-pipeline}
 \end{figure}
 
-\section{Legal Question Answering}
-\todotext{Review legal QA requirements: jurisdiction specificity, temporal validity, citation traceability, cautious wording, and the risk of unsupported legal conclusions. Add legal QA references using \cite{todo_legal_question_answering}.}
+\section{Legal Question Answering and Domain Challenges}
+\todotext{\textbf{Legal QA requirements.} Review legal QA requirements: jurisdiction specificity, temporal validity, citation traceability, cautious wording, and the risk of unsupported legal conclusions. Add legal QA references using \cite{todo_legal_question_answering}.}
+\todotext{\textbf{Legal document structure and citation.} Explain how Vietnamese legal documents are organized into documents, chapters, sections, articles, clauses, points, and appendices. Discuss why legal citations must preserve this hierarchy. Cite verified Vietnamese legal document sources using \cite{todo_vietnamese_labor_law_documents}.}
 
-\section{Legal Document Structure and Citation}
-\todotext{Explain how Vietnamese legal documents are organized into documents, chapters, sections, articles, clauses, points, and appendices. Discuss why legal citations must preserve this hierarchy. Cite verified Vietnamese legal document sources using \cite{todo_vietnamese_labor_law_documents}.}
-
-\section{Knowledge Graphs for Legal Retrieval}
-\todotext{Introduce knowledge graphs for representing legal hierarchy, references, topics, actors, issue types, and normative relationships. Explain how graph structure complements embedding similarity. Add verified KG and legal KG references.}
-
-\section{Graph-Augmented Retrieval}
-\todotext{Move the old graph-augmented retrieval background here. Compare graph expansion with vector-only and hybrid retrieval, and cite GraphRAG or graph-augmented retrieval work using \cite{todo_graphrag_graph_augmented_retrieval}.}
+\section{Knowledge Graphs and Graph-Augmented RAG}
+\todotext{\textbf{Knowledge graphs for legal retrieval.} Introduce knowledge graphs for representing legal hierarchy, references, topics, actors, issue types, and normative relationships. Explain how graph structure complements embedding similarity. Add verified KG and legal KG references.}
+\todotext{\textbf{Graph-augmented retrieval.} Move the old graph-augmented retrieval background here. Compare graph expansion with vector-only and hybrid retrieval, and cite GraphRAG or graph-augmented retrieval work using \cite{todo_graphrag_graph_augmented_retrieval}.}
 
 \section{Evaluation Methods for RAG Systems}
 \todotext{Review retrieval metrics, answer validation, and citation grounding. Distinguish human expert review, LLM-as-Judge, and deterministic rule-based validation; later chapters use deterministic rule-based validation only.}

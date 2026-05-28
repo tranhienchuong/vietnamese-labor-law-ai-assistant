@@ -1,0 +1,60 @@
+\babel@toc {english}{}\relax 
+\contentsline {chapter}{Abstract}{i}{chapter*.1}%
+\contentsline {chapter}{Acknowledgements}{ii}{chapter*.2}%
+\contentsline {chapter}{\numberline {1}Introduction}{1}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Background}{1}{section.1.1}%
+\contentsline {section}{\numberline {1.2}Problem Statement}{1}{section.1.2}%
+\contentsline {section}{\numberline {1.3}Research Objectives}{1}{section.1.3}%
+\contentsline {section}{\numberline {1.4}Scope of the Project}{1}{section.1.4}%
+\contentsline {section}{\numberline {1.5}Contributions}{1}{section.1.5}%
+\contentsline {section}{\numberline {1.6}Thesis Structure}{2}{section.1.6}%
+\contentsline {chapter}{\numberline {2}Background and Related Work}{3}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Large Language Models}{3}{section.2.1}%
+\contentsline {section}{\numberline {2.2}Retrieval-Augmented Generation}{3}{section.2.2}%
+\contentsline {section}{\numberline {2.3}Legal Question Answering and Domain Challenges}{3}{section.2.3}%
+\contentsline {section}{\numberline {2.4}Knowledge Graphs and Graph-Augmented RAG}{4}{section.2.4}%
+\contentsline {section}{\numberline {2.5}Evaluation Methods for RAG Systems}{4}{section.2.5}%
+\contentsline {chapter}{\numberline {3}System Design and Methodology}{5}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Overall System Architecture}{5}{section.3.1}%
+\contentsline {section}{\numberline {3.2}Legal Corpus and Data Sources}{7}{section.3.2}%
+\contentsline {section}{\numberline {3.3}Legal Document Preprocessing and Enrichment}{9}{section.3.3}%
+\contentsline {section}{\numberline {3.4}Legal Cross-Reference Extraction and Graph Design}{13}{section.3.4}%
+\contentsline {section}{\numberline {3.5}Vector-based and Hybrid Retrieval}{17}{section.3.5}%
+\contentsline {section}{\numberline {3.6}Query Routing and Graph Expansion Policy}{20}{section.3.6}%
+\contentsline {section}{\numberline {3.7}Grounded Answer Generation with Legal Citations}{23}{section.3.7}%
+\contentsline {chapter}{\numberline {4}Implementation}{28}{chapter.4}%
+\contentsline {section}{\numberline {4.1}Technology Stack}{28}{section.4.1}%
+\contentsline {section}{\numberline {4.2}Data Processing Implementation}{28}{section.4.2}%
+\contentsline {section}{\numberline {4.3}Vector Index and Hybrid Retrieval Implementation}{29}{section.4.3}%
+\contentsline {section}{\numberline {4.4}Neo4j Graph Implementation}{29}{section.4.4}%
+\contentsline {section}{\numberline {4.5}Graph-Augmented Retriever Implementation}{29}{section.4.5}%
+\contentsline {section}{\numberline {4.6}Grounded Answer Generator and Validation}{29}{section.4.6}%
+\contentsline {section}{\numberline {4.7}Evaluation Scripts and Reproducibility}{30}{section.4.7}%
+\contentsline {section}{\numberline {4.8}Example Use Cases}{30}{section.4.8}%
+\contentsline {chapter}{\numberline {5}Evaluation and Results}{31}{chapter.5}%
+\contentsline {section}{\numberline {5.1}Evaluation Setup and Benchmark Design}{31}{section.5.1}%
+\contentsline {section}{\numberline {5.2}Retrieval Evaluation Methodology}{32}{section.5.2}%
+\contentsline {section}{\numberline {5.3}Answer and Citation Evaluation Methodology}{32}{section.5.3}%
+\contentsline {section}{\numberline {5.4}Retrieval Results}{32}{section.5.4}%
+\contentsline {section}{\numberline {5.5}End-to-End Results}{33}{section.5.5}%
+\contentsline {section}{\numberline {5.6}Case Studies}{34}{section.5.6}%
+\contentsline {section}{\numberline {5.7}Error Analysis and Limitations}{34}{section.5.7}%
+\contentsline {chapter}{\numberline {6}Discussion}{35}{chapter.6}%
+\contentsline {section}{\numberline {6.1}Key Findings}{35}{section.6.1}%
+\contentsline {section}{\numberline {6.2}Impact of Hierarchical Chunking}{35}{section.6.2}%
+\contentsline {section}{\numberline {6.3}Benefits of Graph-Augmented Retrieval}{35}{section.6.3}%
+\contentsline {section}{\numberline {6.4}Role of Normative Hierarchy in Legal QA}{35}{section.6.4}%
+\contentsline {section}{\numberline {6.5}Citation Grounding and Hallucination Control}{35}{section.6.5}%
+\contentsline {section}{\numberline {6.6}Practical Applications}{35}{section.6.6}%
+\contentsline {section}{\numberline {6.7}Limitations}{36}{section.6.7}%
+\contentsline {chapter}{\numberline {7}Conclusion and Future Work}{37}{chapter.7}%
+\contentsline {section}{\numberline {7.1}Conclusion}{37}{section.7.1}%
+\contentsline {section}{\numberline {7.2}Future Work}{37}{section.7.2}%
+\contentsline {chapter}{References}{38}{chapter*.20}%
+\contentsline {chapter}{\numberline {A}List of Legal Documents}{39}{appendix.A}%
+\contentsline {chapter}{\numberline {B}Chunk Schema}{40}{appendix.B}%
+\contentsline {chapter}{\numberline {C}Graph Schema}{41}{appendix.C}%
+\contentsline {chapter}{\numberline {D}Benchmark Samples}{42}{appendix.D}%
+\contentsline {chapter}{\numberline {E}Evaluation Metrics}{43}{appendix.E}%
+\contentsline {chapter}{\numberline {F}Reproducibility Commands}{44}{appendix.F}%
+\contentsline {chapter}{\numberline {G}Example Retrieved Contexts and Answers}{45}{appendix.G}%

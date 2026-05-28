@@ -20,74 +20,39 @@
   \end{tabular}
 \end{table}
 
-\section{Data Processing Pipeline}
+\section{Data Processing Implementation}
 \todotext{Document the implemented scripts and modules that transform cleaned legal text into enriched chunks, reference edges, vector records, and graph artifacts.}
+\todotext{\textbf{Clean text input.} Describe cleaned corpus inputs and validation artifacts from \texttt{artifacts/validation}.}
+\todotext{\textbf{Chunk generation.} Describe chunk generation modules and scripts, including hierarchy detection and output files \texttt{legal\_chunks.jsonl} and \texttt{legal\_chunks\_summary.md}.}
+\todotext{\textbf{Metadata enrichment.} Describe enrichment rules for topic, actor, issue type, document type, normative rank, and citation metadata.}
+\todotext{\textbf{Cross-reference extraction.} Describe reference extraction outputs, including resolved and unresolved reference reports.}
 
-\subsection{Clean Text Input}
-\todotext{Describe cleaned corpus inputs and validation artifacts from \texttt{artifacts/validation}.}
-
-\subsection{Chunk Generation}
-\todotext{Describe chunk generation modules and scripts, including hierarchy detection and output files \texttt{legal\_chunks.jsonl} and \texttt{legal\_chunks\_summary.md}.}
-
-\subsection{Metadata Enrichment}
-\todotext{Describe enrichment rules for topic, actor, issue type, document type, normative rank, and citation metadata.}
-
-\subsection{Cross-reference Extraction}
-\todotext{Describe reference extraction outputs, including resolved and unresolved reference reports.}
-
-\section{Vector Index Implementation}
+\section{Vector Index and Hybrid Retrieval Implementation}
 \todotext{Move old vector database implementation content here and align it with the Qdrant collection used in the final evaluation.}
-
-\subsection{Qdrant Collection}
-\todotext{Document collection \texttt{vietnamese\_labor\_law\_chunks}, vector dimension 384, cloud storage mode, and validation that 1,556 chunks were indexed.}
-
-\subsection{Dense and Sparse Retrieval}
-\todotext{Explain dense vector search, sparse token search, and how hybrid retrieval is implemented. Add key script and module names during chapter writing.}
-
-\subsection{Metadata Payload}
-\todotext{List payload fields and explain how they support filtering, citation display, reranking, and validation.}
+\todotext{\textbf{Qdrant collection.} Document collection \texttt{vietnamese\_labor\_law\_chunks}, vector dimension 384, cloud storage mode, and validation that 1,556 chunks were indexed.}
+\todotext{\textbf{Dense and sparse retrieval.} Explain dense vector search, sparse token search, and how hybrid retrieval is implemented. Add key script and module names during chapter writing.}
+\todotext{\textbf{Metadata payload.} List payload fields and explain how they support filtering, citation display, reranking, and validation.}
 
 \section{Neo4j Graph Implementation}
 \todotext{Move old Neo4j graph database details here and keep lower-level implementation details separate from the methodology chapter.}
-
-\subsection{Node Types}
-\todotext{Document implemented node types: Document, Article, Clause, Point, Appendix, EvidenceChunk, Topic, Actor, and IssueType.}
-
-\subsection{Relationship Types}
-\todotext{Document structural, taxonomy, cross-reference, and normative hierarchy relationships. Include \texttt{REFERENCES}, \texttt{DETAILS}, and \texttt{GUIDED\_BY}.}
-
-\subsection{Graph Constraints and Indexes}
-\todotext{Document Neo4j constraints, indexes, upsert strategy, and validation queries used during graph build.}
+\todotext{\textbf{Node types.} Document implemented node types: Document, Article, Clause, Point, Appendix, EvidenceChunk, Topic, Actor, and IssueType.}
+\todotext{\textbf{Relationship types.} Document structural, taxonomy, cross-reference, and normative hierarchy relationships. Include \texttt{REFERENCES}, \texttt{DETAILS}, and \texttt{GUIDED\_BY}.}
+\todotext{\textbf{Graph constraints and indexes.} Document Neo4j constraints, indexes, upsert strategy, and validation queries used during graph build. Move verbose schema listings to Appendix C.}
 
 \section{Graph-Augmented Retriever Implementation}
-\todotext{Describe implemented retriever modules and how they use Qdrant records plus Neo4j expansion.}
+\todotext{Describe implemented retriever modules and how they use Qdrant records plus Neo4j expansion without turning this chapter into API documentation.}
+\todotext{\textbf{Seed chunk selection.} Explain seed retrieval from hybrid search, including top-k, prefetch limit, metadata hints, and query routing outputs.}
+\todotext{\textbf{Graph expansion.} Explain graph expansion from seed chunks through structural, cross-reference, taxonomy, and normative hierarchy edges.}
+\todotext{\textbf{Reranking and deduplication.} Explain score merging, deduplication by chunk ID, context ordering, and maximum context selection for answering.}
 
-\subsection{Seed Chunk Selection}
-\todotext{Explain seed retrieval from hybrid search, including top-k, prefetch limit, metadata hints, and query routing outputs.}
+\section{Grounded Answer Generator and Validation}
+\todotext{Move old prompt design content here but revise it to match the implemented grounded extractive answer generator and validation layer.}
+\todotext{\textbf{Extractive answer generation.} Describe the deterministic extractive provider used in the final evaluation and how answer text is selected from retrieved evidence.}
+\todotext{\textbf{Legal citation formatting.} Document legal-basis formatting, citation surfaces, evidence quotes, and source display.}
+\todotext{\textbf{Normative hierarchy handling.} Explain how the answer generator handles higher-rank provisions, implementing guidance, and appendices without implying universal legal interpretation.}
 
-\subsection{Graph Expansion}
-\todotext{Explain graph expansion from seed chunks through structural, cross-reference, taxonomy, and normative hierarchy edges.}
-
-\subsection{Reranking and Deduplication}
-\todotext{Explain score merging, deduplication by chunk ID, context ordering, and maximum context selection for answering.}
-
-\section{Grounded Answer Generator}
-\todotext{Move old prompt design content here but revise it to match the implemented grounded extractive answer generator instead of a general free-form prompt-only design.}
-
-\subsection{Extractive Answer Generation}
-\todotext{Describe the deterministic extractive provider used in the final evaluation and how answer text is selected from retrieved evidence.}
-
-\subsection{Legal Citation Formatting}
-\todotext{Document legal-basis formatting, citation surfaces, evidence quotes, and source display.}
-
-\subsection{Normative Hierarchy Handling}
-\todotext{Explain how the answer generator handles higher-rank provisions, implementing guidance, and appendices without implying universal legal interpretation.}
-
-\section{Evaluation Scripts and Artifacts}
-\todotext{Document scripts for retrieval-mode evaluation, end-to-end evaluation, and final thesis evaluation reports. Reference the generated artifacts in \texttt{artifacts/evaluation}.}
+\section{Evaluation Scripts and Reproducibility}
+\todotext{Document scripts for retrieval-mode evaluation, end-to-end evaluation, and final thesis evaluation reports. Reference the generated artifacts in \texttt{artifacts/evaluation}. Include environment variables, Qdrant and Neo4j setup, and commands from \texttt{artifacts/evaluation/reproducibility\_notes.md}. Move long command listings to Appendix F.}
 
 \section{Example Use Cases}
 \todotext{Move old example-use-case content here. Use the case studies requested in Chapter 5 as the main examples: minor worker, retirement age table lookup, labor contract content with circular guidance, and dismissal dispute with court procedure.}
-
-\section{Reproducibility Setup}
-\todotext{Move old deployment and CI/CD material here only if it helps reproduce the thesis evaluation. Include environment variables, Qdrant and Neo4j setup, and commands from \texttt{artifacts/evaluation/reproducibility\_notes.md}.}
