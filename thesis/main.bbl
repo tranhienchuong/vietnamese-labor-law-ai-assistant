@@ -176,26 +176,6 @@
       \field{note}{Placeholder citation key. Replace with verified bibliographic metadata before final submission.}
       \field{title}{TODO: Verified reference for Qdrant vector database}
     \endentry
-    \entry{todo_reranker}{misc}{}
-      \name{author}{1}{}{%
-        {{hash=b7b1e314614cf326c6e2b6eba1540682}{%
-           family={{TODO}},
-           familyi={T\bibinitperiod}}}%
-      }
-      \strng{namehash}{b7b1e314614cf326c6e2b6eba1540682}
-      \strng{fullhash}{b7b1e314614cf326c6e2b6eba1540682}
-      \strng{bibnamehash}{b7b1e314614cf326c6e2b6eba1540682}
-      \strng{authorbibnamehash}{b7b1e314614cf326c6e2b6eba1540682}
-      \strng{authornamehash}{b7b1e314614cf326c6e2b6eba1540682}
-      \strng{authorfullhash}{b7b1e314614cf326c6e2b6eba1540682}
-      \field{extraname}{5}
-      \field{sortinit}{T}
-      \field{sortinithash}{9af77f0292593c26bde9a56e688eaee9}
-      \field{labelnamesource}{author}
-      \field{labeltitlesource}{title}
-      \field{note}{Placeholder citation key. Replace with verified bibliographic metadata before final submission.}
-      \field{title}{TODO: Verified reference for semantic reranking or cross-encoder reranking}
-    \endentry
     \entry{todo_sentence_transformers}{misc}{}
       \name{author}{1}{}{%
         {{hash=b7b1e314614cf326c6e2b6eba1540682}{%
@@ -208,7 +188,7 @@
       \strng{authorbibnamehash}{b7b1e314614cf326c6e2b6eba1540682}
       \strng{authornamehash}{b7b1e314614cf326c6e2b6eba1540682}
       \strng{authorfullhash}{b7b1e314614cf326c6e2b6eba1540682}
-      \field{extraname}{6}
+      \field{extraname}{5}
       \field{sortinit}{T}
       \field{sortinithash}{9af77f0292593c26bde9a56e688eaee9}
       \field{labelnamesource}{author}

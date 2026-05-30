@@ -5,12 +5,12 @@
   \usepackage{fontspec}
   \setmainfont{Latin Modern Roman}
   \setsansfont{Latin Modern Sans}
-  \setmonofont{Latin Modern Mono}
+  \setmonofont{Consolas}
 \else\ifLuaTeX
   \usepackage{fontspec}
   \setmainfont{Latin Modern Roman}
   \setsansfont{Latin Modern Sans}
-  \setmonofont{Latin Modern Mono}
+  \setmonofont{Consolas}
 \else
   \PackageError{main}{This template requires XeLaTeX or LuaLaTeX}{Compile with xelatex or lualatex.}
 \fi\fi
@@ -21,6 +21,7 @@
 \usepackage{booktabs}
 \usepackage{longtable}
 \usepackage{array}
+\usepackage{tabularx}
 \usepackage{xcolor}
 \usepackage{listings}
 \usepackage{caption}
@@ -30,6 +31,13 @@
 \usepackage{enumitem}
 \usepackage{csquotes}
 \usepackage{float}
+\usepackage{fvextra}
+\DefineVerbatimEnvironment{ThesisCode}{Verbatim}{
+  breaklines=true,
+  breakanywhere=true,
+  fontsize=\footnotesize,
+  baselinestretch=1.0
+}
 \usepackage[
   backend=biber,
   style=numeric,
@@ -41,6 +49,7 @@
   citecolor=blue!50!black,
   urlcolor=blue!50!black
 ]{hyperref}
+\setcounter{tocdepth}{1}
 
 \addbibresource{references.bib}
 

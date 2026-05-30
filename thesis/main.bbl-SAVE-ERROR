@@ -1,0 +1,202 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.2 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated by
+% biber as required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+
+\refsection{0}
+  \datalist[entry]{nyt/global//global/global}
+    \entry{lewis2020retrieval}{inproceedings}{}
+      \name{author}{12}{}{%
+        {{hash=ecbe786a5668bf643d74bb24fe1c3cfe}{%
+           family={Lewis},
+           familyi={L\bibinitperiod},
+           given={Patrick},
+           giveni={P\bibinitperiod}}}%
+        {{hash=79978685fd7b37606022b06c0f6419a1}{%
+           family={Perez},
+           familyi={P\bibinitperiod},
+           given={Ethan},
+           giveni={E\bibinitperiod}}}%
+        {{hash=d205faec67355b6e0ec49f82a492324c}{%
+           family={Piktus},
+           familyi={P\bibinitperiod},
+           given={Aleksandra},
+           giveni={A\bibinitperiod}}}%
+        {{hash=e1c32989a78998fe3c03c981d0da2dc7}{%
+           family={Petroni},
+           familyi={P\bibinitperiod},
+           given={Fabio},
+           giveni={F\bibinitperiod}}}%
+        {{hash=b24392ebfb2c0a35979fc689c389c649}{%
+           family={Karpukhin},
+           familyi={K\bibinitperiod},
+           given={Vladimir},
+           giveni={V\bibinitperiod}}}%
+        {{hash=78a420900f50a8470ad085fb05231bf6}{%
+           family={Goyal},
+           familyi={G\bibinitperiod},
+           given={Naman},
+           giveni={N\bibinitperiod}}}%
+        {{hash=b2e0f8c7e3713c1429efaef33a765086}{%
+           family={Kuttler},
+           familyi={K\bibinitperiod},
+           given={Heinrich},
+           giveni={H\bibinitperiod}}}%
+        {{hash=c97f53fdeeb04c28de19e3324cb4bc0a}{%
+           family={Lewis},
+           familyi={L\bibinitperiod},
+           given={Mike},
+           giveni={M\bibinitperiod}}}%
+        {{hash=d4d56d3d370b3afd4ad2ebf985fbd3f8}{%
+           family={Yih},
+           familyi={Y\bibinitperiod},
+           given={Wen-tau},
+           giveni={W\bibinithyphendelim t\bibinitperiod}}}%
+        {{hash=b3ff4029884ead9928954ea33714192c}{%
+           family={Rocktäschel},
+           familyi={R\bibinitperiod},
+           given={Tim},
+           giveni={T\bibinitperiod}}}%
+        {{hash=6cd024b217f3f2f8126e253b8c84d24d}{%
+           family={Riedel},
+           familyi={R\bibinitperiod},
+           given={Sebastian},
+           giveni={S\bibinitperiod}}}%
+        {{hash=ca01c762f4a52dd8a8548508f8d727c9}{%
+           family={Kiela},
+           familyi={K\bibinitperiod},
+           given={Douwe},
+           giveni={D\bibinitperiod}}}%
+      }
+      \strng{namehash}{f238c3bfc4b30650dd17e65c4aadfc66}
+      \strng{fullhash}{d5790956633f004933efb36e2c537495}
+      \strng{bibnamehash}{f238c3bfc4b30650dd17e65c4aadfc66}
+      \strng{authorbibnamehash}{f238c3bfc4b30650dd17e65c4aadfc66}
+      \strng{authornamehash}{f238c3bfc4b30650dd17e65c4aadfc66}
+      \strng{authorfullhash}{d5790956633f004933efb36e2c537495}
+      \field{sortinit}{L}
+      \field{sortinithash}{7c47d417cecb1f4bd38d1825c427a61a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{booktitle}{Advances in Neural Information Processing Systems}
+      \field{title}{Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks}
+      \field{year}{2020}
+    \endentry
+    \entry{todo_vietnamese_labor_law_documents}{misc}{}
+      \name{author}{1}{}{%
+        {{hash=b7b1e314614cf326c6e2b6eba1540682}{%
+           family={{TODO}},
+           familyi={T\bibinitperiod}}}%
+      }
+      \strng{namehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{fullhash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{bibnamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authorbibnamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authornamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authorfullhash}{b7b1e314614cf326c6e2b6eba1540682}
+      \field{extraname}{1}
+      \field{sortinit}{T}
+      \field{sortinithash}{9af77f0292593c26bde9a56e688eaee9}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Placeholder citation key. Replace with official legal-document citation metadata before final submission.}
+      \field{title}{TODO: Verified official sources for Vietnamese labor-law legal documents}
+    \endentry
+    \entry{todo_graphrag_graph_augmented_retrieval}{misc}{}
+      \name{author}{1}{}{%
+        {{hash=b7b1e314614cf326c6e2b6eba1540682}{%
+           family={{TODO}},
+           familyi={T\bibinitperiod}}}%
+      }
+      \strng{namehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{fullhash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{bibnamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authorbibnamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authornamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authorfullhash}{b7b1e314614cf326c6e2b6eba1540682}
+      \field{extraname}{2}
+      \field{sortinit}{T}
+      \field{sortinithash}{9af77f0292593c26bde9a56e688eaee9}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Placeholder citation key. Replace with verified bibliographic metadata before final submission.}
+      \field{title}{TODO: Verified reference for GraphRAG or graph-augmented retrieval}
+    \endentry
+    \entry{todo_legal_question_answering}{misc}{}
+      \name{author}{1}{}{%
+        {{hash=b7b1e314614cf326c6e2b6eba1540682}{%
+           family={{TODO}},
+           familyi={T\bibinitperiod}}}%
+      }
+      \strng{namehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{fullhash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{bibnamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authorbibnamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authornamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authorfullhash}{b7b1e314614cf326c6e2b6eba1540682}
+      \field{extraname}{3}
+      \field{sortinit}{T}
+      \field{sortinithash}{9af77f0292593c26bde9a56e688eaee9}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Placeholder citation key. Replace with verified bibliographic metadata before final submission.}
+      \field{title}{TODO: Verified reference for legal question answering}
+    \endentry
+    \entry{todo_qdrant}{misc}{}
+      \name{author}{1}{}{%
+        {{hash=b7b1e314614cf326c6e2b6eba1540682}{%
+           family={{TODO}},
+           familyi={T\bibinitperiod}}}%
+      }
+      \strng{namehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{fullhash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{bibnamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authorbibnamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authornamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authorfullhash}{b7b1e314614cf326c6e2b6eba1540682}
+      \field{extraname}{4}
+      \field{sortinit}{T}
+      \field{sortinithash}{9af77f0292593c26bde9a56e688eaee9}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Placeholder citation key. Replace with verified bibliographic metadata before final submission.}
+      \field{title}{TODO: Verified reference for Qdrant vector database}
+    \endentry
+    \entry{todo_sentence_transformers}{misc}{}
+      \name{author}{1}{}{%
+        {{hash=b7b1e314614cf326c6e2b6eba1540682}{%
+           family={{TODO}},
+           familyi={T\bibinitperiod}}}%
+      }
+      \strng{namehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{fullhash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{bibnamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authorbibnamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authornamehash}{b7b1e314614cf326c6e2b6eba1540682}
+      \strng{authorfullhash}{b7b1e314614cf326c6e2b6eba1540682}
+      \field{extraname}{5}
+      \field{sortinit}{T}
+      \field{sortinithash}{9af77f0292593c26bde9a56e688eaee9}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Placeholder citation key. Replace with verified bibliographic metadata before final submission.}
+      \field{title}{TODO: Verified reference for Sentence Transformers}
+    \endentry
+  \enddatalist
+\endrefsection
+\endinput
+
