@@ -170,13 +170,10 @@
 
 \chapter*{Abstract}
 \addcontentsline{toc}{chapter}{Abstract}
-% TODO: Summarize the problem, methodology, implementation, evaluation, and main findings after the thesis is complete.
-\todotext{Write a concise 200--300 word abstract after chapter drafting. Mention the scoped Vietnamese labor-law corpus, hierarchy-aware chunking, Qdrant, Neo4j, graph-augmented retrieval, extractive citation-grounded answering, deterministic rule-based validation, and the constructed 69-query benchmark.}
+This thesis addresses the challenge of designing domain-specific question-answering systems for legal documents, where answers must be grounded in retrieved sources and supported by traceable citations. Originally motivated by navigating employment contract termination procedures, the scope was expanded to a broader Vietnamese labor-law question-answering system. The proposed architecture integrates a syntax-aware, hierarchy-aware legal chunking pipeline to parse statutory texts at leaf-level boundaries, coupled with deterministic metadata enrichment. To support search and retrieval, a hybrid vector-sparse index is deployed in Qdrant, alongside a Neo4j document-structure knowledge graph mapping explicit cross-references and authority relations. During retrieval, a graph-augmented retriever performs topological expansions to capture relevant implementing regulations. The retrieved context is then passed to a generative model for citation-grounded answer generation. Finally, the system employs a deterministic rule-based validation layer to verify that cited legal bases and coordinates are structurally supported by the retrieved context. 
 
-\chapter*{Acknowledgements}
-\addcontentsline{toc}{chapter}{Acknowledgements}
-% TODO: Acknowledge supervisors, university staff, peers, family, and any data/tool providers.
-\todotext{Add acknowledgements before submission.}
+The system was evaluated on a scoped Vietnamese labor-law corpus comprising six indexed legislative and administrative documents (1,556 legal chunks) using a constructed 69-query diagnostic benchmark. Under the deterministic validation rules, the graph-augmented retriever achieved an average Recall@10 of 1.000, a Required Citation Coverage of 1.000, and a Forbidden Citation Violation Rate of 0.000, with an end-to-end pipeline pass rate of 1.000. These results demonstrate strong retrieval and validation performance within the controlled experimental setup. However, they do not prove complete legal correctness or imply error-free behavior in real-world use. The deterministic validation represents a software-level verification step rather than a substitute for professional legal advice or qualified human legal expert review. The proposed system serves as a legal information assistant designed to support search and compliance lookup within the scoped corpus.
+
 
 \tableofcontents
 \listoffigures
