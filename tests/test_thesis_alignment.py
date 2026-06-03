@@ -26,8 +26,16 @@ OFFICIAL_DOCUMENT_IDS = {
 }
 
 
+def require_artifact(path: str) -> Path:
+    artifact_path = REPO_ROOT / path
+    if not artifact_path.exists():
+        raise unittest.SkipTest(f"Artifact not available in checkout: {path}")
+    return artifact_path
+
+
 def read_json(path: str) -> dict[str, object]:
-    return json.loads((REPO_ROOT / path).read_text(encoding="utf-8"))
+    artifact_path = require_artifact(path)
+    return json.loads(artifact_path.read_text(encoding="utf-8"))
 
 
 def make_context(
@@ -63,7 +71,7 @@ class FakeGraphStore:
 
 class ThesisAlignmentTests(unittest.TestCase):
     def test_chunk_artifact_has_no_duplicate_or_missing_required_fields(self) -> None:
-        chunk_path = REPO_ROOT / "artifacts/chunks/legal_chunks_enriched.jsonl"
+        chunk_path = require_artifact("artifacts/chunks/legal_chunks_enriched.jsonl")
         seen_chunk_ids: set[str] = set()
         duplicate_chunk_ids: set[str] = set()
         missing_citation_text: list[str] = []
@@ -118,13 +126,14 @@ class ThesisAlignmentTests(unittest.TestCase):
         alias_values = set(config["label_aliases"].values())
         self.assertTrue(OFFICIAL_DOCUMENT_IDS.issubset(alias_values))
 
-    def test_graph_summary_and_mock_expansion_return_valid_chunk_ids(self) -> None:
+    def test_graph_summary_matches_thesis_artifact(self) -> None:
         summary = read_json("artifacts/graph/legal_graph_build_summary.json")
         self.assertEqual(summary["documents"], 6)
         self.assertEqual(summary["evidence_chunks"], 1556)
         self.assertEqual(summary["orphan_evidence_chunks"], 0)
         self.assertTrue(summary["neo4j_validation"]["passed"])
 
+    def test_mock_graph_expansion_returns_valid_chunk_ids(self) -> None:
         expanded_chunk_id = "45-2019-qh14::article-3"
         expander = Neo4jLegalGraphExpander(
             store=FakeGraphStore(

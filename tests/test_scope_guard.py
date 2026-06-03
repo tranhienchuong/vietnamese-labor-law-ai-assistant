@@ -41,6 +41,11 @@ def make_context(
 
 class ScopeGuardTests(unittest.TestCase):
     def test_frozen_out_of_corpus_items_are_detected_without_ids(self) -> None:
+        if not BENCHMARK_PATH.exists():
+            raise unittest.SkipTest(
+                "Artifact not available in checkout: artifacts/evaluation/golden_benchmark_100_extended.jsonl"
+            )
+
         items = []
         for line in BENCHMARK_PATH.read_text(encoding="utf-8").splitlines():
             if not line.strip():
