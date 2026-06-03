@@ -1,4 +1,4 @@
-"""Utilities for building a Vietnamese labor law assistant."""
+"""Vietnamese Labor Law GraphRAG QA package."""
 
 __all__ = ["__version__"]
 

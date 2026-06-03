@@ -1,12 +1,12 @@
 {
-  "build_id": "20260526T121738Z",
-  "generated_at": "2026-05-26T12:28:15.032286+00:00",
-  "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "build_id": "20260603T163804Z",
+  "generated_at": "2026-06-03T16:38:39.000000+00:00",
+  "embedding_model": "keepitreal/vietnamese-sbert",
   "chunk_count": 1556,
   "document_count": 6,
   "source_chunks_file": "artifacts/chunks/legal_chunks_enriched.jsonl",
   "source_chunks_file_hash": "c7c3938598717c0256cf6fd5ad4c3d3b8581fd7a2385df2474d1928d9c1bb922",
-  "vector_dimension": 384,
+  "vector_dimension": 768,
   "indexed_documents": [
     {
       "document_id": "45-2019-qh14",
@@ -61,7 +61,7 @@
   "collection_name": "vietnamese_labor_law_chunks",
   "qdrant_storage": "cloud",
   "record_source": "qdrant_payload",
-  "dense_model_name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "dense_model_name": "keepitreal/vietnamese-sbert",
   "dense_vector_name": "dense",
   "sparse_vector_name": "sparse",
   "record_count": 1556,
@@ -69,13 +69,13 @@
   "chunk_paths": [
     "artifacts/chunks/legal_chunks_enriched.jsonl"
   ],
-  "build_dir": "artifacts/index/builds/build_20260526T121738Z",
-  "qdrant_path": "artifacts/index/builds/build_20260526T121738Z/qdrant",
-  "records_db_path": "artifacts/index/builds/build_20260526T121738Z/records.db",
-  "records_jsonl_path": "artifacts/index/builds/build_20260526T121738Z/records.jsonl",
-  "sparse_encoder_path": "artifacts/index/builds/build_20260526T121738Z/sparse_encoder.json",
-  "batch_size": 8,
-  "device": "cuda",
+  "build_dir": "artifacts/index/builds/build_20260603T163804Z",
+  "qdrant_path": "artifacts/index/builds/build_20260603T163804Z/qdrant",
+  "records_db_path": "artifacts/index/builds/build_20260603T163804Z/records.db",
+  "records_jsonl_path": "artifacts/index/builds/build_20260603T163804Z/records.jsonl",
+  "sparse_encoder_path": "artifacts/index/builds/build_20260603T163804Z/sparse_encoder.json",
+  "batch_size": 32,
+  "device": "cpu",
   "validation": {
     "chunk_count": 1556,
     "duplicate_chunk_ids": [],
@@ -99,7 +99,7 @@
     "dense_vector_count": 1556,
     "sparse_vector_count": 1556,
     "dense_vector_dimensions": [
-      384
+      768
     ],
     "empty_vector_payload_count": 0,
     "empty_vector_payload_chunk_ids": [],

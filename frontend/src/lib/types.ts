@@ -133,6 +133,9 @@ export type AdminStatsResponse = {
     queryRouterEnabled: boolean
     llmProvider: string
     groqModel: string
+    benchmarkPath: string
+    benchmarkMetricMode: string
+    citationValidationMode: string
   }
 }
 
@@ -185,6 +188,13 @@ export type AdminRetrievalConfigResponse = {
   queryRouterFallbackToHeuristic: boolean
   embeddingProvider: string
   denseModel: string
+  benchmarkPath: string
+  benchmarkMetricMode: string
+  citationValidationMode: string
+  legalGraphEnabled: boolean
+  legalGraphBackend: string
+  legalGraphExpansionDepth: number
+  legalGraphMaxExpandedChunks: number
 }
 
 export type AdminTraceSummary = {

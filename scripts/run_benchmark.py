@@ -60,13 +60,19 @@ from vn_labor_law_ai_assistant.retriever import (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run the current RAG pipeline against the golden benchmark."
+        description=(
+            "Run the legacy generated-answer benchmark harness. Official thesis metrics use "
+            "ablation_retrieval_100.py, evaluate_end_to_end_rag.py, and compute_100_split_metrics.py."
+        )
     )
     parser.add_argument(
         "--benchmark-path",
         type=Path,
-        default=Path("eval/data") / BENCHMARK_JSONL_NAME,
-        help=f"Path to imported benchmark JSONL (default: eval/data/{BENCHMARK_JSONL_NAME}).",
+        default=Path("archive/legacy/eval/data") / BENCHMARK_JSONL_NAME,
+        help=(
+            "Path to legacy imported benchmark JSONL "
+            f"(default: archive/legacy/eval/data/{BENCHMARK_JSONL_NAME})."
+        ),
     )
     parser.add_argument(
         "--index-path",
@@ -77,8 +83,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("eval/results"),
-        help="Directory for benchmark outputs.",
+        default=Path("archive/legacy/eval/results"),
+        help="Directory for legacy benchmark outputs.",
     )
     parser.add_argument(
         "--top-k",
@@ -148,7 +154,7 @@ def parse_args() -> argparse.Namespace:
         "--judge-provider",
         default="",
         help=(
-            "Optional judge provider for answer scoring. Leave empty to use the benchmark "
+            "Legacy exploratory judge provider for answer scoring. Leave empty to use the benchmark "
             f"default ({default_benchmark_judge_provider()})."
         ),
     )
@@ -156,14 +162,14 @@ def parse_args() -> argparse.Namespace:
         "--judge-model",
         default="",
         help=(
-            "Optional judge model name for LLM-as-a-judge scoring. Leave empty to use the "
+            "Legacy exploratory judge model name for LLM-as-a-judge scoring. Leave empty to use the "
             "default model for the chosen judge provider."
         ),
     )
     parser.add_argument(
         "--no-judge",
         action="store_true",
-        help="Disable LLM-as-a-judge scoring even when --model is provided.",
+        help="Disable legacy LLM-as-a-judge scoring even when --model is provided.",
     )
     parser.add_argument(
         "--evaluator",
@@ -192,7 +198,7 @@ def parse_args() -> argparse.Namespace:
         "--export-ragas",
         action="store_true",
         help=(
-            "Write an additional RAGAS-ready JSONL file with generated answers and "
+            "Legacy exploratory export: write a RAGAS-ready JSONL file with generated answers and "
             "the exact contexts sent to the answer prompt. Requires --model."
         ),
     )

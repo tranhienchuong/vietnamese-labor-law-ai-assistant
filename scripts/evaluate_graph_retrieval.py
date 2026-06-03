@@ -29,11 +29,13 @@ CLAUSE_RE = re.compile(r"khoan\s+(?P<clause>\d+)", re.IGNORECASE)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluate hybrid vs Neo4j graph retrieval.")
+    parser = argparse.ArgumentParser(
+        description="Exploratory hybrid vs Neo4j graph retrieval check over the official benchmark."
+    )
     parser.add_argument(
         "--golden-path",
         type=Path,
-        default=REPO_ROOT / "eval" / "data" / "golden_benchmark_100_answered_v2.jsonl",
+        default=REPO_ROOT / "artifacts" / "evaluation" / "golden_benchmark_100_extended.jsonl",
     )
     parser.add_argument("--index-path", type=Path, default=REPO_ROOT / "artifacts" / "index")
     parser.add_argument("--top-k", type=int, default=8)
@@ -56,6 +58,9 @@ def load_cases(path: Path, *, limit: int = 0) -> list[dict[str, Any]]:
 
 def normalized_citations(case: dict[str, Any]) -> tuple[str, ...]:
     citations = list(case.get("gold_citations") or [])
+    for spec in case.get("required_citations") or []:
+        if isinstance(spec, dict) and spec.get("label"):
+            citations.append(str(spec["label"]))
     for key in ("gold_citation_primary", "gold_citation_secondary"):
         if case.get(key):
             citations.append(str(case[key]))
@@ -120,7 +125,7 @@ def metrics_for_case(case: dict[str, Any], result: Any, *, top_k: int) -> dict[s
 
     return {
         "id": case.get("id", ""),
-        "question": case.get("question", ""),
+        "question": case.get("question") or case.get("query", ""),
         "recall_at_k": min(1.0, relevant_count / expected_count),
         "precision_at_k": relevant_count / max(1, top_k),
         "mrr": (1.0 / first_relevant_rank) if first_relevant_rank else 0.0,
@@ -168,7 +173,8 @@ def run_variant(
     retriever = HybridRetriever(index_path=index_path, reranker_model=reranker_model)
     try:
         for case in cases:
-            result = retriever.retrieve(str(case["question"]), top_k=top_k)
+            query = str(case.get("question") or case.get("query") or "")
+            result = retriever.retrieve(query, top_k=top_k)
             row = metrics_for_case(case, result, top_k=top_k)
             row["variant"] = variant
             rows.append(row)

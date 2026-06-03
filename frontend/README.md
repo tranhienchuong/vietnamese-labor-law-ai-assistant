@@ -1,6 +1,6 @@
-# Vietnamese Labor Law AI Frontend
+# Vietnamese Labor Law GraphRAG QA Frontend
 
-Next.js interface for the Vietnamese Labor Law AI Assistant.
+Next.js interface for the Vietnamese Labor Law GraphRAG QA system.
 
 ## Run locally
 
