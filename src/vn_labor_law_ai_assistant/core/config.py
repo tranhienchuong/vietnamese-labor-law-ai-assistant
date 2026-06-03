@@ -12,6 +12,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ENV_FILE = REPO_ROOT / ".env"
 DEV_ONLY_AUTH_SECRET = "dev-only-change-me-vietnamese-labor-law-ai"
+DEFAULT_USER_PASSWORD_VALUE = "user12345"
+DEFAULT_ADMIN_PASSWORD_VALUE = "admin12345"
 TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 
@@ -77,13 +79,13 @@ class Settings(BaseSettings):
     default_user_name: str = Field(default="Nguoi dung", alias="DEFAULT_USER_NAME")
     default_user_email: str = Field(default="user@example.com", alias="DEFAULT_USER_EMAIL")
     default_user_password: SecretStr = Field(
-        default=SecretStr("user12345"),
+        default=SecretStr(DEFAULT_USER_PASSWORD_VALUE),
         alias="DEFAULT_USER_PASSWORD",
     )
     default_admin_name: str = Field(default="Quan tri vien", alias="DEFAULT_ADMIN_NAME")
     default_admin_email: str = Field(default="admin@example.com", alias="DEFAULT_ADMIN_EMAIL")
     default_admin_password: SecretStr = Field(
-        default=SecretStr("admin12345"),
+        default=SecretStr(DEFAULT_ADMIN_PASSWORD_VALUE),
         alias="DEFAULT_ADMIN_PASSWORD",
     )
 
@@ -217,6 +219,23 @@ class Settings(BaseSettings):
             return DEV_ONLY_AUTH_SECRET
         return secret
 
+    def validate_auth_seed_configuration(self) -> None:
+        if not self.is_production or not self.auth_seed_default_users:
+            return
+
+        default_passwords = {
+            DEFAULT_USER_PASSWORD_VALUE,
+            DEFAULT_ADMIN_PASSWORD_VALUE,
+        }
+        seeded_passwords = {
+            self.default_user_password.get_secret_value(),
+            self.default_admin_password.get_secret_value(),
+        }
+        if default_passwords.intersection(seeded_passwords):
+            raise RuntimeError(
+                "Default seeded users cannot use default passwords in production."
+            )
+
     def cors_origins_list(self) -> list[str]:
         return [
             origin.strip()
@@ -303,6 +322,8 @@ def get_settings() -> Settings:
 
 __all__ = [
     "DEV_ONLY_AUTH_SECRET",
+    "DEFAULT_ADMIN_PASSWORD_VALUE",
+    "DEFAULT_USER_PASSWORD_VALUE",
     "ENV_FILE",
     "REPO_ROOT",
     "Settings",

@@ -207,7 +207,7 @@ async def chat(
             role="user",
             content=question,
         )
-        answer = "KhÃ´ng tÃ¬m tháº¥y ngá»¯ cáº£nh phÃ¹ há»£p trong index."
+        answer = "Không tìm thấy ngữ cảnh phù hợp trong index."
         assistant_message = store.append_message(
             conversation_id=conversation_id,
             role="assistant",

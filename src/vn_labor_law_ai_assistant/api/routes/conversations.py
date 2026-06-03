@@ -22,7 +22,7 @@ async def create_conversation(
     current_user: AuthUser = Depends(require_current_user),
 ):
     payload = await request.json()
-    title = str(payload.get("title") or "Cuá»™c trÃ² chuyá»‡n má»›i")
+    title = str(payload.get("title") or "Cuộc trò chuyện mới")
     conversation = get_auth_store().create_conversation(
         user_id=current_user.id,
         title=title,

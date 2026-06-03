@@ -93,6 +93,7 @@ class AdminService:
     def _settings_check(self) -> dict[str, str]:
         try:
             self.settings.require_auth_secret()
+            self.settings.validate_auth_seed_configuration()
             return {"status": "ok", "message": "Settings loaded."}
         except Exception:
             return {"status": "error", "message": "Required settings are missing."}

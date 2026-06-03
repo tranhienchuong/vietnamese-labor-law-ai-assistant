@@ -105,3 +105,15 @@ class AuthStoreTest(TestCase):
 
             store.revoke_session(token)
             self.assertIsNone(store.get_user_by_token(token))
+
+    def test_blank_conversation_title_uses_valid_vietnamese_default(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            store = create_test_auth_store(Path(tmpdir) / "app.db")
+            user = store.authenticate_user("user@example.com", "user12345")
+            self.assertIsNotNone(user)
+            assert user is not None
+
+            conversation = store.create_conversation(user_id=user.id, title="   ")
+
+            self.assertEqual(conversation["title"], "Cuộc trò chuyện mới")
+            self.assertNotIn("Ã", conversation["title"])

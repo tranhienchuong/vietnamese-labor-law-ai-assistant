@@ -25,6 +25,7 @@ class AuthService:
         settings = load_settings()
         if not settings.auth_seed_default_users:
             return
+        settings.validate_auth_seed_configuration()
 
         self.create_user_if_missing(
             name=settings.default_user_name,

@@ -71,6 +71,29 @@ class FakeRetriever:
         )
 
 
+class EmptyRetriever:
+    def retrieve(
+        self,
+        query: str,
+        *,
+        top_k: int,
+        prefetch_limit: int,
+    ) -> RetrievalResult:
+        return RetrievalResult(
+            query=query,
+            intent=QueryIntent(
+                raw_query=query,
+                normalized_query=query.lower(),
+                actor_filters=(),
+                topic_filters=(),
+                issue_filters=(),
+                document_filters=(),
+            ),
+            hits=(),
+            contexts=(),
+        )
+
+
 class ChatTracingTest(TestCase):
     def setUp(self) -> None:
         self.tmpdir = TemporaryDirectory()
@@ -148,3 +171,20 @@ class ChatTracingTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("X-Request-Id", response.headers)
+
+    def test_chat_no_context_fallback_uses_valid_vietnamese_text(self) -> None:
+        token = self._token_for("user@example.com", "user12345")
+
+        with patch(
+            "vn_labor_law_ai_assistant.api.routes.chat.get_retriever",
+            return_value=EmptyRetriever(),
+        ):
+            response = self.client.post(
+                "/chat",
+                json={"messages": [{"role": "user", "content": "Hoi ve nghi viec"}]},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text, "Không tìm thấy ngữ cảnh phù hợp trong index.")
+        self.assertNotIn("Ã", response.text)

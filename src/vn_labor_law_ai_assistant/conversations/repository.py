@@ -19,7 +19,7 @@ class ConversationRepository:
     def create_conversation(self, *, user_id: str, title: str) -> dict[str, Any]:
         now = utc_timestamp()
         conversation_id = str(uuid.uuid4())
-        clean_title = title.strip()[:120] or "Cuá»™c trÃ² chuyá»‡n má»›i"
+        clean_title = title.strip()[:120] or "Cuộc trò chuyện mới"
         with self.database.connect() as connection:
             connection.execute(
                 """

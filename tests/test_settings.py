@@ -62,6 +62,36 @@ class SettingsTest(TestCase):
         with self.assertRaisesRegex(RuntimeError, "AUTH_SECRET"):
             prod_settings.require_auth_secret()
 
+    def test_production_rejects_default_seeded_user_passwords(self) -> None:
+        settings = Settings(
+            _env_file=None,
+            APP_ENV="production",
+            AUTH_SECRET="prod-secret",
+            AUTH_SEED_DEFAULT_USERS=True,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "default passwords"):
+            settings.validate_auth_seed_configuration()
+
+    def test_production_allows_seed_disabled_or_custom_seed_passwords(self) -> None:
+        seed_disabled = Settings(
+            _env_file=None,
+            APP_ENV="production",
+            AUTH_SECRET="prod-secret",
+            AUTH_SEED_DEFAULT_USERS=False,
+        )
+        seed_disabled.validate_auth_seed_configuration()
+
+        custom_passwords = Settings(
+            _env_file=None,
+            APP_ENV="production",
+            AUTH_SECRET="prod-secret",
+            AUTH_SEED_DEFAULT_USERS=True,
+            DEFAULT_USER_PASSWORD="custom-user-password",
+            DEFAULT_ADMIN_PASSWORD="custom-admin-password",
+        )
+        custom_passwords.validate_auth_seed_configuration()
+
     def test_load_settings_reads_current_environment(self) -> None:
         with patch.dict(os.environ, {"APP_DB_PATH": "runtime/app.db"}, clear=True):
             self.assertEqual(load_settings().app_db_path, Path("runtime/app.db"))
