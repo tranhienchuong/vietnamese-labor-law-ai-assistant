@@ -2,7 +2,7 @@
 \label{ch:implementation}
 
 \section{Technology Stack}
-The implemented legal question-answering system is constructed as a modular Python-based pipeline designed for high performance, strict citation safety, and reproducible evaluations. The backend orchestration layer is written in Python (version 3.10+) and exposes high-level service interfaces via FastAPI. Data persistence, semantic indexing, and relational traversal are partitioned across two specialized database layers. For vector-based and keyword-based search, the system integrates a Qdrant vector database collection, which maintains dense high-dimensional semantic encodings and sparse index structures. For relational cross-reference modeling and topological query expansion, the system utilizes a Neo4j graph database instance configured with the APOC (Awesome Procedures on Cypher) plugin library.
+The implemented legal question-answering system is constructed as a modular Python-based pipeline for reproducible retrieval and citation grounding. The backend orchestration layer is written in Python (version 3.10+) and exposes high-level service interfaces via FastAPI. Data persistence, semantic indexing, and relational traversal are partitioned across two specialized database layers. For vector-based and keyword-based search, the system integrates a Qdrant vector database collection, which maintains dense high-dimensional semantic encodings and sparse index structures. For relational cross-reference modeling and topological query expansion, the system utilizes a Neo4j graph database instance configured with the APOC (Awesome Procedures on Cypher) plugin library.
 
 \begin{table}[H]
   \centering
@@ -13,7 +13,7 @@ The implemented legal question-answering system is constructed as a modular Pyth
     Layer & Technology & Purpose \\
     \midrule
     Backend & Python, FastAPI & API and orchestration \\
-    Embeddings & Sentence Transformers & Dense multilingual vectors \\
+    Embeddings & Sentence Transformers & Vietnamese sentence\\ embeddings \\
     Vector database & Qdrant & Dense and sparse retrieval \\
     Graph database & Neo4j & Legal hierarchy and references \\
     Evaluation & Python scripts & Benchmark reporting \\
@@ -21,58 +21,104 @@ The implemented legal question-answering system is constructed as a modular Pyth
   \end{tabular}
 \end{table}
 
-The dense embeddings are generated locally using the Sentence Transformers framework, employing the pre-trained \texttt{keepitreal/\allowbreak{}vietnamese-sbert} model (yielding 384-dimensional vectors). To ensure high reproducibility, the database dependencies—specifically the Neo4j Community Edition 5.26 service—are containerized using Docker and managed programmatically via Docker Compose (using the \texttt{docker-compose.\allowbreak{}neo4j.yml} configuration). Global execution parameters, including connection URIs (\texttt{QDRANT\_URL}, \texttt{NEO4J\_URI}), authentication credentials (\texttt{NEO4J\_AUTH}), active models (\texttt{DENSE\_MODEL}), and graph traversal depths, are fully parameterized through a central \texttt{.env} environment file.
+The dense embeddings are generated locally using the Sentence Transformers framework, employing the pre-trained \texttt{keepitreal/\allowbreak{}vietnamese-sbert} model (yielding 384-dimensional vectors). To ensure high reproducibility, the Neo4j Community Edition 5.26 service is containerized using Docker and managed programmatically via Docker Compose. The compose file is \texttt{docker-compose.\allowbreak{}neo4j.yml}. Runtime connection values are parameterized through environment variables, including \texttt{QDRANT\_URL}, \texttt{NEO4J\_URI}, and \texttt{NEO4J\_AUTH}. Active model and graph traversal settings are also read from the central \texttt{.env} file.
+
+\begin{table}[H]
+  \centering
+  \caption{Final implementation configuration.}
+  \label{tab:implementation-configuration}
+  \begin{tabular}{p{0.36\linewidth}p{0.48\linewidth}}
+    \toprule
+    Component & Final setting \\
+    \midrule
+    Embedding model & \texttt{keepitreal/\allowbreak{}vietnamese-sbert} \\
+    Vector store & Qdrant \\
+    Graph database & Neo4j \\
+    Indexed corpus size & 1,556 chunks \\
+    Graph expansion & Enabled \\
+    Scope guard & Enabled \\
+    Procedural routing & Disabled by default \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 \section{Data Processing Implementation}
-The transformation of raw legal texts into validated, queryable vector and graph structures follows a strict pipeline of Python scripts located in the \texttt{scripts/} directory. The pipeline executes in the following sequential order:
-
-\begin{enumerate}
-  \item \textbf{Clean Text Validation}: The raw Vietnamese labor law documents and circulars are validated for syntax correctness, header structure, and encoding issues using the \texttt{validate\_curated\_legal\_texts.py} script. The results are logged as validation reports in \texttt{artifacts/validation/}.
-  \item \textbf{Chunk Generation}: The script \texttt{build\_legal\_chunks.py} parses curated legal text files from \texttt{corpus/data/curated/} and writes chunk artifacts to \texttt{artifacts/chunks/}.
-  \item \textbf{Metadata Enrichment}: The script \texttt{enrich\_legal\_chunks.py} maps semantic attributes to each chunk, including general topics, specific actors, issue types, document types, and legislative normative ranks. It writes the enriched output directly to \texttt{legal\_chunks\_enriched.jsonl}.
-  \item \textbf{Cross-Reference Extraction}: Relative and absolute legal cross-references within each chunk are parsed and extracted by running \texttt{build\_reference\_edges.py}. This generates a raw reference-edge list in \texttt{artifacts/graph/reference\_edges.jsonl}. Unresolved citations are automatically flagged and written to a diagnostic report via \texttt{analyze\_unresolved\_reference\_edges.py}.
-\end{enumerate}
+The transformation of raw legal texts into validated, queryable vector and graph structures follows a sequential Python pipeline located in the \path{scripts/} directory. The process begins with clean text validation using \path{validate_curated_legal_texts.py}. Validation reports are written under \path{artifacts/validation/}. The chunk generation step then uses \path{build_legal_chunks.py} to parse curated legal text files and write chunk artifacts. Next, \path{enrich_legal_chunks.py} maps semantic attributes to each chunk, including topics, actors, issue types, document types, and legislative normative ranks. The final processing step extracts relative and document-level legal cross-references using \path{build_reference_edges.py}. Unresolved citations are flagged through \path{analyze_unresolved_reference_edges.py} for diagnostic review.
 
 \section{Vector Index and Hybrid Retrieval Implementation}
-The vector indexing layer ingests the 1,556 enriched legal chunks and populates the Qdrant vector store. This process is orchestrated by running the script \texttt{build\_index.py} with the \texttt{--collection-name vietnamese\_labor\_law\_chunks} flag. During indexing, each chunk's textual content is converted into a 384-dimensional dense vector using the configured multilingual embedding model.
+The vector indexing layer ingests the 1,556 enriched legal chunks and populates the Qdrant vector store. This process is orchestrated by running \texttt{build\_index.py} with the configured Qdrant collection name. During indexing, each chunk's textual content is converted into a 384-dimensional dense vector using the configured Vietnamese SBERT embedding model.
 
-The resulting vector points are uploaded to Qdrant alongside a structured payload dictionary. This payload stores extensive metadata fields—such as the chunk ID, primary document ID, article number, clause reference, normative rank, topic labels, and the original Vietnamese citation text. Hybrid retrieval fuses dense vector similarity searches (capturing semantic proximity and synonym variations) with sparse token matching (ensuring that specific article numbers, statutory coordinates, and keywords are matched exactly). The payload fields are utilized during retrieval to enforce runtime filters (such as topic or document exclusions), support downstream citation validation, and enable deterministic context reranking before prompting.
+The resulting vector points are uploaded to Qdrant alongside structured payload metadata. This payload stores the chunk identity, primary document, article number, clause reference, normative rank, topic labels, and original Vietnamese citation surface. Hybrid retrieval fuses dense vector similarity searches with sparse token matching, combining semantic proximity with exact matching for article numbers, statutory coordinates, and keywords. The payload fields are used during retrieval to enforce runtime filters, support downstream citation validation, and enable deterministic context reranking before prompting.
 
 \section{Neo4j Graph Implementation}
-To construct the relational backbone of the corpus, the system deploys a local Neo4j 5.26 Community Edition container via the \texttt{docker-compose.neo4j.yml} compose file. The legal graph is loaded and validated using the \texttt{build\_legal\_graph.py} script, which connects to the database via the Bolt protocol on port 7687 using credentials configured in the \texttt{.env} file (\texttt{NEO4J\_USER=neo4j}, \texttt{NEO4J\_PASSWORD=password}).
+To construct the relational backbone of the corpus, the system deploys a local Neo4j 5.26 Community Edition container via the \texttt{docker-compose.neo4j.yml} compose file. The legal graph is loaded and validated using \texttt{build\_legal\_graph.py}. The script connects through the Bolt protocol on port 7687 using credentials configured in the \texttt{.env} file.
 
-The graph model defines node types representing the legislative hierarchy, including \textit{Document}, \textit{Article}, \textit{Clause}, \textit{Point}, \textit{Appendix}, and \textit{EvidenceChunk}, as well as semantic nodes like \textit{Topic}, \textit{Actor}, and \textit{IssueType}. Relationships are loaded from the processed reference-edge artifacts, including structural links (establishing parent-child hierarchies between Articles, Clauses, and Points) and taxonomy edges. Legal cross-references are represented using specific edge types: \texttt{REFERENCES} (general statutory citations), \texttt{DETAILS} (provisions that provide specific definitions), and \texttt{GUIDED\_BY} (links establishing administrative delegation between a parent code and executive decrees or circulars). Unique constraints and indexes are applied to the \texttt{id} properties of all nodes to ensure upsert integrity. In this build, 111 unresolved references were flagged and excluded from the Neo4j instance to prevent traversing dead-end or invalid citation paths.
+The graph model defines node types representing the legislative hierarchy, including documents, articles, clauses, points, appendices, and evidence chunks, as well as semantic nodes for topics, actors, and issue types. Relationships are loaded from the processed reference-edge artifacts, including structural hierarchy links and taxonomy edges. Legal cross-references are represented using reference, detail, and guidance edges. Unique constraints and indexes are applied to node identifiers to ensure upsert integrity. In this build, 111 unresolved references were flagged and excluded from the Neo4j instance to prevent traversing dead-end or invalid citation paths.
 
 \section{Graph-Augmented Retriever Implementation}
-The graph-augmented retriever is implemented in the \texttt{vn\_labor\_law\_ai\_assistant/\allowbreak{}rag/} module. The execution flow coordinates Qdrant searches and Neo4j graph queries to establish a complete legal context window:
+The graph-augmented retriever is implemented in the backend retrieval module. Its execution flow coordinates Qdrant searches and Neo4j graph queries to assemble a candidate legal context window. The process starts with seed retrieval: the query is routed to Qdrant, where hybrid retrieval fetches the top-$k$ seed chunks, typically 10. During node mapping, the retriever extracts seed chunk identifiers and maps them to the matching evidence nodes in Neo4j. Topological expansion then begins from the mapped seed nodes. The retriever executes a parameterized Cypher query through the Bolt driver to traverse reference edges, taxonomy links, and structural parents, with the expansion depth controlled by \texttt{LEGAL\_GRAPH\_EXPANSION\_DEPTH}. In the context assembly stage, the retriever merges the graph-expanded chunks with the original seeds, resolves score weights based on topological distance, deduplicates records by chunk ID, and selects the top-ranked contexts for downstream generation.
 
-\begin{enumerate}
-  \item \textbf{Seed Retrieval}: The query is routed to Qdrant, where hybrid retrieval fetches the top-$k$ (typically 10) seed chunks.
-  \item \textbf{Node Mapping}: The retriever extracts the unique \texttt{chunk\_id} values from the seed results and maps them directly to the matching \textit{EvidenceChunk} nodes in the Neo4j database.
-  \item \textbf{Topological Expansion}: Starting from the mapped seed nodes, the retriever executes a parameterized Cypher query using the Bolt driver to traverse reference edges (\texttt{DETAILS}, \texttt{GUIDED\_BY}, \texttt{REFERENCES}), taxonomy links, and structural parents. The expansion depth is controlled via the \texttt{LEGAL\_GRAPH\_EXPANSION\_DEPTH} variable (typically set to 2).
-  \item \textbf{Context Assembly}: The retriever merges the newly discovered graph chunks with the original seeds, resolves score weights based on topological distance, deduplicates duplicate records by chunk ID, and selects the top-ranked contexts up to the maximum prompt limit (typically 8 to 12 chunks) for downstream generation.
-\end{enumerate}
+\section{Runtime QA Pipeline}
+At runtime, the system combines retrieval, graph expansion, scope checking, answer construction, and validation. Algorithm~\ref{alg:runtime-qa-pipeline} summarizes the final pipeline in implementation-level pseudo-code.
+
+\begin{lstlisting}[caption={Runtime QA pipeline pseudo-code.},label={alg:runtime-qa-pipeline}]
+Input: user_query
+Output: answer_payload
+
+intent = detect_intent(user_query)
+seed_chunks = qdrant.hybrid_search(user_query, top_k=10)
+
+if graph_expansion_enabled:
+    graph_chunks = neo4j.expand_from(seed_chunks,
+                                     edge_types=[DETAILS, GUIDED_BY, REFERENCES],
+                                     depth=LEGAL_GRAPH_EXPANSION_DEPTH)
+else:
+    graph_chunks = []
+
+contexts = merge_deduplicate_and_rerank(seed_chunks, graph_chunks)
+contexts = apply_context_budget(contexts, max_answer_contexts)
+
+if scope_guard_enabled and is_out_of_scope(user_query, contexts):
+    return insufficient_context_payload(user_query)
+
+draft = generate_or_extract_answer(user_query, contexts)
+validation_status = validate_citations(draft, contexts)
+
+if validation_status fails:
+    draft = build_extractive_fallback(user_query, contexts)
+    validation_status = validate_citations(draft, contexts)
+
+return format_answer_payload(draft, validation_status)
+\end{lstlisting}
 
 \section{Grounded Answer Generator and Validation}
-The grounded answer generation layer is implemented in the \texttt{vn\_labor\_law\_ai\_assistant/\allowbreak{}answering.py} and \texttt{rag/\allowbreak{}answering/} modules. When LLM provider access is enabled through environment variables (such as \texttt{LLM\_PROVIDER=groq}), the system constructs a system prompt containing the assembled context block and a structured JSON schema (\texttt{ANSWER\_\allowbreak{}JSON\_\allowbreak{}SCHEMA}). The LLM is instructed to output a parsed JSON payload containing the natural language answer, specific parenthetical citation labels, and exact evidence quotes from the retrieved text.
+The grounded answer generation layer is implemented in the answering modules of the backend package. When LLM provider access is enabled through environment variables, such as \texttt{LLM\_PROVIDER=groq}, the system constructs a system prompt containing the assembled context block and the configured answer JSON schema. The LLM is instructed to output a parsed JSON payload containing the natural language answer, specific parenthetical citation labels, and exact evidence quotes from the retrieved text.
 
-To ensure safety and prevent hallucinations, the generation layer runs the response through a deterministic validation pipeline. The validation checks enforce three main rules: (1) every generated citation must map exactly to an article present in the retrieved context; (2) every statement of legal basis must match the original Vietnamese wording; and (3) no unsupported article numbers are allowed. If the validation check fails, or if the LLM provider is disabled, the system automatically triggers an extractive fallback using the \texttt{build\_extractive\_answer\_payload} function. This fallback directly extracts the validated legal provisions from the retrieved chunks and formats them as the final output. This fallback is used to reduce unsupported generation and ensure alignment with the indexed corpus.
+Before answer synthesis, the final candidate applies deterministic intent gating and a scope guard. The scope guard checks whether the query belongs to a known unsupported topic family and whether the retrieved evidence is sufficient for that topic. If the query is unsupported and the evidence is insufficient, the pipeline returns a structured insufficient-context output with an empty legal-basis field. This prevents unrelated in-corpus citations from being used to answer questions outside the indexed scope. The guard is rule-based and limited to the unsupported topic families defined for this benchmark.
+
+To ensure safety and prevent hallucinations, the generation layer runs the response through a deterministic validation pipeline. The validation checks enforce three main rules: (1) every generated citation must map exactly to an article present in the retrieved context; (2) every statement of legal basis must match the original Vietnamese wording; and (3) no unsupported article numbers are allowed. If the validation check fails, or if the LLM provider is disabled, the system automatically triggers an extractive fallback using \texttt{build\_extractive\_answer\_payload}. This fallback directly extracts the validated legal provisions from the retrieved chunks and formats them as the final output. This fallback is used to reduce unsupported generation and ensure alignment with the indexed corpus.
+
+The runtime API returns a structured payload so that the answer text and its legal bases can be checked separately. The following compact example shows the intended shape of the output; the wording is shortened for readability.
+
+\begin{ThesisCode}
+{
+  "query": "Nguoi lao dong duoc dinh nghia nhu the nao?",
+  "answer": "Nguoi lao dong la nguoi lam viec cho nguoi su dung lao dong theo thoa thuan, duoc tra luong va chiu su quan ly, dieu hanh, giam sat cua nguoi su dung lao dong.",
+  "legal_basis": [
+    "Bo luat so 45/2019/QH14, Dieu 3, khoan 1"
+  ],
+  "validation_status": {
+    "citation_valid": true,
+    "unsupported_articles": [],
+    "insufficient_context": false
+  }
+}
+\end{ThesisCode}
 
 \section{Evaluation Scripts and Reproducibility}
-The evaluation pipeline contains scripts designed to measure retrieval performance and end-to-end QA safety over the 69-query benchmark. The evaluations are fully reproducible using the commands detailed in \texttt{artifacts/\allowbreak{}evaluation/\allowbreak{}reproducibility\_notes.md}:
+The evaluation pipeline contains scripts designed to measure retrieval performance and end-to-end QA safety over the final 100-query benchmark. The evaluations are fully reproducible using the commands listed in Appendix~\ref{app:reproducibility-commands}. The retrieval ablation compares hybrid-only and graph-augmented retrieval on the 94 in-corpus benchmark queries. The end-to-end evaluation runs the full retrieval-to-generation pipeline with the final candidate configuration and validation checks. The adjusted benchmark split metrics are then computed from the saved result files. Overall execution and diagnostic checks are managed by the benchmark coordinator.
 
-\begin{itemize}
-  \item \textbf{Retrieval-Mode Evaluation}: Run using the \texttt{scripts/\allowbreak{}evaluate\_retrieval\_modes.py} script. This script compares vector-only, hybrid, and graph-augmented configurations on the diagnostic benchmark, writing results (Recall@10, required citation coverage, and forbidden citation violation rates) to \texttt{artifacts/\allowbreak{}evaluation/\allowbreak{}retrieval\_modes\_expanded\_results.csv}.
-  \item \textbf{End-to-End Evaluation}: Executed via \texttt{scripts/\allowbreak{}evaluate\_end\_to\_end\_rag.py}. This script runs the full retrieval-to-generation pipeline, passing outputs through the validation gates. The script writes detailed JSON traces and CSV summaries directly to \texttt{artifacts/\allowbreak{}evaluation/\allowbreak{}end\_to\_end\_expanded\_results.json} and \texttt{end\_to\_end\_expanded\_report.md}.
-  \item \textbf{Benchmark Coordination}: Overall execution and diagnostic checks are managed by the \texttt{scripts/run\_benchmark.py} coordinator.
-\end{itemize}
+Reproducibility is supported by keeping the final candidate settings explicit and by computing benchmark metrics from saved machine-readable result files. The evaluation scripts rebuild retrieval outputs, run the end-to-end pipeline, and recompute the adjusted split metrics using fixed benchmark annotations. Appendix~\ref{app:reproducibility-commands} lists the PowerShell commands used for these steps, so the reported metrics can be regenerated without relying on manual judgment or an LLM-as-Judge step.
 
 \section{Example Use Cases}
-The utility of the implementation is demonstrated across several common legal inquiry patterns evaluated on the diagnostic benchmark:
-
-\begin{itemize}
-  \item \textbf{Minor Worker Employment}: A query regarding hiring a 14-year-old worker (\texttt{LBR\_079}) triggers seed retrieval of BLLĐ Article 143, followed by a graph-augmented traversal to Circular 09/2020/TT-BLDTBXH, which extracts the exact administrative list of allowed occupations.
-  \item \textbf{Retirement Age Table Lookup}: An inquiry about female retirement ages in 2026 (\texttt{retirement\_female\_2026}) is routed to BLLĐ Article 169, which is linked via a \texttt{DETAILS} edge directly to Appendix I of Decree 135/2020/NĐ-CP, allowing the retriever to capture the exact tabular row and output 57 years.
-  \item \textbf{Labor Contract Content}: A question asking for mandatory contract details (\texttt{contract\_content\_guidance}) retrieves Article 21, then traverses the graph to Circular 10/2020/TT-BLDTBXH Article 3 to pull exact administrative guidelines.
-  \item \textbf{Dismissal Dispute Procedure}: A multi-hop query about dismissal mediation (\texttt{guidance\_dismissal\_dispute}) connects BLLĐ Article 188 to Article 32 of the Civil Procedure Code (BLTTDS 2015), linking substantive rights and court jurisdictions.
-\end{itemize}
+The utility of the implementation is demonstrated across several common legal inquiry patterns evaluated on the diagnostic benchmark. For minor worker employment, a query about hiring a 14-year-old worker triggers seed retrieval of Labor Code Article 143, followed by graph-augmented traversal to Circular 09/2020/TT-BLDTBXH to extract the administrative list of allowed occupations. For retirement age table lookup, an inquiry about female retirement ages in 2026 is routed to Labor Code Article 169, which is linked through a detail edge to Appendix I of Decree 135/2020/ND-CP, allowing the retriever to capture the relevant table row and output 57 years. For labor contract content, a question about mandatory contract details retrieves Article 21 and then traverses the graph to Circular 10/2020/TT-BLDTBXH Article 3 for administrative guidance. For dismissal dispute procedure, a multi-hop query about dismissal mediation connects Labor Code Article 188 to Article 32 of the Civil Procedure Code (BLTTDS 2015), linking substantive rights and court jurisdiction.

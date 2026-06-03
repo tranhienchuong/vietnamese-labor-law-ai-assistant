@@ -321,6 +321,7 @@ class RelevanceScorer:
             normative_rank = 0
         normative_boost = NORMATIVE_RANK_BONUS.get(normative_rank, 0.0)
         applied_query_intent = self._policy_intents_for_hit(hit, intent)
+        graph_expansion_profile = str(hit.payload.get("graph_expansion_profile") or "default")
         policy_boost = 0.0
         is_comparison_unlawful_vs_structural = (
             "compare_employee_unlawful_termination_vs_structural_change" in applied_query_intent
@@ -642,6 +643,26 @@ class RelevanceScorer:
                 expected_graph_article = True
             if not expected_graph_article:
                 policy_boost -= 0.35
+
+        if graph_expansion_profile == "paraphrased_real_user":
+            if hit.payload.get("retrieval_source") == "graph":
+                if not issue_values.intersection(intent.issue_filters):
+                    policy_boost -= 0.55
+                if intent.topic_filters and not topic_values.intersection(intent.topic_filters):
+                    policy_boost -= 0.35
+        elif graph_expansion_profile == "hard_negative":
+            if intent.issue_filters and not issue_values.intersection(intent.issue_filters):
+                policy_boost -= 0.40
+            if intent.topic_filters and not topic_values.intersection(intent.topic_filters):
+                policy_boost -= 0.30
+            if actor_values and specific_actor_filters and not actor_values.intersection(specific_actor_filters):
+                policy_boost -= 0.35
+            if hit.payload.get("retrieval_source") == "graph":
+                graph_doc_match = document_id == PRIMARY_LABOR_CODE_ID or document_id in {ND145_ID, TT09_ID, TT10_ID, ND135_ID}
+                if not graph_doc_match:
+                    policy_boost -= 0.60
+                if not exact_reference_boost and not issue_values.intersection(intent.issue_filters):
+                    policy_boost -= 0.80
 
         return hit.score + boost + graph_boost + normative_boost + policy_boost + exact_reference_boost
 

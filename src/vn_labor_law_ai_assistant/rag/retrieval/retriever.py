@@ -831,6 +831,7 @@ class HybridRetriever:
         intent: QueryIntent,
         graph_query_types: Sequence[str],
         expansion_depth: int,
+        expansion_profile: str,
     ) -> tuple[SearchHit, ...]:
         annotated: list[SearchHit] = []
         for hit in hits:
@@ -847,6 +848,7 @@ class HybridRetriever:
             payload.setdefault("graph_edge_types", [])
             payload.setdefault("applied_query_intent", list(graph_query_types))
             payload.setdefault("expansion_depth", expansion_depth)
+            payload.setdefault("graph_expansion_profile", expansion_profile)
             annotated.append(
                 SearchHit(
                     chunk_id=hit.chunk_id,
@@ -958,6 +960,11 @@ class HybridRetriever:
             if hasattr(graph_expander, "query_types_for_intent")
             else ()
         )
+        graph_expansion_profile = (
+            graph_expander.expansion_profile_for_intent(intent)
+            if hasattr(graph_expander, "expansion_profile_for_intent")
+            else "default"
+        )
         expansion_depth = (
             graph_expander.expansion_depth_for_intent(intent)
             if hasattr(graph_expander, "expansion_depth_for_intent")
@@ -1024,6 +1031,7 @@ class HybridRetriever:
                     "graph_depth": expansion_depth,
                     "applied_query_intent": list(graph_query_types),
                     "expansion_depth": expansion_depth,
+                    "graph_expansion_profile": graph_expansion_profile,
                     "graph_policy_reason": reference.reason,
                     "graph_policy_duplicate_of_vector_hit": record.chunk_id in existing,
                 }
@@ -1124,16 +1132,20 @@ class HybridRetriever:
         graph_expander = getattr(self, "_legal_graph_expander", None)
         graph_query_types: tuple[str, ...] = ()
         graph_expansion_depth = 0
+        graph_expansion_profile = "default"
         if graph_expander is not None:
             if hasattr(graph_expander, "query_types_for_intent"):
                 graph_query_types = tuple(graph_expander.query_types_for_intent(intent))
             if hasattr(graph_expander, "expansion_depth_for_intent"):
                 graph_expansion_depth = int(graph_expander.expansion_depth_for_intent(intent))
+            if hasattr(graph_expander, "expansion_profile_for_intent"):
+                graph_expansion_profile = str(graph_expander.expansion_profile_for_intent(intent) or "default")
             hits = self._annotate_vector_hits(
                 hits,
                 intent=intent,
                 graph_query_types=graph_query_types,
                 expansion_depth=graph_expansion_depth,
+                expansion_profile=graph_expansion_profile,
             )
 
             graph_hits = graph_expander.expand_from_hits(
@@ -1155,12 +1167,15 @@ class HybridRetriever:
                 if missing_chunk_ids:
                     direct_records.update(self._record_store.fetch_records(missing_chunk_ids))
                 hits = self._enrich_hits_with_records(hits, direct_records)
+                if hasattr(graph_expander, "filter_expanded_hits_for_intent"):
+                    hits = tuple(graph_expander.filter_expanded_hits_for_intent(hits, direct_records, intent))
         else:
             hits = self._annotate_vector_hits(
                 hits,
                 intent=intent,
                 graph_query_types=(),
                 expansion_depth=0,
+                expansion_profile="default",
             )
         hits = self._scorer.rerank_hits(hits, intent, direct_records)
         hits = self._semantic_reranker.semantic_rerank_hits(query, hits, direct_records)

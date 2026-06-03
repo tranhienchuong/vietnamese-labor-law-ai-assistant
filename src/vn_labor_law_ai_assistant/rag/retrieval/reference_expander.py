@@ -82,6 +82,11 @@ class ReferenceExpander:
             clause_refs = (reference.clause,) if reference.clause else ()
             point_refs = (reference.point,) if reference.point else ()
             fetch_limit = 1 if clause_refs or point_refs else max(1, min(4, per_reference_limit))
+            if (
+                reference.document_id == "92-2015-qh13-labor-only"
+                or (reference.document_id == "45-2019-qh14" and reference.article == "188")
+            ):
+                fetch_limit = 1
             fetched_records = self.record_store.fetch_records_by_reference(
                 document_ids=document_ids,
                 article_numbers=(reference.article,),

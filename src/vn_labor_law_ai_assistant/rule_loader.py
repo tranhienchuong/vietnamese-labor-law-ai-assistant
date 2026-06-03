@@ -235,6 +235,7 @@ class RuleLoader:
         actors, topics, issues = raw.get("actors", {}), raw.get("topics", {}), raw.get("issues", {})
         documents, query_types, hints = raw.get("documents", {}), raw.get("query_types", {}), raw.get("various_hints", {})
         config: dict[str, Any] = {
+            "ENABLE_PROCEDURAL_ROUTING": bool(raw.get("enable_procedural_routing", False)),
             "ACTOR_KEYWORDS": _keyword_map(actors),
             "TOPIC_KEYWORDS": _keyword_map(topics),
             "ISSUE_KEYWORDS": _keyword_map(issues),

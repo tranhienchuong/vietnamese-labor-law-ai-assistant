@@ -1,3 +1,4 @@
+enable_procedural_routing: false
 actors:
   nguoi_lao_dong:
     keywords:

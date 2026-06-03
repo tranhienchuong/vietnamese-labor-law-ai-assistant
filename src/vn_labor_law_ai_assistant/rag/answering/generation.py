@@ -6,6 +6,7 @@ import re
 from typing import Sequence
 
 from ...corpus_pipeline import normalize_for_matching
+from ..scope_guard import assess_scope, build_scope_refusal_payload
 from ...retriever import RetrievalContext, dedupe_preserve_order
 from .citation_guard import extract_evidence_sentence
 from .formatter import format_answer_for_user
@@ -304,6 +305,31 @@ def generate_grounded_answer(
         contexts,
         max_contexts=max_answer_contexts,
     )
+    scope_decision = assess_scope(question, selected_contexts)
+    if scope_decision.out_of_scope:
+        payload = build_scope_refusal_payload(scope_decision)
+        raw_content = json.dumps(payload, ensure_ascii=False)
+        parsed = ParsedAnswer(
+            answer=str(payload["answer"]),
+            legal_basis=(),
+            evidence_quotes=(),
+            insufficient_context=True,
+            notes=str(payload.get("notes") or ""),
+            raw_content=raw_content,
+        )
+        validation = validate_grounded_answer(parsed, selected_contexts)
+        return GroundedAnswerResult(
+            question=question,
+            answer=format_answer_for_user(parsed, question=question),
+            parsed=parsed,
+            validation=validation,
+            contexts=selected_contexts,
+            provider="scope_guard",
+            model="deterministic",
+            generation_method="scope_guard",
+            raw_content=raw_content,
+        )
+
     generation_method = "extractive"
     response_provider = provider
     response_model = model

@@ -111,7 +111,7 @@ ORDER BY edge_type;
 \chapter{Benchmark Samples}
 \label{app:benchmark-samples}
 
-This appendix presents representative sample cases extracted from the constructed diagnostic evaluation benchmark.
+This appendix presents representative sample cases extracted from the final 100-query diagnostic evaluation benchmark.
 
 \section{Case LBR\_001: Definition of Employee}
 \begin{itemize}
@@ -131,49 +131,118 @@ This appendix presents representative sample cases extracted from the constructe
   \item \textbf{Gold Answer}: Hai bên có thể giao kết bằng lời nói đối với hợp đồng có thời hạn dưới 01 tháng. Tuy nhiên, ngoại lệ này không áp dụng đối với người dưới 15 tuổi, người giúp việc gia đình, hoặc nhóm lao động thông qua người ủy quyền.
 \end{itemize}
 
+\section{Case LBR\_PR1: Paraphrased Real-User Query}
+\begin{itemize}
+  \item \textbf{Query}: Cong ty noi hang it viec nen chuyen toi sang viec khac gan 3 thang, khong hoi y kien toi, vay co on khong?
+  \item \textbf{Category}: Paraphrased real-user QA
+  \item \textbf{Difficulty}: Medium
+  \item \textbf{Required Citations}: \textit{Bộ luật Lao động 2019, khoản 1 Điều 29; khoản 2 Điều 29; khoản 3 Điều 29}
+  \item \textbf{Purpose}: Tests whether informal wording about temporary transfer to another job is mapped to the correct Labor Code article.
+\end{itemize}
+
+\section{Case LBR\_HN1: Hard Negative}
+\begin{itemize}
+  \item \textbf{Query}: Toi chi muon biet gio nao duoc tinh la lam viec ban dem, khong hoi cach tinh tien luong dem.
+  \item \textbf{Category}: Hard-negative citation QA
+  \item \textbf{Difficulty}: Medium
+  \item \textbf{Required Citations}: \textit{Bộ luật Lao động 2019, Điều 106}
+  \item \textbf{Forbidden Citations}: \textit{Bộ luật Lao động 2019, Điều 98; Nghị định 145/2020/NĐ-CP, Điều 56}
+  \item \textbf{Purpose}: Tests whether the retriever distinguishes the definition of night work from provisions about night-work wage calculation.
+\end{itemize}
+
+\section{Case LBR\_OOC1: Refusal Query}
+\begin{itemize}
+  \item \textbf{Query}: Nam 2026 luong toi thieu vung I, II, III, IV la bao nhieu?
+  \item \textbf{Category}: Out-of-corpus QA
+  \item \textbf{Difficulty}: Hard
+  \item \textbf{Required Citations}: Empty set
+  \item \textbf{Expected Behavior}: The system should refuse or report insufficient indexed context, because the required legal instrument is not present in the indexed corpus.
+\end{itemize}
+
 \chapter{Evaluation Metrics}
 \label{app:evaluation-metrics}
 
 This appendix provides the formal mathematical definitions of the evaluation metrics used to measure retrieval effectiveness and response compliance in Chapter 5.
 
 \section{Information Retrieval Metrics}
-Let $Q$ represent the set of benchmark queries, let $G(q)$ represent the set of ground-truth legal citations for a query $q \in Q$, and let $\mathcal{C}_k(q)$ represent the set of citations retrieved within the top-$k$ candidates.
+Let $Q$ represent the full benchmark. The final benchmark is split into in-corpus queries and out-of-corpus queries:
+\[
+Q = Q_{\mathrm{in}} \cup Q_{\mathrm{ooc}},
+\qquad
+|Q| = 100,\quad |Q_{\mathrm{in}}| = 94,\quad |Q_{\mathrm{ooc}}| = 6.
+\]
+
+Let $G(q)$ represent the set of ground-truth legal citations for a query $q$, and let $\mathcal{C}_k(q)$ represent the set of citations retrieved within the top-$k$ candidates. Recall@k and Required Citation Coverage are computed only for $q \in Q_{\mathrm{in}}$ where $|G(q)| > 0$. Out-of-corpus queries have empty required citation sets, so citation recall is not defined for them. They are evaluated using refusal or insufficient-context behavior.
 
 \textbf{Recall@k}:
 \[
-\operatorname{Recall}@k = \frac{1}{|Q|} \sum_{q \in Q} \frac{|G(q) \cap \mathcal{C}_k(q)|}{|G(q)|}
+\operatorname{Recall}@k =
+\frac{1}{|Q_{\mathrm{in}}|}
+\sum_{\substack{q \in Q_{\mathrm{in}}\\ |G(q)| > 0}}
+\frac{|G(q) \cap \mathcal{C}_k(q)|}{|G(q)|}
 \]
 
 \textbf{Required Citation Coverage}:
 \[
-\operatorname{RequiredCitationCoverage} = \frac{1}{|Q|} \sum_{q \in Q} \mathbb{I}\left[ G(q) \subseteq \mathcal{C}_k(q) \right]
+\operatorname{RequiredCitationCoverage}@k =
+\frac{1}{|Q_{\mathrm{in}}|}
+\sum_{\substack{q \in Q_{\mathrm{in}}\\ |G(q)| > 0}}
+\frac{|G(q) \cap \mathcal{C}_k(q)|}{|G(q)|}
 \]
-where $\mathbb{I}\left[ \cdot \right]$ is the boolean indicator function.
 
 \textbf{Forbidden Citation Violation Rate}:
 Let $F(q)$ define the set of legally obsolete or distracting citations for query $q$:
 \[
-\operatorname{ForbiddenViolationRate} = \frac{1}{|Q|} \sum_{q \in Q} \mathbb{I}\left[ F(q) \cap \mathcal{C}_k(q) \neq \emptyset \right]
+\operatorname{ForbiddenViolationRate} =
+\frac{1}{|Q_{\mathrm{in}}|}
+\sum_{q \in Q_{\mathrm{in}}}
+\mathbb{I}\left[ F(q) \cap \mathcal{C}_k(q) \neq \emptyset \right]
 \]
+where $\mathbb{I}\left[ \cdot \right]$ is the boolean indicator function.
 
 \section{End-to-End System Pass Logic}
-The complete end-to-end pass state for query $q \in Q$, denoted as $\operatorname{Pass}_{\mathrm{E2E}}(q)$, is computed via:
+For an in-corpus query, the pass state combines retrieval, answer, citation, and quality checks:
 \[
-\operatorname{Pass}_{\mathrm{E2E}}(q) = \operatorname{Pass}_{\mathrm{retrieval}}(q) \land \operatorname{Pass}_{\mathrm{answer}}(q) \land \operatorname{Pass}_{\mathrm{citation}}(q) \land \operatorname{Pass}_{\mathrm{quality}}(q)
+\operatorname{Pass}_{\mathrm{in}}(q) =
+\operatorname{Pass}_{\mathrm{retrieval}}(q)
+\land \operatorname{Pass}_{\mathrm{answer}}(q)
+\land \operatorname{Pass}_{\mathrm{citation}}(q)
+\land \operatorname{Pass}_{\mathrm{quality}}(q)
 \]
 where each term denotes the boolean outcome of the retrieval layer, the answer presence gate, the citation containment check, and the token density quality check.
+
+For an out-of-corpus query, $\operatorname{RefusalPass}(q)$ is true only when the system refuses or reports insufficient indexed context. The adjusted end-to-end score is:
+\[
+\operatorname{AdjustedE2E} =
+\frac{
+\sum_{q \in Q_{\mathrm{in}}} \mathbb{I}[\operatorname{Pass}_{\mathrm{in}}(q)]
+{}+
+\sum_{q \in Q_{\mathrm{ooc}}} \mathbb{I}[\operatorname{RefusalPass}(q)]
+}{|Q|}
+\]
+
+For the final benchmark:
+\[
+\operatorname{AdjustedE2E} = \frac{78}{100} = 0.780.
+\]
 
 \chapter{Reproducibility Commands}
 \label{app:reproducibility-commands}
 
 This appendix documents the shell commands required to execute evaluations, rebuild indices, or regenerate database structures in PowerShell.
 
-\section{Rerun Retrieval-Mode Evaluation}
+\section{Final Candidate Configuration}
+The final candidate uses scope guard and intent gating. The following routing setting is used for the final benchmark:
 \begin{ThesisCode}
-.venv\Scripts\python.exe -X utf8 scripts/evaluate_retrieval_modes.py `
-  --benchmark-path artifacts/evaluation/end_to_end_expanded_benchmark.jsonl `
+enable_procedural_routing: false
+\end{ThesisCode}
+
+\section{Rerun Retrieval Ablation}
+\begin{ThesisCode}
+.venv\Scripts\python.exe -X utf8 scripts/ablation_retrieval_100.py `
+  --benchmark-path artifacts/evaluation/golden_benchmark_100_extended.jsonl `
   --output-dir artifacts/evaluation `
-  --output-prefix retrieval_modes_expanded `
+  --output-prefix ablation_retrieval_100_final_candidate `
   --top-k 10 `
   --prefetch-limit 24 `
   --device cpu `
@@ -183,10 +252,9 @@ This appendix documents the shell commands required to execute evaluations, rebu
 \section{Rerun End-to-End Evaluation}
 \begin{ThesisCode}
 .venv\Scripts\python.exe -X utf8 scripts/evaluate_end_to_end_rag.py `
-  --benchmark-path artifacts/evaluation/end_to_end_expanded_benchmark.jsonl `
+  --benchmark-path artifacts/evaluation/golden_benchmark_100_extended.jsonl `
   --output-dir artifacts/evaluation `
-  --output-prefix end_to_end_expanded `
-  --comparison-summary-path artifacts/evaluation/retrieval_modes_expanded_summary.json `
+  --output-prefix end_to_end_100_final_candidate `
   --top-k 10 `
   --prefetch-limit 24 `
   --max-answer-contexts 8 `
@@ -194,6 +262,29 @@ This appendix documents the shell commands required to execute evaluations, rebu
   --device cpu `
   --embedding-provider sentence_transformers
 \end{ThesisCode}
+
+\section{Adjusted Split Metrics}
+The final score is the adjusted end-to-end pass rate, where in-corpus queries use the normal retrieval, answer, citation, and quality checks, and out-of-corpus queries use refusal or insufficient-context validation:
+\[
+\operatorname{AdjustedE2E} = 0.780.
+\]
+
+The adjusted split metrics are recomputed from the final candidate results JSON using the rules in Appendix~\ref{app:evaluation-metrics}:
+\begin{ThesisCode}
+$evalDir = "artifacts/evaluation"
+$results = "$evalDir/end_to_end_100_final_candidate_results.json"
+$outJson = "$evalDir/benchmark_100_final_candidate_split_metrics.json"
+$outCsv = "$evalDir/benchmark_100_final_candidate_failed_cases.csv"
+
+$splitArgs = @(
+  "--results-path", $results
+  "--output-json", $outJson
+  "--failed-cases-csv", $outCsv
+)
+.venv\Scripts\python.exe -X utf8 scripts/compute_100_split_metrics.py @splitArgs
+\end{ThesisCode}
+
+The command writes the JSON summary and failed-case CSV under \texttt{artifacts/\allowbreak{}evaluation/}.
 
 \section{Optional: Regenerate Qdrant Vector Index}
 \begin{ThesisCode}

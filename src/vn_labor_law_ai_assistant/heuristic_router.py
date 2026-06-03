@@ -20,12 +20,103 @@ POINT_REF_RE = re.compile(r"\bdiem\s+(?P<value>[a-z](?:\.\d+)?)")
 YEAR_COUNT_RE = re.compile(r"\b\d+\s+nam\b")
 
 RULE_CONFIG = DEFAULT_RULE_CONFIG
+BLTTDS_LABOR_ONLY_ID = "92-2015-qh13-labor-only"
+PRIMARY_LABOR_CODE_ID = "45-2019-qh14"
+PROCEDURAL_LABOR_TOPICS = frozenset(
+    {
+        "tranh_chap_lao_dong",
+        "cham_dut_hop_dong_lao_dong",
+        "don_phuong_cham_dut",
+        "ky_luat_sa_thai",
+        "thay_doi_co_cau_kinh_te",
+        "tro_cap",
+        "tien_luong",
+    }
+)
+PROCEDURAL_LABOR_ISSUES = frozenset(
+    {
+        "tranh_chap_lao_dong",
+        "xu_ly_ky_luat_lao_dong",
+        "sa_thai",
+        "quyen_don_phuong_cham_dut",
+        "trai_phap_luat",
+        "tro_cap_thoi_viec",
+        "tro_cap_mat_viec",
+        "tien_luong",
+        "thay_doi_co_cau_kinh_te",
+    }
+)
+PROCEDURAL_COURT_HINTS = (
+    "kien",
+    "khoi kien",
+    "toa an",
+    "tham quyen",
+    "noi cu tru",
+    "noi lam viec",
+    "hoa giai truoc khi kien",
+    "tranh chap lao dong",
+    "ra toa",
+    "yeu cau tuyen bo vo hieu",
+    "yeu cau tuyen bo",
+    "tuyen bo vo hieu",
+    "blttds",
+)
+PROCEDURAL_MEDIATION_HINTS = (
+    "hoa giai truoc khi kien",
+    "truoc khi kien",
+    "hoa giai",
+)
+PROCEDURAL_RESIDENCE_HINTS = (
+    "noi cu tru",
+    "noi lam viec",
+    "lua chon toa",
+    "chon toa",
+)
+PROCEDURAL_INVALIDITY_HINTS = (
+    "yeu cau tuyen bo vo hieu",
+    "yeu cau tuyen bo",
+    "tuyen bo vo hieu",
+    "vo hieu",
+)
+PROCEDURAL_DOMESTIC_WORKER_HINTS = (
+    "giup viec gia dinh",
+    "nguoi giup viec",
+    "lao dong giup viec gia dinh",
+)
+PROCEDURAL_SALARY_DEDUCTION_HINTS = (
+    "khau tru luong",
+    "tru luong",
+    "no luong",
+    "tien luong",
+)
+PROCEDURAL_STRUCTURAL_JOB_LOSS_HINTS = (
+    "thay doi co cau",
+    "cat giam nhan su",
+    "mat viec",
+    "tro cap mat viec",
+)
+PROCEDURAL_UNLAWFUL_TERMINATION_HINTS = (
+    "don phuong cham dut hop dong trai phap luat",
+    "don phuong cham dut hop dong trai luat",
+    "sa thai",
+    "trai phap luat",
+)
+PROCEDURAL_COLLECTIVE_AGREEMENT_HINTS = (
+    "thoa uoc lao dong tap the",
+    "thoa uoc tap the",
+)
+PROCEDURAL_JURISDICTION_HINTS = (
+    "tham quyen",
+    "toa an nao",
+    "toa nao",
+    "toa an co tham quyen",
+)
 
 _RULE_CONFIG_EXPORTS = frozenset(
     """
     ACTOR_KEYWORDS BENEFIT_COMPUTATION_QUERY_HINTS CALCULATION_CONTEXT_HINTS
     CALCULATION_QUERY_HINTS DELEGATION_CONTEXT_HINTS DOCUMENT_KEYWORDS
-    DIRECT_REFERENCE_RULES
+    DIRECT_REFERENCE_RULES ENABLE_PROCEDURAL_ROUTING
     ENUMERATION_PARENT_CONTEXT_HINTS ENUMERATION_QUERY_HINTS GENERIC_ACTOR_FILTERS
     IMPLEMENTATION_DETAIL_HINTS ISSUE_KEYWORDS LEGAL_HIGH_PRECISION_QUERY_RULES
     LEGAL_ISSUE_ARTICLE_MAP LEGAL_ISSUE_QUERY_HINTS LEGAL_SOFT_HINT_QUERY_RULES
@@ -238,6 +329,108 @@ def query_asks_without_notice(intent: QueryIntent) -> bool:
     return contains_normalized_phrase(intent.normalized_query, RULE_CONFIG.NO_NOTICE_QUERY_HINTS)
 
 
+def procedural_labor_references(intent: QueryIntent, *, enabled: bool = False) -> tuple[LegalReference, ...]:
+    if not enabled:
+        return ()
+    normalized_query = intent.normalized_query
+    if not contains_normalized_phrase(normalized_query, PROCEDURAL_COURT_HINTS):
+        return ()
+
+    labor_context = bool(
+        set(intent.topic_filters).intersection(PROCEDURAL_LABOR_TOPICS)
+        or set(intent.issue_filters).intersection(PROCEDURAL_LABOR_ISSUES)
+        or "nguoi_lao_dong" in intent.actor_filters
+        or "nguoi_su_dung_lao_dong" in intent.actor_filters
+        or contains_normalized_phrase(
+            normalized_query,
+            (
+                "tranh chap lao dong",
+                "sa thai",
+                "don phuong",
+                "tien luong",
+                "mat viec",
+                "hop dong lao dong",
+                "thoa uoc lao dong",
+                "lao dong",
+            ),
+        )
+    )
+    if not labor_context:
+        return ()
+
+    references: list[LegalReference] = [LegalReference(document_id=BLTTDS_LABOR_ONLY_ID, article="32")]
+    if contains_normalized_phrase(normalized_query, PROCEDURAL_DOMESTIC_WORKER_HINTS):
+        references.append(LegalReference(document_id=BLTTDS_LABOR_ONLY_ID, article="32", clause="1", point="c"))
+        references.append(LegalReference(document_id=PRIMARY_LABOR_CODE_ID, article="162"))
+    elif contains_normalized_phrase(normalized_query, PROCEDURAL_STRUCTURAL_JOB_LOSS_HINTS):
+        references.append(LegalReference(document_id=BLTTDS_LABOR_ONLY_ID, article="32", clause="1", point="b"))
+        references.extend(
+            (
+                LegalReference(document_id=PRIMARY_LABOR_CODE_ID, article="42"),
+                LegalReference(document_id=PRIMARY_LABOR_CODE_ID, article="47"),
+            )
+        )
+    elif contains_normalized_phrase(normalized_query, PROCEDURAL_UNLAWFUL_TERMINATION_HINTS) or (
+        "trai_phap_luat" in intent.issue_filters and "don_phuong_cham_dut" in intent.topic_filters
+    ):
+        references.append(LegalReference(document_id=BLTTDS_LABOR_ONLY_ID, article="32", clause="1", point="a"))
+    elif contains_normalized_phrase(normalized_query, PROCEDURAL_SALARY_DEDUCTION_HINTS):
+        references.append(LegalReference(document_id=PRIMARY_LABOR_CODE_ID, article="102"))
+
+    if contains_normalized_phrase(normalized_query, PROCEDURAL_MEDIATION_HINTS) or contains_normalized_phrase(
+        normalized_query,
+        ("tranh chap lao dong", "toa an", "ra toa", "kien", "khoi kien"),
+    ):
+        references.append(LegalReference(document_id=PRIMARY_LABOR_CODE_ID, article="188"))
+    if contains_normalized_phrase(normalized_query, PROCEDURAL_INVALIDITY_HINTS):
+        references.append(LegalReference(document_id=BLTTDS_LABOR_ONLY_ID, article="33", clause="1"))
+        references.append(LegalReference(document_id=BLTTDS_LABOR_ONLY_ID, article="35", clause="2", point="d"))
+        if contains_normalized_phrase(normalized_query, PROCEDURAL_COLLECTIVE_AGREEMENT_HINTS):
+            references.extend(
+                (
+                    LegalReference(document_id=PRIMARY_LABOR_CODE_ID, article="86"),
+                    LegalReference(document_id=PRIMARY_LABOR_CODE_ID, article="87"),
+                )
+            )
+    elif contains_normalized_phrase(normalized_query, PROCEDURAL_JURISDICTION_HINTS):
+        references.append(LegalReference(document_id=BLTTDS_LABOR_ONLY_ID, article="35"))
+
+    if contains_normalized_phrase(normalized_query, PROCEDURAL_RESIDENCE_HINTS):
+        references.append(LegalReference(document_id=BLTTDS_LABOR_ONLY_ID, article="40", clause="1", point="d"))
+
+    if contains_normalized_phrase(normalized_query, PROCEDURAL_MEDIATION_HINTS):
+        references.append(LegalReference(document_id=BLTTDS_LABOR_ONLY_ID, article="32"))
+
+    return tuple(dict.fromkeys(references))
+
+
+def procedural_query_expansions(references: Sequence[LegalReference]) -> tuple[str, ...]:
+    expansions: list[str] = []
+    for reference in references:
+        if reference.document_id != BLTTDS_LABOR_ONLY_ID or not reference.article:
+            continue
+        if reference.article == "32":
+            expansions.append("Bo luat To tung dan su Dieu 32 tham quyen giai quyet tranh chap lao dong")
+        elif reference.article == "33":
+            expansions.append("Bo luat To tung dan su Dieu 33 yeu cau lien quan tranh chap lao dong")
+        elif reference.article == "35":
+            expansions.append("Bo luat To tung dan su Dieu 35 tham quyen cua Toa an cap huyen")
+        elif reference.article == "40":
+            expansions.append("Bo luat To tung dan su Dieu 40 noi cu tru noi lam viec lua chon Toa an")
+    return dedupe_preserve_order(expansions)
+
+
+def reference_document_name(reference: LegalReference) -> str:
+    if reference.document_id == "45-2019-qh14":
+        return str(RULE_CONFIG.QUERY_CONTEXT.get("citation_document_name", ""))
+    if reference.document_id == BLTTDS_LABOR_ONLY_ID:
+        return "Bo luat To tung dan su 2015"
+    document_descriptions = getattr(RULE_CONFIG, "DOCUMENT_DESCRIPTIONS", {}) or {}
+    if reference.document_id and reference.document_id in document_descriptions:
+        return str(document_descriptions[reference.document_id])
+    return str(RULE_CONFIG.QUERY_CONTEXT.get("citation_document_name", ""))
+
+
 def infer_employee_notice_period_reference(
     intent: QueryIntent,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -395,6 +588,30 @@ def route_query_heuristic(query: str, rule_config: RuleConfig = RULE_CONFIG) -> 
         rule_config=rule_config,
     )
     article_numbers = parse_reference_values(ARTICLE_REF_RE, normalized_query)
+    procedural_references: tuple[LegalReference, ...] = ()
+    if bool(getattr(rule_config, "ENABLE_PROCEDURAL_ROUTING", False)):
+        procedural_references = procedural_labor_references(
+            QueryIntent(
+                raw_query=query,
+                normalized_query=normalized_query,
+                actor_filters=collect_keyword_matches(normalized_query, rule_config.ACTOR_KEYWORDS),
+                topic_filters=topic_filters,
+                issue_filters=issue_filters,
+                document_filters=document_filters,
+                article_numbers=article_numbers,
+                inferred_article_numbers=dedupe_preserve_order((*rule_routing.inferred_articles, *mapped_articles)),
+                force_reference_article_numbers=dedupe_preserve_order((*article_numbers, *rule_routing.force_reference_articles)),
+                forced_references=rule_routing.forced_references,
+                matched_direct_reference_rules=rule_routing.direct_reference_rule_names,
+                clause_refs=parse_reference_values(CLAUSE_REF_RE, normalized_query),
+                point_refs=parse_reference_values(POINT_REF_RE, normalized_query),
+                query_expansions=dedupe_preserve_order((*rule_routing.expansions, *mapped_expansions)),
+                query_types=query_types,
+            ),
+            enabled=True,
+        )
+    procedural_articles = tuple(reference.article for reference in procedural_references if reference.article)
+    procedural_expansions = procedural_query_expansions(procedural_references)
     return QueryIntent(
         raw_query=query,
         normalized_query=normalized_query,
@@ -404,16 +621,16 @@ def route_query_heuristic(query: str, rule_config: RuleConfig = RULE_CONFIG) -> 
         document_filters=document_filters,
         article_numbers=article_numbers,
         inferred_article_numbers=dedupe_preserve_order(
-            (*rule_routing.inferred_articles, *mapped_articles)
+            (*rule_routing.inferred_articles, *mapped_articles, *procedural_articles)
         ),
         force_reference_article_numbers=dedupe_preserve_order(
-            (*article_numbers, *rule_routing.force_reference_articles)
+            (*article_numbers, *rule_routing.force_reference_articles, *procedural_articles)
         ),
-        forced_references=rule_routing.forced_references,
+        forced_references=tuple(dict.fromkeys((*rule_routing.forced_references, *procedural_references))),
         matched_direct_reference_rules=rule_routing.direct_reference_rule_names,
         clause_refs=parse_reference_values(CLAUSE_REF_RE, normalized_query),
         point_refs=parse_reference_values(POINT_REF_RE, normalized_query),
-        query_expansions=dedupe_preserve_order((*rule_routing.expansions, *mapped_expansions)),
+        query_expansions=dedupe_preserve_order((*rule_routing.expansions, *mapped_expansions, *procedural_expansions)),
         query_types=query_types,
     )
 
@@ -477,7 +694,6 @@ def build_query_variants(intent: QueryIntent) -> tuple[str, ...]:
     if issue_parts and not focuses_on_forced_definition:
         variants.append(" ".join(dedupe_preserve_order(issue_parts)))
 
-    citation_document_name = RULE_CONFIG.QUERY_CONTEXT.get("citation_document_name", "")
     if intent.forced_references:
         forced_citation_parts = []
         for reference in intent.forced_references:
@@ -490,7 +706,7 @@ def build_query_variants(intent: QueryIntent) -> tuple[str, ...]:
                         f"Dieu {reference.article}",
                         f"khoan {reference.clause}" if reference.clause else "",
                         f"diem {reference.point}" if reference.point else "",
-                        citation_document_name,
+                        reference_document_name(reference),
                     ]
                     if part
                 )
@@ -499,6 +715,7 @@ def build_query_variants(intent: QueryIntent) -> tuple[str, ...]:
             variants.append(" ".join(forced_citation_parts))
 
     if intent.all_article_numbers and not focuses_on_forced_definition:
+        citation_document_name = RULE_CONFIG.QUERY_CONTEXT.get("citation_document_name", "")
         reference_suffix = " ".join(
             (
                 *(f"khoan {clause}" for clause in intent.clause_refs),

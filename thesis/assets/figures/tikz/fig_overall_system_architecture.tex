@@ -13,11 +13,11 @@
   \node[archbox, below=of chunking] (enriched) {Enriched Chunks};
 
   \node[vectorstore, right=20mm of corpus] (qdrant) {Qdrant\\Vector Index};
-  \node[graphstore, below=of qdrant] (neo4j) {Neo4j Legal Graph};
+  \node[graphstore, below=of qdrant] (neo4j) {Neo4j\\Legal Graph};
   \node[archbox, below=of neo4j] (edges) {Reference Edges};
 
   \node[archbox, right=20mm of qdrant] (query) {User Query};
-  \node[archbox, below=of query] (retriever) {Graph-Augmented\\Retriever};
+  \node[archbox, below=of query] (retriever) {Graph\\Augmented\\Retriever};
   \node[archbox, below=of retriever] (generator) {Grounded Answer\\Generator};
   \node[archbox, below=of generator] (validation) {Citation Validation};
   \node[archbox, below=of validation] (final) {Final Answer};

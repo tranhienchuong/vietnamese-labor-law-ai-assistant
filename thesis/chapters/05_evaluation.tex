@@ -3,15 +3,17 @@
 \section{Evaluation Setup and Benchmark Design}
 \label{sec:evaluation-setup-and-benchmark-design}
 
-This section describes the empirical evaluation setup, the constructed query benchmark, and the corpus indexing details. The system is evaluated on a constructed benchmark consisting of 69 queries, designed to measure how well the pipeline performs retrieval, citation tracking, and end-to-end answering within the indexed six-document Vietnamese labor-law corpus. To evaluate statutory correctness and citation consistency, answer quality is assessed using deterministic rule-based validation within this bounded corpus, rather than relying on human legal expert review or LLM-as-Judge evaluation. This evaluation does not prove universal legal correctness of the system's output across all legal contexts, but serves as a software-level verification on the constructed benchmark.
+This chapter evaluates the Vietnamese labor-law RAG system on the final 100-query benchmark. The benchmark is used as the only final evaluation benchmark in this thesis. It contains 94 in-corpus queries and 6 out-of-corpus refusal tests.
 
-\textbf{Corpus and index statistics.} The primary source material comprises six Vietnamese labor-law documents. During document preprocessing, these documents were parsed and divided into 1,556 structural chunks. For the vector retrieval layer, these chunks are stored as 1,556 dense vector points in a Qdrant collection. For the graph retrieval layer, a directed knowledge graph is instantiated in Neo4j to capture the relationships between various legal elements. The graph contains structured nodes for documents, articles, clauses, points, and appendices, alongside the 1,556 evidence chunks. To ensure search paths remain valid during graph traversal, only successfully resolved cross-references are loaded as edges, while unresolved citations are excluded from graph traversals. Table~\ref{tab:corpus-index-statistics} details the structural distribution and edge counts loaded into the active system.
+The evaluation is bounded by the indexed corpus. The corpus contains six Vietnamese labor-law documents, including the Labor Code, selected decrees, selected circulars, and a labor-related subset of the Civil Procedure Code. These documents were divided into 1,556 legal chunks. The retrieval layer stores these chunks in Qdrant and uses Neo4j for graph-based expansion over legal structure and cross-references.
+
+The final candidate evaluated in this chapter uses graph-augmented retrieval together with deterministic intent gating and the scope guard described in Chapter~\ref{ch:implementation}.
 
 \begin{table}[H]
   \centering
   \caption{Corpus and index statistics.}
   \label{tab:corpus-index-statistics}
-  \begin{tabular}{p{0.75\linewidth}r}
+  \begin{tabular}{lr}
     \toprule
     Item & Value \\
     \midrule
@@ -24,263 +26,218 @@ This section describes the empirical evaluation setup, the constructed query ben
     Neo4j points & 774 \\
     Neo4j appendices & 35 \\
     Neo4j evidence chunks & 1,556 \\
-    Loaded \texttt{REFERENCES} Edges & 290 \\
-    Loaded \texttt{DETAILS} Reference Edges & 329 \\
-    Loaded \texttt{GUIDED\_BY} Reference Edges & 329 \\
-    Loaded Taxonomy Metadata Edges & 6,099 \\
-    Loaded Normative Hierarchy Edges & 20 \\
-    Logged Unresolved References Excluded from Graph Traversal & 111 \\
+    Loaded \texttt{REFERENCES} edges & 290 \\
+    Loaded \texttt{DETAILS} reference edges & 329 \\
+    Loaded \texttt{GUIDED\_BY} reference edges & 329 \\
+    Loaded taxonomy metadata edges & 6,099 \\
+    Loaded normative hierarchy edges & 20 \\
+    Unresolved references excluded from graph traversal & 111 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-\textbf{Benchmark construction.} To evaluate the RAG pipeline under different query conditions, we constructed a diagnostic benchmark of 69 queries. These queries are distributed across nine structural categories to reflect typical questions about labor regulations: Direct QA (19), Definition QA (7), Procedure QA (7), Scenario-based QA (4), Document guidance QA (10), Comparison QA (4), Exception-based QA (11), Multi-hop QA (2), and Calculation or table lookup (5).
+The benchmark covers several query types. It includes direct QA, definition QA, document guidance QA, exception-based QA, multi-hop QA, table and appendix lookup, hard-negative citation QA, paraphrased real-user QA, labor dispute and procedure QA, and out-of-corpus QA. The last group is designed to test whether the system refuses questions that are not supported by the indexed corpus.
 
-To test retrieval capabilities under varying levels of lexical and structural complexity, the queries are classified by difficulty: 15 easy queries, 32 medium queries, and 22 hard queries. Easy queries typically feature direct phrasing and simple vocabulary that align closely with the source text. Medium queries introduce mild vocabulary variations or require matching multiple clauses within the same document. Hard queries involve multi-hop relationships, complex procedural sequences, or table lookups where shallow vector similarity alone is often insufficient. Within this benchmark, 25 queries are annotated as graph-required, meaning they are designed to benefit from graph-based expansion through cross-reference, structural, taxonomy, or normative-hierarchy relations. Additionally, 22 queries are annotated as normative-hierarchy-required to evaluate transitions between statutory tiers, such as moving from a primary Code down to implementing Decrees. Each query is annotated with a ground-truth set of required citations needed to support a correct answer, and some queries include optional forbidden citations representing obsolete or irrelevant clauses that the retriever should avoid.
+\begin{table}[H]
+  \centering
+  \caption{Final benchmark composition.}
+  \label{tab:final-benchmark-composition}
+  \begin{tabular}{lr}
+    \toprule
+    Category & Queries \\
+    \midrule
+    Direct QA & 19 \\
+    Definition QA & 7 \\
+    Document guidance QA & 10 \\
+    Exception-based QA & 11 \\
+    Multi-hop QA & 7 \\
+    Table and appendix lookup & 10 \\
+    Hard-negative citation QA & 5 \\
+    Paraphrased real-user QA & 5 \\
+    Labor dispute and procedure QA & 5 \\
+    Procedure QA & 7 \\
+    Comparison QA & 4 \\
+    Scenario-based QA & 4 \\
+    Out-of-corpus QA & 6 \\
+    \midrule
+    Total & 100 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-\textbf{Evaluation execution environment.} The evaluation was carried out in a local environment using a Python virtual environment. UTF-8 console configurations were used to support Vietnamese text without character corruption. The backend database layer consists of a local Qdrant collection storing 384-dimensional dense vectors generated by the \texttt{keepitreal/vietnamese-sbert} embedding model, alongside a local Neo4j graph instance for relational lookup. Retrieval comparison experiments evaluate candidate lists with a top-$k = 10$ context constraint for Recall@10. The end-to-end evaluation integrates the retrieved candidate contexts with an extractive answer generator to produce citation-grounded output. The resulting answers are validated using deterministic, rule-based validation checks to verify correctness against the benchmark annotations.
+Each in-corpus query has a manually annotated set of required citations. Some queries also include forbidden citations. These forbidden citations represent legal provisions that are similar to the question but should not be used as the main basis for the answer. The 6 out-of-corpus queries have empty required citation sets because the correct behavior is refusal or an insufficient-context answer.
 
-The remainder of this chapter is organized as follows. Section~5.2 defines the retrieval evaluation methodology, detailing the metrics used to compare the retrieval configurations. Section~5.3 outlines the deterministic validation gate and the citation grounding metrics. Sections~5.4 and 5.5 present the empirical retrieval results and end-to-end performance metrics, respectively. Section~5.6 illustrates practical system behaviors using selected case studies, and Section~5.7 discusses error categories, system limitations, and avenues for future work.
+The evaluation uses deterministic checks. It does not use human legal expert review. It also does not use an LLM-as-Judge. This makes the result reproducible, but it also means that the evaluation checks structural correctness rather than full legal reasoning quality.
 
 \section{Retrieval Evaluation Methodology}
 \label{sec:retrieval-performance-analysis-methodology}
 
-Evaluating the retrieval layer is a key step in assessing the system's ability to locate appropriate legal evidence. In legal question answering, semantic search engines must do more than identify passages with general lexical or conceptual similarity; they must locate the exact statutory articles, clauses, and implementing provisions required to form a complete and legally sound response. The primary objective of the retrieval evaluation is to measure how effectively different retrieval architectures recover the precise legal coordinates necessary to address the benchmark queries.
+The retrieval evaluation measures whether the system finds the legal evidence needed to answer a query. In legal QA, semantic similarity is not enough. A passage can be similar to the question but still cite the wrong article, the wrong document, or an incomplete rule.
 
-To isolate the impact of the relational knowledge graph and the sparse indexing layers, we compare the retrieval effectiveness of three distinct configurations over the identical 69-query benchmark set, denoted as $Q$. The first configuration is \textit{vector-only retrieval}, which relies entirely on dense semantic embeddings generated by the SBERT model, evaluating whether continuous vector representations alone are sufficient to map user requests to corresponding legal passages. The second configuration is \textit{hybrid retrieval}, which fuses dense semantic vectors with sparse lexical tokens and discrete statutory coordinate metadata. This mode executes multi-query parallel prefetching and merges candidate lists using Reciprocal Rank Fusion (RRF) to examine whether combining semantic generalization with exact-match token structures improves retrieval coverage. The third configuration is the proposed \textit{graph-augmented retrieval} framework, which extracts the high-relevance search hits from the hybrid layer to serve as seed nodes $S_k$, and subsequently traverses the Neo4j relational network. This mode navigates parent-child hierarchies, cross-document reference edges, rule-based taxonomy links, and normative validity hierarchies to evaluate whether topological expansion recovers implementing regulations and technical schedules where surface lexical or embedding overlap is insufficient.
-
-In the legal domain, traditional text-similarity metrics (such as BLEU or ROUGE) and stochastic language model relevance judgments (LLM-as-Judge) are often inadequate because a retrieved passage can be semantically close yet legally inapplicable or obsolete. Consequently, our retrieval evaluation methodology relies on objective, deterministic citation-based metadata matching. A retrieved evidence chunk $d$ is verified as relevant if and only if its structural citation metadata exactly matches the manually annotated gold legal citation labels.
-
-Let $q \in Q$ represent a single query within the evaluation benchmark, and let $G(q)$ represent the set of required ground-truth legal citations necessary to fully ground the answer for $q$. The retrieved context sequence generated for query $q$ under a top-$k$ constraint is denoted as $R_k(q)$. Defining $C(d)$ as the unique canonical citation surface encapsulated within chunk $d$, the complete set of retrieved citation addresses is formalized as:
+Let $Q$ be the full benchmark. The benchmark is split into two sets:
 \[
-\mathcal{C}_k(q) = \{ C(d) \mid d \in R_k(q) \}
+Q = Q_{\mathrm{in}} \cup Q_{\mathrm{ooc}},
+\]
+where $Q_{\mathrm{in}}$ is the set of in-corpus queries and $Q_{\mathrm{ooc}}$ is the set of out-of-corpus queries. In this benchmark:
+\[
+|Q| = 100,\quad |Q_{\mathrm{in}}| = 94,\quad |Q_{\mathrm{ooc}}| = 6.
 \]
 
-Using this mathematical foundation, we define two primary recall-oriented retrieval metrics. First, $\operatorname{Recall}@k(q)$ computes the proportion of ground-truth legal citations successfully recovered within the top-$k$ context window for a single query:
-\[
-\operatorname{Recall}@k(q) = \frac{|G(q) \cap \mathcal{C}_k(q)|}{|G(q)|}
-\]
-The macro-averaged retrieval recall across the entire diagnostic benchmark query set $Q$ is formulated as the arithmetic mean:
-\[
-\operatorname{Recall}@k = \frac{1}{|Q|} \sum_{q \in Q} \operatorname{Recall}@k(q)
-\]
-In this study, empirical metrics are reported at baseline constraints of $k = 5$ and $k = 10$.
+Retrieval metrics are computed only on $Q_{\mathrm{in}}$. The out-of-corpus queries have no required citations. Including them in retrieval coverage would create artificial scores because there is no gold citation set to retrieve.
 
-While fractional recall measures gradual improvement, legal compliance typically requires full evidence capture. Therefore, we implement a more stringent, binary information retrieval metric termed \textit{Required Citation Coverage}, which checks whether the retriever successfully establishes the complete set of required gold citations without a single omission. A query passes this check if and only if the ground-truth set is fully contained within the retrieved space, represented mathematically via the indicator function $\mathbb{I}\left[ \cdot \right]$:
+For an in-corpus query $q \in Q_{\mathrm{in}}$, let $G(q)$ be the required citation set. Let $R_{10}(q)$ be the top-10 retrieved contexts. Let $\mathcal{C}_{10}(q)$ be the set of citation coordinates found in those contexts:
 \[
-\operatorname{Coverage}(q) = \mathbb{I}\left[ G(q) \subseteq \mathcal{C}_k(q) \right]
-\]
-The macro-averaged Required Citation Coverage across the benchmark distribution is subsequently defined as:
-\[
-\operatorname{RequiredCitationCoverage} = \frac{1}{|Q|} \sum_{q \in Q} \operatorname{Coverage}(q)
+\mathcal{C}_{10}(q) = \{ C(d) \mid d \in R_{10}(q) \}.
 \]
 
-To prevent the retrieval of legally obsolete, repealed, or highly misleading contexts that jeopardize system safety, the benchmark incorporates explicit negative annotations. Let $F(q)$ define the set of annotated forbidden citations for query $q$. The \textit{Forbidden Citation Violation Rate} measures how frequently a retrieval configuration mistakenly introduces these unauthorized legal references into the active prompt window, compromising generation safety. The violation indicator for a single query is formalized as:
+The per-query recall is:
 \[
-\operatorname{ForbiddenViolation}(q) = \mathbb{I}\left[ F(q) \cap \mathcal{C}_k(q) \neq \emptyset \right]
+\operatorname{Recall}@10(q) =
+\frac{|G(q) \cap \mathcal{C}_{10}(q)|}{|G(q)|}.
 \]
-The macro-averaged Forbidden Citation Violation Rate across the experimental distribution is formulated as:
+The reported Recall@10 is the macro-average over the 94 in-corpus queries:
 \[
-\operatorname{ForbiddenViolationRate} = \frac{1}{|Q|} \sum_{q \in Q} \operatorname{ForbiddenViolation}(q)
+\operatorname{Recall}@10 =
+\frac{1}{|Q_{\mathrm{in}}|}
+\sum_{q \in Q_{\mathrm{in}}}
+\operatorname{Recall}@10(q).
 \]
 
-To deliver a comprehensive information retrieval profile, our evaluation environment also documents $\operatorname{Precision}@k$ and the Mean Reciprocal Rank ($\operatorname{MRR}$), utilizing standard mathematical formulations over the citation match set. $\operatorname{Precision}@k$ computes the proportion of retrieved chunks matching valid gold citations, while $\operatorname{MRR}$ evaluates the reciprocal of the ordinal rank of the first correct statutory chunk returned.
+Required Citation Coverage is also computed over $Q_{\mathrm{in}}$. It reports the average fraction of required citations recovered in the top-10 context window. A separate retrieval pass rate is used to measure stricter query-level success. A query passes retrieval only when all required citations are retrieved and no forbidden citation rule is violated.
 
-In production legal QA architectures, $\operatorname{Recall}@k$ and Required Citation Coverage are heavily prioritized over $\operatorname{Precision}@k$. While a low precision score merely denotes the presence of superfluous supporting context (which can be programmatically filtered by downstream generation and reranking components), a low recall score signifies an unrecoverable failure. Specifically, if mandatory statutory provisions are entirely missing from the context window, the downstream generation of a citation-grounded answer becomes extremely difficult. The empirical comparison of these retrieval configurations across different queries, difficulty levels, and functional categories is evaluated in Section~5.4.
-
+Forbidden Citation Violation Rate measures how often a retrieved context includes a benchmark-defined forbidden citation:
+\[
+\operatorname{ForbiddenViolationRate} =
+\frac{1}{|Q_{\mathrm{in}}|}
+\sum_{q \in Q_{\mathrm{in}}}
+\mathbb{I}\left[F(q) \cap \mathcal{C}_{10}(q) \neq \emptyset\right],
+\]
+where $F(q)$ is the forbidden citation set for query $q$.
 
 \section{Answer and Citation Evaluation Methodology}
 \label{sec:answer-and-citation-evaluation-methodology}
 
-Evaluating the final output of a legal question-answering assistant requires strict, multi-tiered assessment criteria. In regulatory and statutory contexts, a generated response must do more than demonstrate linguistic fluency or logical coherence; it must be grounded within verified legislative sources and free of hallucinated citations or coordinate mentions. To enforce these foundational constraints, the proposed architecture incorporates an automated, closed-loop validation gate. The primary objective of this evaluation methodology is to analyze the qualitative precision of the generated answers and verify the structural validity of their underlying legal citation surfaces against our diagnostic benchmark.
+The end-to-end evaluation checks the full pipeline. It includes retrieval, answer generation, citation grounding, and answer quality validation.
 
-Answer quality is evaluated using deterministic rule-based validation, not human legal expert review or LLM-as-Judge evaluation. In high-risk regulatory tasks, using stochastic language models as evaluators introduces unacceptable instability, prompt dependency, and potential evaluation-level hallucinations into the performance metrics themselves. Conversely, continuous human expert evaluation remains prohibitively expensive for iterative developer testing. By formulating explicit, programmatic verifications over citation payloads, article numerals, and text densities, we establish an objective, auditable, and reproducible verification pipeline. This deterministic validation engine isolates and measures five core operational dimensions: retrieval success, answer presence, citation grounding, substantive quality, and end-to-end pipeline pass rates.
+For in-corpus queries, the system must retrieve the required legal evidence, generate an answer, cite only retrieved sources, and pass the quality checks. The quality checks look for a direct answer, the required legal rule, appropriate numeric or yes/no content when needed, and the absence of low-information quotes.
 
-\textbf{Citation grounding.} To ensure that every legal claim generated by the system is explicitly bound to verified statutory sources, the validation layer executes automated citation tracing. Let $q$ define a user query, let $C_q$ represent the consolidated set of retrieved context chunks passed to the generator, and let $B_q$ define the set of canonical legal basis citations utilized within the final response payload. Defining $\mathcal{C}(C_q)$ as the definitive universe of all valid statutory citation surfaces available within the retrieved contexts, the system evaluates the citation grounding check via strict set-theoretic subset containment:
+Citation grounding is checked by comparing the citations used in the answer with the citations available in the retrieved contexts. Let $B_q$ be the legal basis citations used in the answer. Let $\mathcal{C}(C_q)$ be the citation set available in the contexts passed to the generator. The citation check requires:
 \[
 B_q \subseteq \mathcal{C}(C_q).
 \]
-This containment check acts as an architectural boundary, blocking the system from referencing external or unverified provisions. If the response introduces a citation lying outside the actively retrieved context space, the check fails.
+The validator also checks that article numbers mentioned in the answer are present in the retrieved contexts. This reduces citation hallucination and unsupported article references.
 
-Beyond explicit citation indexing, the framework evaluates the structural authenticity of all numerical coordinates present within the natural language body text to suppress coordinate hallucinations. Let $A_{\mathrm{answer}}$ define the set of all unique article numbers explicitly extracted from the generated answer string using regular expressions, and let $A_{\mathrm{contexts}}$ represent the complete set of article numbers embedded within the retrieved context chunks $C_q$. The system enforces the article numeral support constraint as:
-\[
-A_{\mathrm{answer}} \subseteq A_{\mathrm{contexts}}.
-\]
-If the model synthesizes a phantom article number or incorrectly references a coordinate absent from its input context space, this check fails, capturing instances of internal structural drift. Furthermore, to satisfy the negative constraints established within the diagnostic benchmark, the engine validates the response against the query's annotated forbidden citation set, denoted as $F(q)$. The forbidden citation check is formulated as:
-\[
-F(q) \cap B_q = \emptyset.
-\]
-This check helps ensure that the answer does not rely on legally obsolete, repealed, or distracting provisions, even if those provisions exhibit high semantic proximity to the initial query.
+Out-of-corpus queries use a different pass rule. They pass only if the final answer refuses the question or reports insufficient indexed context. They fail if the system answers by using unrelated in-corpus citations. They also fail if the system gives specific legal values that are not present in the indexed corpus.
 
-\textbf{Answer quality checks.} The validation gate implements direct text-density profiling to verify that the generated output is substantive, informative, and directly resolves the user's intent. To prevent the model from outputting low-information responses—such as empty citation pointers or verbatim repetitions of article titles devoid of statutory content—the engine enforces an adversarial text-density check. If the natural language text length or the accompanying evidence quotes fall below a token threshold of 8, or if the string contains metadata patterns without explicit statutory text, the quality gate fails, indicating a low-information or incomplete response.
-
-In simple language, answer quality checks ensure that:
-\begin{itemize}
-    \item the answer must directly address the question,
-    \item it must include the required legal rule,
-    \item it must not only repeat article titles,
-    \item it must avoid low-information quotes,
-    \item numeric or yes/no questions must include the expected type of answer when applicable.
-\end{itemize}
-
-\textbf{Authority and insufficient-context checks.} To reflect the vertical hierarchy of Vietnamese legislation, the evaluation pipeline incorporates structural authority verification. Because a lower integer rank in our data schema maps to a higher legal validity tier (Code $>$ Decree $>$ Circular), the validator ensures the response does not skip active primary statutes when they are available within the retrieval window. Let $r_{\mathrm{available}}^{\min}$ represent the minimum numeric rank present within $C_q$, and let $r_{\mathrm{cited}}^{\min}$ define the minimum numeric rank extracted from the answer's legal basis $B_q$. The rank compliance check checks that:
-\[
-r_{\mathrm{cited}}^{\min} \le r_{\mathrm{available}}^{\min}.
-\]
-This checks that the answer does not cite low-rank circulars while ignoring primary code acts present in its context space. Finally, to address edge cases where the retriever fails to discover adequate evidence, the engine assesses the uncertainty disclosure check. If the context is flagged as insufficient, the system verifies that the response explicitly incorporates predefined uncertainty indicators to avoid the release of speculative legal assertions.
-
-\textbf{End-to-end pass logic.} The comprehensive performance evaluation of a query $q \in Q$ within the closed-loop system is mathematically formalized as the strict logical conjunction of all independent validation dimensions. Let $\operatorname{Pass}_{\mathrm{retrieval}}(q)$ define the boolean recall status of the retrieval layer (requiring a non-zero recall capture), and let $\operatorname{Pass}_{\mathrm{answer}}(q)$, $\operatorname{Pass}_{\mathrm{citation}}(q)$, and $\operatorname{Pass}_{\mathrm{quality}}(q)$ represent the respective boolean states returned by the answering, citation, and quality guardrails. Additionally, the required citation check verifies that the required citations are successfully retrieved:
-\[
-G(q) \subseteq \mathcal{C}(C_q).
-\]
-The definitive end-to-end system pass state, denoted as $\operatorname{Pass}_{\mathrm{E2E}}(q)$, is computed via:
-\[
-\operatorname{Pass}_{\mathrm{E2E}}(q) = \operatorname{Pass}_{\mathrm{retrieval}}(q) \land \operatorname{Pass}_{\mathrm{answer}}(q) \land \operatorname{Pass}_{\mathrm{citation}}(q) \land \operatorname{Pass}_{\mathrm{quality}}(q).
-\]
-This formulation dictates that a query is recorded as a complete success in the end-to-end pipeline if and only if every single retrieval, citation, structural, and quality gate passes simultaneously. A failure in a single guardrail invalidates the entire operational sequence.
-
-This deterministic validation approach possesses significant advantages: it is completely independent of the stochastic volatility and bias associated with neural evaluators, it enforces transparency, and it supports micro-level auditability. However, its boundaries must be noted: it does not substitute for the qualified counsel of professional legal experts, it measures compliance strictly relative to the bounded indexed corpus, it treats correctness as an exact alignment with the constructed diagnostic benchmark, and it may miss semantic nuance. The quantitative results derived from this evaluation methodology across all difficulty levels and functional categories are presented and analyzed in Sections 5.4 and 5.5.
+The final end-to-end score is therefore an adjusted score. For $q \in Q_{\mathrm{in}}$, the normal retrieval, answer, citation, and quality checks are used. For $q \in Q_{\mathrm{ooc}}$, the refusal or insufficient-context check is used. This adjusted score is the final end-to-end result reported in this chapter.
 
 \section{Retrieval Results}
-\label{sec:retrieval-results}
+\label{sec:retrieval-performance-analysis-results}
 
-This section evaluates and compares the retrieval effectiveness of vector-only, hybrid, and graph-augmented retrieval modes using citation-based metrics on the constructed 69-query benchmark. The primary evaluation metrics, average Recall@5, average Recall@10, Precision@5, Precision@10, Mean Reciprocal Rank (MRR), Required Citation Coverage, and the Forbidden Citation Violation Rate, are reported across all configurations in Table~\ref{tab:retrieval-modes-comparison}. To analyze functional retrieval characteristics under varying legal requirements, Table~\ref{tab:category-level-results} breaks down the Recall@10 and Required Citation Coverage performance by query category.
-
-\begin{table}[H]
-  \centering
-  \caption{Retrieval modes comparison table.}
-  \label{tab:retrieval-modes-comparison}
-  \begin{tabular}{lrrrrrrr}
-    \toprule
-    Mode & R@5 & R@10 & P@5 & P@10 & MRR & Coverage & Forbidden \\
-    \midrule
-    Vector-only & 0.012 & 0.012 & 0.026 & 0.020 & 0.022 & 0.012 & 0.000 \\
-    Hybrid & 0.860 & 0.920 & 0.571 & 0.380 & 0.833 & 0.920 & 0.000 \\
-    Graph-augmented & 0.961 & 1.000 & 0.562 & 0.359 & 0.872 & 1.000 & 0.000 \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-As shown in Table~\ref{tab:retrieval-modes-comparison}, vector-only retrieval performed poorly on this benchmark, achieving a Recall@10 of only 0.012 and Required Citation Coverage of 0.012. This suggests that relying solely on continuous dense embeddings is insufficient for legal QA. Vietnamese legal evidence frequently depends on exact coordinates, such as specific article numbers, clause letters, and appendix indices. While vector similarity model embeddings excel at broad data grouping and identifying general legal topics, they often miss these precise coordinate identifiers. Furthermore, chunks that are semantically similar to a user's question might be legally inapplicable, belong to repealed provisions, or reference the wrong legislative act. Consequently, semantic proximity alone does not guarantee the recovery of correct legal bases.
-
-In contrast, hybrid retrieval showed a major improvement, raising Recall@10 to 0.920 and Required Citation Coverage to 0.920. Fusing dense semantic vectors with sparse tokens using Reciprocal Rank Fusion (RRF) combines the advantages of both retrieval models. The dense encoder handles synonym expansion and paraphrased user queries, while the keyword search ensures that specific legal terms, document identifiers, and statutory coordinates are matched exactly. This hybrid configuration successfully matches direct queries but experiences limitations on queries requiring cross-document references or complex tabular lookups, as shown in Table~\ref{tab:category-level-results}.
-
-The graph-augmented retrieval configuration achieved the highest performance on this benchmark, reaching a Recall@10 of 1.000 and Required Citation Coverage of 1.000. Starting from hybrid seed chunks, the graph retriever traverses structural, reference, taxonomy, and normative validity edges to expand the context window. This topological expansion helps recover subordinate circulars, procedural conditions, and related provisions that may not appear in the top-ranked hybrid results. As shown in the category-level results in Table~\ref{tab:category-level-results}, this approach especially improves performance in complex categories such as document guidance (Recall@10 improved from 0.683 to 1.000), multi-hop questions (Recall@10 improved from 0.583 to 1.000), and procedure questions (Recall@10 improved from 0.857 to 1.000). The graph traversal ensures that multi-tier relationships (linking a Code to administrative Decrees and ministerial Circulars) are fully navigated, which is crucial for solving calculation, table lookup, and exceptions queries.
-
-\begingroup
-\scriptsize
-\begin{longtable}{@{}p{0.23\linewidth}rrrrrr@{}}
-  \caption{Category-level result table.}
-  \label{tab:category-level-results}\\
-  \toprule
-  Category & Q & Vec R@10 & Hyb R@10 & Graph R@10 & Hyb Cov. & Graph Cov. \\
-  \midrule
-  \endfirsthead
-  \toprule
-  Category & Q & Vec R@10 & Hyb R@10 & Graph R@10 & Hyb Cov. & Graph Cov. \\
-  \midrule
-  \endhead
-  Calculation/table lookup & 5 & 0.067 & 1.000 & 1.000 & 1.000 & 1.000 \\
-  Comparison QA & 4 & 0.000 & 1.000 & 1.000 & 1.000 & 1.000 \\
-  Definition QA & 7 & 0.000 & 1.000 & 1.000 & 1.000 & 1.000 \\
-  Direct QA & 19 & 0.000 & 1.000 & 1.000 & 1.000 & 1.000 \\
-  Document guidance QA & 10 & 0.000 & 0.683 & 1.000 & 0.683 & 1.000 \\
-  Exception-based QA & 11 & 0.045 & 0.955 & 1.000 & 0.955 & 1.000 \\
-  Multi-hop QA & 2 & 0.000 & 0.583 & 1.000 & 0.583 & 1.000 \\
-  Procedure QA & 7 & 0.000 & 0.857 & 1.000 & 0.857 & 1.000 \\
-  Scenario-based QA & 4 & 0.000 & 1.000 & 1.000 & 1.000 & 1.000 \\
-  \bottomrule
-\end{longtable}
-\endgroup
-
-Importantly, the forbidden citation violation rate remained at 0.000 across all modes, indicating that graph expansion did not introduce benchmark-defined forbidden citations in this experiment. This suggests that the graph schemas and traversal filters effectively control prompt noise. However, this does not suggest that the retriever is legally perfect under all scenarios, nor does it guarantee that irrelevant legal information will never be retrieved. These results are limited to the constructed 69-query benchmark and six-document labor corpus, and do not prove universal correctness for all potential labor law queries. Precision@10 decreased slightly in the graph mode (from 0.380 to 0.359) because expanding context via the graph introduces additional supporting nodes; however, this minor trade-off is acceptable since high recall is required for downstream generation. Indeed, on the subset of 25 graph-required queries, the graph expansion enabled a 1.000 retrieval pass rate, which provided a complete evidence base for subsequent steps.
-
-With the retrieval stage establishing a fully grounded context window under the graph-augmented configuration, the next section evaluates the end-to-end performance and the validation checks of the answer generation layer.
-
-\section{End-to-End Results}
-\label{sec:end-to-end-results}
-
-This section presents the results of the complete end-to-end pipeline evaluation, which traces the system's execution from initial retrieval, through context assembly and answer generation, to the final deterministic validation gates. The primary objective is to verify whether the integrated pipeline can produce high-quality, citation-grounded responses that pass all structural and content guardrails. The quantitative results of this evaluation over the 69-query diagnostic benchmark are summarized in Table~\ref{tab:end-to-end-evaluation-summary}.
+Table~\ref{tab:retrieval-results-100} reports graph-augmented retrieval performance on the 94 in-corpus queries. Recall@10 and Required Citation Coverage are not computed over the 6 out-of-corpus queries.
 
 \begin{table}[H]
   \centering
-  \caption{End-to-end evaluation summary table.}
-  \label{tab:end-to-end-evaluation-summary}
+  \caption{Retrieval results on the final benchmark.}
+  \label{tab:retrieval-results-100}
   \begin{tabular}{lr}
     \toprule
     Metric & Value \\
     \midrule
-    Benchmark queries & 69 \\
-    End-to-end pass rate & 1.000 \\
-    Retrieval pass rate & 1.000 \\
-    Answer pass rate & 1.000 \\
-    Citation validation pass rate & 1.000 \\
-    Quality validation pass rate & 1.000 \\
-    Low-information quotes & 0 \\
-    Unsupported article numbers & None \\
-    Unretrieved citations & None \\
+    In-corpus queries & 94 \\
+    Recall@10 & 0.835 \\
+    Required Citation Coverage & 0.835 \\
+    Forbidden Citation Violation Rate & 0.043 \\
+    In-corpus retrieval pass rate & 0.766 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-As shown in Table~\ref{tab:end-to-end-evaluation-summary}, the system achieved a 1.000 pass rate across the end-to-end pipeline, the retrieval layer, answer presence, citation validation, and quality validation on the 69 benchmark queries. Under the deterministic validation rules, all generated answers successfully satisfied the required structural constraints. It is critical to interpret these results within the correct scope: a 1.000 pass rate indicates that the system met all rule-based constraints for this constructed benchmark within the indexed six-document corpus. These results do not suggest that the system is perfectly correct in all scenarios, nor do they guarantee absolute legal correctness or represent legally certified answers.
+The result shows that retrieval is still the main bottleneck. The system recovers most required citations, but it does not consistently retrieve the full evidence set for harder queries. This is visible in the gap between Required Citation Coverage of 0.835 and the stricter retrieval pass rate of 0.766.
 
-Regarding citation grounding, the evaluation did not detect any unsupported article numbers or unretrieved citations in the generated responses. The article numeral verification check confirmed that all article numbers referenced in the natural language text were subset within the retrieved contexts. This indicates that the legal bases generated by the answering layer matched the retrieved evidence and did not introduce external citations or fabricated coordinates. Ensuring exact coordination is essential in legal QA because a technically correct statement referencing a wrong or unretrieved article introduces significant compliance risks.
+Table~\ref{tab:retrieval-ablation-100} compares hybrid-only retrieval with graph-augmented retrieval on the same 94 in-corpus queries. Graph expansion improves Recall@10 and Required Citation Coverage from 0.748 to 0.835. It also improves the retrieval pass rate from 0.660 to 0.766. The Forbidden Citation Violation Rate increases from 0.032 to 0.043, which shows that graph expansion can add useful evidence but can also introduce some distracting legal bases.
 
-Furthermore, the quality checks did not detect any low-information quotes in the final evaluations. The extractive generation and validation filters prevented the model from returning empty text fields, verbatim title repetitions, or excessively short evidence snippets. The average quality score reached 100.00 under the rule-based metrics, suggesting that the generated answers provided substantive retrieved legal provisions to address the queries rather than relying solely on citation labels. These results indicate that the pipeline worked consistently across all difficulty groups (comprising 15 easy, 32 medium, and 22 hard queries), category-level functional splits, and normative-hierarchy-required queries (22 true and 47 false queries) on the constructed benchmark.
+\begin{table}[H]
+  \centering
+  \caption{Retrieval ablation on the 94 in-corpus queries.}
+  \label{tab:retrieval-ablation-100}
+  \scriptsize
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Mode & Queries & Recall@10 & \begin{tabular}[c]{@{}c@{}}Required Citation\\Coverage\end{tabular} & \begin{tabular}[c]{@{}c@{}}Forbidden Citation\\Violation Rate\end{tabular} & \begin{tabular}[c]{@{}c@{}}Retrieval\\Pass Rate\end{tabular} \\
+    \midrule
+    Hybrid-only & 94 & 0.748 & 0.748 & 0.032 & 0.660 \\
+    Graph-augmented & 94 & 0.835 & 0.835 & 0.043 & 0.766 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-However, these results are limited to the constructed 69-query benchmark and the indexed six-document corpus. It is important to emphasize that this deterministic validation is a software-level verification step and does not replace professional legal expert review. While rule-based constraints are highly reproducible and useful for identifying structural errors, they do not evaluate semantic nuances or guarantee that the output remains legally correct under changing regulatory frameworks.
+The failures are concentrated in paraphrased user queries, multi-hop queries, table and appendix lookup, hard-negative citation queries, and labor-dispute procedure queries. These groups require more than lexical matching. They often require the retriever to connect informal wording to a legal concept, follow cross-document references, or find a specific appendix row.
 
-With the end-to-end performance established on the benchmark, the next section presents specific case studies to illustrate practical system behaviors and context-grounding flows.
+The Forbidden Citation Violation Rate is 0.043. This means that some hard-negative cases still retrieve a similar but wrong legal basis. These cases are important because they can lead the answer generator toward a legally distracting provision even when the citation itself is present in the corpus.
+
+\section{End-to-End Results}
+\label{sec:end-to-end-results}
+
+Table~\ref{tab:end-to-end-results-100} reports the adjusted end-to-end results for the final 100-query benchmark. The adjusted score uses normal in-corpus validation for the 94 in-corpus queries and refusal validation for the 6 out-of-corpus queries.
+
+\begin{table}[H]
+  \centering
+  \caption{Adjusted end-to-end results on the final benchmark.}
+  \label{tab:end-to-end-results-100}
+  \begin{tabular}{lr}
+    \toprule
+    Metric & Value \\
+    \midrule
+    Total benchmark queries & 100 \\
+    In-corpus queries & 94 \\
+    Out-of-corpus refusal tests & 6 \\
+    Adjusted end-to-end pass rate & 0.780 \\
+    Retrieval pass rate & 0.780 \\
+    Answer pass rate & 0.970 \\
+    Citation validation pass rate & 1.000 \\
+    Quality validation pass rate & 0.970 \\
+    Average final quality score & 93.9693 \\
+    Low-information quotes & 2 \\
+    Unsupported article numbers & 0 \\
+    Unretrieved citations & 0 \\
+    Out-of-corpus QA pass rate & 1.000 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The adjusted end-to-end pass rate is 0.780. This result is lower than the answer and citation validation rates because many failures still occur at retrieval time. If required evidence is missing from the retrieved context window, the final answer cannot pass the full benchmark rule even if it is well formed and grounded in the retrieved contexts.
+
+The citation validation pass rate remains 1.000. This means the system did not cite sources outside the retrieved context in the final evaluation. The result indicates that the citation guard is effective at preventing unsupported citation surfaces. However, this does not solve missing retrieval. A grounded answer can still be incomplete or based on the wrong retrieved context if the retriever fails to find the required evidence.
+
+The out-of-corpus QA pass rate is 1.000. In the final candidate, the scope guard and intent gate caused all 6 out-of-corpus tests to return refusal or insufficient-context behavior. This improves bounded-corpus safety in the benchmark, but the guard is rule-based and limited to known unsupported topic families.
 
 \section{Case Studies}
 \label{sec:case-studies}
 
-This section presents selected benchmark cases to illustrate how the retrieval and validation pipeline behaves. The examples are not additional evaluation results; they are qualitative explanations of representative benchmark items.
+This section gives three examples from the final benchmark. They are used to explain the quantitative results, not to add new metrics.
 
-\textbf{Case 1: Minor worker employment.}
-The benchmark query asks: ``Hãy viết giải thích về lao động chưa thành niên cho một chủ hộ kinh doanh đang muốn thuê người 14 tuổi làm việc.''
-This query belongs to the minor\_labor category and requires Bộ luật Lao động 2019, Điều 143, Điều 144, Điều 145.
-A vector-only or hybrid retriever may miss the specific implementing circular guidelines (such as Circular 09/2020/TT-BLDTBXH) that list the exact allowed light work occupations. Because the query's semantic encoding centers on the general concept of minor labor, similarity-based search matches broad Labor Code sections but fails to traverse down the administrative hierarchy.
-The graph-augmented retriever helps by traversing GUIDED\_BY and DETAILS reference edges from the parent Labor Code Article 143 seed node to the implementing circular chunks. This topological traversal fetches the precise allowed light work occupations for children aged 13 to 15.
-The final answer is accepted because the deterministic citation check confirms all utilized legal bases are grounded within the retrieved Circular context. The pipeline successfully outputs the statutory conditions, such as obtaining parental consent and ensuring that the work does not interfere with the minor's schooling.
+\textbf{Successful in-corpus case.} The query asks: ``Nu nghi huu nam 2026 thi bao nhieu tuoi va can cu van ban nao?'' The required evidence includes the Labor Code rule on retirement age, Decree 135/2020/ND-CP Article 4, and the retirement age table in Appendix I. The system retrieved the required retirement-age table and returned the correct answer: female workers retiring under normal conditions in 2026 are at retirement age 57. This case passed retrieval, answer, citation, and quality checks.
 
-\textbf{Case 2: Retirement age table lookup.}
-The benchmark query asks: ``Nu nghi huu nam 2026 thi bao nhieu tuoi va can cu van ban nao?''
-This query belongs to the calculation\_or\_table\_lookup category and requires Bộ luật Lao động 2019, Điều 169 và Nghị định 135/2020/NĐ-CP, Điều 4 và PHỤ LỤC I.
-A vector-only or hybrid retriever may miss the exact retirement age table row because dense embeddings struggle with numeric tables. While hybrid search retrieves the general Article 169 clause, it often fails to rank the specific female retirement table chunk high enough to enter the prompt context.
-The graph-augmented retriever helps by traversing the DETAILS reference edge from Article 169 of the Labor Code directly to Article 4 and Appendix I of Decree 135/2020/NĐ-CP. This pulls the exact female retirement table mapping year 2026 to 57 years of age.
-The final answer is accepted because the citation check verifies that the output correctly cites the specific column and row in Appendix I, validating that the generated answer is grounded in the retrieved table. The response accurately states that the female retirement age in 2026 is 57 years.
+\textbf{Successful out-of-corpus refusal case.} The query asks: ``Nam 2026 luong toi thieu vung I, II, III, IV la bao nhieu?'' The indexed corpus does not contain the legal instrument needed to answer this question. In the final candidate, the scope guard and intent gate detected that the query was outside the supported benchmark scope and that the retrieved evidence was insufficient. The system returned an insufficient-context response with an empty \texttt{legal\_basis} field. This case passed the out-of-corpus QA rule.
 
-\textbf{Case 3: Labor contract content guidance.}
-The benchmark query asks: ``Hop dong lao dong can noi dung gi va thong tu nao huong dan chi tiet?''
-This query belongs to the document\_guidance\_qa category and requires Bộ luật Lao động 2019, Điều 21 và Thông tư 10/2020/TT-BLĐTBXH, Điều 3.
-A vector-only or hybrid retriever may miss the specific implementing ministerial guidelines in the Circular because dense vector proximity models rank parent Code articles higher due to high keyword overlap. This leaves the downstream answering layer without the granular definitions for salary, allowance, and payment terms.
-The graph-augmented retriever helps by traversing the GUIDED\_BY edge from Labor Code Article 21 to Article 3 of Circular 10/2020/TT-BLĐTBXH. This automatically expands the context to include the detailed administrative instructions.
-The final answer is accepted because the deterministic validation gates verify that both the parent Code and the guiding Circular are retrieved and cited together. The output lists all required contract elements while ensuring that the detailed guidelines from the Circular are properly incorporated and cited.
-
-\textbf{Case 4: Dismissal dispute or labor procedure question.}
-The benchmark query asks: ``Tranh chap sa thai co can hoa giai truoc khi kien khong va Toa an co tham quyen khong?''
-This query belongs to the multi\_hop\_qa category and requires Bộ luật Lao động 2019, Điều 188 và Điều 190, và Bộ luật Tố tụng dân sự 2015, Điều 32.
-A vector-only or hybrid retriever may miss the procedural links between separate legislative codes. Keyword similarity search struggles to connect BLLĐ Article 188 (which exempts dismissal disputes from mandatory mediation) to BLTTDS Article 32 (which establishes court jurisdiction over labor disputes) due to their disjointed phrasing.
-The graph-augmented retriever helps by traversing cross-document REFERENCES edges between BLLĐ Article 188 and BLTTDS Article 32. This gathers both the substantive labor exemption and the civil procedural jurisdiction rules into the same prompt window.
-The final answer is accepted because the citation validation step checks that BLLĐ Article 188 and BLTTDS Article 32 are present in the response. The extractive answering layer successfully delivers a grounded response explaining that dismissal disputes are exempt from mediation and fall under direct court jurisdiction.
-
-These cases suggest why graph expansion is useful for cross-document and hierarchy-dependent questions. However, they should be interpreted together with the quantitative results in Sections 5.4 and 5.5, not as proof of universal legal correctness.
-
+\textbf{Remaining retrieval failure case.} The query asks: ``Cong ty noi hang it viec nen chuyen toi sang viec khac gan 3 thang, khong hoi y kien toi, vay co on khong?'' The required evidence is Labor Code Article 29 on temporary transfer to another job. The retriever did not retrieve Article 29. Instead, the top results included unrelated wage and general employment provisions. The answer was grounded in retrieved text, but the retrieved text did not contain the required rule. This case failed with \texttt{retrieval\_\allowbreak{}missing\_\allowbreak{}required\_\allowbreak{}context}.
 
 \section{Error Analysis and Limitations}
 \label{sec:error-analysis-and-limitations}
 
-\textbf{Benchmark scope.} The quantitative results presented in Sections 5.4 and 5.5—including the 1.000 Recall@10, the 1.000 Required Citation Coverage, and the 1.000 end-to-end pass rate—demonstrate the empirical performance of the graph-augmented RAG system on the constructed diagnostic benchmark. However, it is critical to recognize that these findings are bound by the scope of this evaluation. The benchmark contains 69 constructed queries, which, while highly detailed and useful for controlled evaluation, do not constitute a full, real-world legal question-answering benchmark. This diagnostic set is designed to test specific failure modes (such as document routing, exceptions, and cross-document links) but does not cover every possible Vietnamese labor-law question or user scenario. The benchmark is sufficient for evaluating the implemented system behavior, but it should not be interpreted as a complete test of Vietnamese labor-law reasoning. Because these queries were heuristically designed for system diagnostics rather than collected from live, diverse user interactions, they likely underrepresent the linguistic variations, conversational noise, and ambiguous intents that occur in practical deployments.
+The main error pattern is \texttt{retrieval\_missing\_required\_context}. The benchmark indicates that the system fails when the required legal basis is not retrieved in the top-10 context window. This affects paraphrased user queries, multi-hop retrieval, table and appendix lookup, hard-negative citation cases, and labor-dispute procedure queries.
 
-\textbf{Corpus coverage.} A major structural constraint is that the system's knowledge is bounded by the six indexed legal documents. The retriever and generator can only perform successfully when the required legal evidence exists within this scoped corpus. Questions involving laws or regulations outside the indexed documents—such as tax codes, business enterprise laws, or newer ministerial circulars—cannot be resolved and will require external sources. Furthermore, the cross-reference graph construction process made conservative choices during parsing: 111 unresolved references were identified and deliberately excluded from the active Neo4j graph. This is a conservative choice to avoid adding uncertain graph edges, but it also means the graph does not capture every legal reference. While this prevents the retrieval pipeline from traversing invalid or dead-end paths, it restricts the query expansion policy from navigating long-tail reference networks that might be necessary for broader regulatory integration.
+Hard-negative over-expansion is another error source. Four in-corpus cases retrieved forbidden citations. These cases show that the retriever can still promote a similar but incorrect legal basis. This is risky in labor-law QA because related provisions may use similar wording but answer a different legal question.
 
-\textbf{Evaluation method.} The approach used to validate the generated answers also introduces specific limits. Answer quality is evaluated using deterministic rule-based validation, not human legal expert review or LLM-as-Judge evaluation. The deterministic validation gates—checking for direct answer presence, exact citation matching, and the absence of low-information or verbatim repeats—ensure high reproducibility, easy inspection, and transparent auditing of the system's responses. However, these software-level checks do not replace professional legal expert review. Rule-based metrics are highly effective at catching structural anomalies, incorrect article numbers, or missing citations, but they are fundamentally blind to semantic nuances, logical flow, and subtle errors in legal interpretation. Passing all validation checks indicates that the output satisfies the structural rules defined in the benchmark, not that the legal reasoning would be accepted by a practicing lawyer or a court of law.
+Paraphrased user queries are difficult because the user does not name the legal article. The retriever must infer the legal issue from informal wording. In the final benchmark, these cases remain a source of end-to-end failure. This suggests that query understanding and query rewriting need more work.
 
-\textbf{Generation and retrieval limits.} The generation and retrieval layers also exhibit specific operational boundaries. The answer generator relies on a highly structured, extractive, and citation-grounded template to assemble response components. This design is highly effective at reducing unsupported citation claims and preventing hallucinated article numbers. However, this extractive style can make the final output less flexible when explaining complex legal arguments, synthesising contrasting opinions, or answering open-ended, multi-clause scenario questions. Additionally, the graph-augmented retrieval process is highly sensitive to the quality of the upstream data engineering. The performance of graph expansion depends entirely on chunking quality, reference extraction, metadata enrichment, and graph schema design. If a citation is unresolved, outside the graph, or parsed incorrectly, the query expansion policy cannot recover the missing context, which directly limits the downstream generator.
+Table and appendix lookup remains limited. Four table or appendix lookup items failed. These failures occur because the needed evidence is often a specific appendix chunk or table row. Numeric and table-heavy provisions are harder to retrieve than ordinary article text.
 
-\textbf{Practical use.} In light of these constraints, the system should be treated as an intelligent legal information assistant within the indexed corpus rather than a substitute for professional legal advice. In real-world deployments, answers must include clear user-facing disclaimers, and high-stakes use cases should incorporate a human-in-the-loop expert review process. To move beyond the limits of this study, future research should focus on expanding the indexed corpus to a broader set of civil and administrative statutes and developing an expert-validated benchmark. Integrating real user query logs and establishing a rigorous human legal review panel will help evaluate conversational adaptability and semantic accuracy. Additionally, comparing the rule-based validation framework with advanced LLM-as-Judge evaluations and introducing mechanism updates to handle temporal validity when legal documents change will be valuable paths forward.
+Labor-dispute procedure questions also show weakness. These queries require the system to connect substantive labor rules with civil procedure provisions. The result shows that cross-code retrieval remains difficult for the current pipeline.
 
-These limitations do not invalidate the experimental results. Instead, they define the scope in which the results should be interpreted: a controlled, citation-based evaluation of a graph-augmented RAG system over a bounded Vietnamese labor-law corpus.
+The out-of-corpus tests passed in the final candidate. This result is useful, but it should not be read as general out-of-scope detection. The current scope guard is rule-based and limited to known unsupported topic families.
 
+The evaluation has one further limitation. It does not include human legal expert review. The deterministic checks are useful for reproducible software evaluation, but they cannot decide whether every legal interpretation is correct in practice. Future work should include expert review and a broader corpus before using the system in high-stakes settings.
+
+Overall, the final 100-query benchmark shows a mixed result. Citation grounding and out-of-corpus refusal are strong in this benchmark, but in-corpus retrieval robustness remains limited.

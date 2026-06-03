@@ -1,28 +1,30 @@
 \begin{tikzpicture}[
-  node distance=9mm and 10mm,
-  every node/.style={font=\footnotesize},
-  pipebox/.style={block, minimum height=9mm, minimum width=32mm, text width=32mm, align=center},
-  semibox/.style={pipebox, fill=black!5, minimum width=42mm, text width=42mm},
-  outbox/.style={pipebox, fill=black!10, minimum width=31mm, text width=31mm},
-  logbox/.style={pipebox, fill=orange!10, dashed, minimum width=31mm, text width=31mm},
+  node distance=8mm and 6mm,
+  every node/.style={font=\small},
+  pipebox/.style={block, font=\small, minimum height=10mm, minimum width=27mm, text width=27mm, align=center, inner xsep=3pt, inner ysep=4pt},
+  semibox/.style={pipebox, fill=black!5, minimum width=45mm, text width=45mm},
+  refbox/.style={pipebox, minimum width=34mm, text width=34mm},
+  outbox/.style={pipebox, fill=black!10, minimum width=36mm, text width=36mm},
+  logbox/.style={pipebox, fill=orange!10, dashed, minimum width=36mm, text width=36mm},
   groupbox/.style={container, fill=black!3, inner sep=7pt,
     label={[anchor=west, fill=black!3, inner sep=2pt, font=\footnotesize\bfseries]north west:#1}}
 ]
-  \node[pipebox] (text) {Cleaned Legal Text};
-  \node[pipebox, right=of text] (chunking) {Hierarchy-aware Chunking};
+  \node[pipebox] (text) {Cleaned\\Legal Text};
+  \node[pipebox, right=of text] (chunking) {Hierarchy-aware\\Chunking};
   \node[semibox, right=of chunking] (semantic)
-    {Semantic Preservation Layer\\[1mm]\scriptsize Preserves legal hierarchy, citation text, and metadata.};
-  \node[pipebox, right=of semantic] (metadata) {Metadata Enrichment};
-  \node[pipebox, below=of metadata] (reference) {Reference Extraction};
-  \node[pipebox, below=of reference] (validated) {Validated Artifacts};
-  \node[logbox, right=12mm of reference] (unresolved) {Unresolved References Log};
+    {Semantic\\Preservation Layer\\[1mm]{\footnotesize Preserves legal hierarchy, citation text, and metadata.}};
+  \node[pipebox, right=of semantic] (metadata) {Metadata\\Enrichment};
+  \node[refbox, right=of metadata] (reference) {Reference\\Extraction};
+  \node[pipebox, right=of reference] (validated) {Validated\\Artifacts};
+  \node[logbox, below right=10mm and 5mm of reference] (unresolved)
+    {Unresolved\\References\\Log\\{\scriptsize (111 cases)}};
 
-  \node[outbox, below=12mm of validated] (edges) {Reference Edges};
-  \node[outbox, left=of edges] (chunks) {Enriched Chunks};
-  \node[outbox, right=of edges] (inputs) {Index / Graph Inputs};
+  \node[outbox, below=39mm of semantic] (edges) {Reference\\Edges};
+  \node[outbox, left=of edges] (chunks) {Enriched\\Chunks};
+  \node[outbox, right=of edges] (inputs) {Index / Graph\\Inputs};
 
   \begin{scope}[on background layer]
-    \node[groupbox=Preprocessing Pipeline, fit=(text) (chunking) (semantic) (metadata) (reference) (validated)] {};
+    \node[groupbox=Preprocessing Pipeline, fit=(text) (chunking) (semantic) (metadata) (reference) (validated) (unresolved)] {};
     \node[groupbox=Output Artifacts, fit=(chunks) (edges) (inputs)] {};
   \end{scope}
 
@@ -31,9 +33,10 @@
   \draw[arrow] (semantic) -- (metadata);
   \draw[arrow] (metadata) -- (reference);
   \draw[arrow] (reference) -- (validated);
-  \draw[dashedarrow] (reference) -- node[above, font=\scriptsize] {111 unresolved references} (unresolved);
+  \draw[dashedarrow] (reference.south) |- (unresolved.west);
 
-  \draw[arrow] (validated.south) -- ++(0,-5mm) -| (chunks.north);
-  \draw[arrow] (validated) -- (edges);
-  \draw[arrow] (validated.south) -- ++(0,-5mm) -| (inputs.north);
+  \coordinate (artifactroute) at ($(validated.south)+(0,-7mm)$);
+  \draw[arrow] (validated.south) -- (artifactroute) -| (chunks.north);
+  \draw[arrow] (validated.south) -- (artifactroute) -| (edges.north);
+  \draw[arrow] (validated.south) -- (artifactroute) -| (inputs.north);
 \end{tikzpicture}

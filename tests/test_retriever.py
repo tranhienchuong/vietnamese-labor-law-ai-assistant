@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from qdrant_client import models
 
+from vn_labor_law_ai_assistant.heuristic_router import RULE_CONFIG, route_query_heuristic
 from vn_labor_law_ai_assistant.retriever import (
     ARTICLE_REF_RE,
     DEFAULT_MAX_CONTEXT_CHARS,
@@ -30,6 +31,10 @@ from vn_labor_law_ai_assistant.retriever import (
 
 
 class QueryRoutingTests(unittest.TestCase):
+    @staticmethod
+    def _procedural_enabled_config() -> SimpleNamespace:
+        return SimpleNamespace(**{**vars(RULE_CONFIG), "ENABLE_PROCEDURAL_ROUTING": True})
+
     def test_termination_article_map_covers_required_articles(self) -> None:
         self.assertEqual(
             set(TERMINATION_ARTICLE_MAP),
@@ -121,6 +126,60 @@ class QueryRoutingTests(unittest.TestCase):
         self.assertEqual(variants[0], "Cong ty no luong 1 thang toi nghi luon duoc khong?")
         self.assertTrue(any("khong duoc tra du luong" in variant for variant in variants))
         self.assertTrue(any("Dieu 97" in variant and "Dieu 35" in variant for variant in variants))
+
+    def test_route_query_does_not_add_blttds_references_by_default(self) -> None:
+        intent = route_query(
+            "Tuoi nghi huu trong dieu kien lao dong binh thuong duoc xac dinh theo quy dinh nao?"
+        )
+
+        self.assertFalse(
+            any(reference.document_id == "92-2015-qh13-labor-only" for reference in intent.forced_references)
+        )
+
+    def test_route_query_adds_blttds_references_when_procedural_routing_enabled(self) -> None:
+        intent = route_query_heuristic(
+            "Cong ty khau tru luong qua muc, toi muon kien thi tranh chap tien luong nay co thuoc Toa an va toi co the chon Toa noi toi cu tru hoac lam viec khong?",
+            rule_config=self._procedural_enabled_config(),
+        )
+
+        forced = {
+            (reference.document_id, reference.article, reference.clause, reference.point)
+            for reference in intent.forced_references
+        }
+
+        self.assertIn(("45-2019-qh14", "188", "", ""), forced)
+        self.assertIn(("45-2019-qh14", "102", "", ""), forced)
+        self.assertIn(("92-2015-qh13-labor-only", "32", "", ""), forced)
+        self.assertIn(("92-2015-qh13-labor-only", "40", "1", "d"), forced)
+        self.assertIn("32", intent.inferred_article_numbers)
+        self.assertIn("40", intent.inferred_article_numbers)
+
+    def test_route_query_adds_blttds_invalidity_references_only_for_procedural_invalidity_request(self) -> None:
+        intent = route_query_heuristic(
+            "Muon yeu cau tuyen bo thoa uoc lao dong tap the vo hieu thi can can cu Bo luat Lao dong va BLTTDS dieu nao?",
+            rule_config=self._procedural_enabled_config(),
+        )
+
+        forced = {
+            (reference.document_id, reference.article, reference.clause, reference.point)
+            for reference in intent.forced_references
+        }
+
+        self.assertIn(("92-2015-qh13-labor-only", "32", "", ""), forced)
+        self.assertIn(("92-2015-qh13-labor-only", "33", "1", ""), forced)
+        self.assertIn(("92-2015-qh13-labor-only", "35", "2", "d"), forced)
+        self.assertIn(("45-2019-qh14", "86", "", ""), forced)
+        self.assertIn(("45-2019-qh14", "87", "", ""), forced)
+
+    def test_build_query_variants_uses_blttds_document_name_for_procedural_references(self) -> None:
+        intent = route_query_heuristic(
+            "Tranh chap sa thai co can hoa giai truoc khi kien va Toa an co tham quyen khong?",
+            rule_config=self._procedural_enabled_config(),
+        )
+
+        variants = build_query_variants(intent)
+
+        self.assertTrue(any("Dieu 32" in variant and "Bo luat To tung dan su 2015" in variant for variant in variants))
 
     def test_direct_reference_definition_query_uses_exact_clause_target(self) -> None:
         intent = route_query("Nguoi lao dong duoc hieu nhu the nao trong Bo luat Lao dong?")

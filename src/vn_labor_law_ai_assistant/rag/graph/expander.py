@@ -29,6 +29,16 @@ class GraphPriorityReference:
     chunk_id_contains: str = ""
 
 
+@dataclass(frozen=True)
+class GraphExpansionPlan:
+    profile: str
+    should_expand: bool
+    expansion_depth: int
+    max_expanded_chunks: int
+    min_confidence: float
+    seed_confidence: float
+
+
 RELATION_WEIGHTS: dict[str, float] = {
     "DETAILS": 0.24,
     "GUIDED_BY": 0.22,
@@ -295,6 +305,72 @@ MULTI_HOP_QUERY_HINTS: tuple[str, ...] = tuple(
         "áp dụng như thế nào",
     )
 )
+
+GRAPH_FAVORED_QUERY_TYPES: frozenset[str] = frozenset(
+    {
+        "labor_dispute",
+        "labor_dispute_litigation",
+        "litigation",
+        "retirement_age_table_lookup",
+        "early_retirement_hazardous_work",
+        "labor_contract_content_guidance",
+        "structural_change_job_loss_allowance",
+        "structural_change_labor_usage_plan",
+        "compare_employee_unlawful_termination_vs_structural_change",
+        "compare_overtime_conditions_vs_pay",
+        "minor_worker_prohibited_jobs",
+        "overtime_conditions_and_limits",
+    }
+)
+GRAPH_FAVORED_QUERY_HINTS: tuple[str, ...] = tuple(
+    normalize_for_matching(value)
+    for value in (
+        "huong dan",
+        "quy dinh chi tiet",
+        "theo nghi dinh",
+        "theo thong tu",
+        "phu luc",
+        "mau so",
+        "toa an",
+        "tham quyen",
+        "hoa giai",
+        "truoc khi kien",
+        "khoi kien",
+    )
+)
+PARAPHRASED_REAL_USER_HINTS: tuple[str, ...] = tuple(
+    normalize_for_matching(value)
+    for value in (
+        "toi",
+        "em",
+        "minh",
+        "ben em",
+        "cong ty toi",
+        "cong ty em",
+        "sep",
+        "bi cong ty",
+        "muon kien",
+        "muon nghi",
+        "nghi ngay",
+        "duoc nghi ngay",
+        "co duoc nghi ngay",
+        "co duoc khong",
+    )
+)
+HARD_NEGATIVE_QUERY_HINTS: tuple[str, ...] = tuple(
+    normalize_for_matching(value)
+    for value in (
+        "dung nham",
+        "dung nham voi",
+        "khong nham",
+        "phan biet",
+        "khac voi",
+        "chu khong phai",
+        "hay la",
+        "hay dung",
+    )
+)
+PRIMARY_LAW_DOCUMENT_ID = "45-2019-qh14"
 
 
 def _query_has_any(intent: QueryIntent, phrases: Sequence[str]) -> bool:
@@ -630,6 +706,24 @@ def classify_graph_query_intent(intent: QueryIntent) -> tuple[str, ...]:
     return dedupe_preserve_order(tuple(query_types))
 
 
+def classify_graph_expansion_profile(intent: QueryIntent) -> str:
+    graph_query_types = set(classify_graph_query_intent(intent))
+    if (
+        graph_query_types.intersection(GRAPH_FAVORED_QUERY_TYPES)
+        or _query_has_any(intent, GRAPH_FAVORED_QUERY_HINTS)
+    ):
+        return "graph_favored"
+    if _query_has_any(intent, HARD_NEGATIVE_QUERY_HINTS):
+        return "hard_negative"
+    if (
+        _query_has_any(intent, PARAPHRASED_REAL_USER_HINTS)
+        and not intent.article_numbers
+        and not _query_has_any(intent, GRAPH_FAVORED_QUERY_HINTS)
+    ):
+        return "paraphrased_real_user"
+    return "default"
+
+
 def graph_priority_references_for_intent(intent: QueryIntent) -> tuple[GraphPriorityReference, ...]:
     references: list[GraphPriorityReference] = []
     for query_type in classify_graph_query_intent(intent):
@@ -666,6 +760,126 @@ class Neo4jLegalGraphExpander:
 
     def _has_natural_graph_trigger(self, intent: QueryIntent) -> bool:
         return self._contains_hint(intent.normalized_query, NATURAL_GRAPH_QUERY_HINTS)
+
+    @staticmethod
+    def _priority_reference_targets(
+        intent: QueryIntent,
+    ) -> tuple[set[str], set[tuple[str, str]]]:
+        priority_documents: set[str] = set()
+        priority_articles: set[tuple[str, str]] = set()
+        for reference in graph_priority_references_for_intent(intent):
+            priority_documents.add(reference.document_id)
+            for article_number in reference.article_numbers:
+                priority_articles.add((reference.document_id, article_number))
+        return priority_documents, priority_articles
+
+    def _seed_support_score(
+        self,
+        *,
+        hit: SearchHit,
+        record: RetrievedRecord,
+        intent: QueryIntent,
+        priority_documents: set[str],
+        priority_articles: set[tuple[str, str]],
+    ) -> float:
+        payload = record.payload
+        document_id = str(payload.get("document_id") or "")
+        article_number = str(payload.get("article_number") or "")
+        clause_ref = str(payload.get("clause_ref") or "")
+        point_ref = str(payload.get("point_ref") or "")
+        issue_values = {str(value) for value in (payload.get("issue_type") or ())}
+        topic_values = {str(value) for value in (payload.get("topic") or ())}
+
+        support = 0.0
+        if document_id == PRIMARY_LAW_DOCUMENT_ID:
+            support += 0.15
+        if document_id in priority_documents:
+            support += 0.35
+        if (document_id, article_number) in priority_articles:
+            support += 0.55
+        if article_number and article_number in intent.all_article_numbers:
+            support += 0.60
+        if clause_ref and clause_ref in intent.clause_refs:
+            support += 0.35
+        if point_ref and point_ref in intent.point_refs:
+            support += 0.25
+        if issue_values.intersection(intent.issue_filters):
+            support += 0.45
+        if topic_values.intersection(intent.topic_filters):
+            support += 0.30
+        if hit.score > 0:
+            support += min(0.30, float(hit.score) * 0.08)
+        return support
+
+    def _seed_confidence(
+        self,
+        hits: Sequence[SearchHit],
+        direct_records: dict[str, RetrievedRecord],
+        intent: QueryIntent,
+    ) -> float:
+        priority_documents, priority_articles = self._priority_reference_targets(intent)
+        supports: list[float] = []
+        for hit in hits[:5]:
+            record = direct_records.get(hit.chunk_id)
+            if record is None:
+                continue
+            supports.append(
+                self._seed_support_score(
+                    hit=hit,
+                    record=record,
+                    intent=intent,
+                    priority_documents=priority_documents,
+                    priority_articles=priority_articles,
+                )
+            )
+        if not supports:
+            return 0.0
+        average_support = sum(supports) / len(supports)
+        strongest_support = max(supports)
+        return min(1.0, (average_support * 0.6) + (strongest_support * 0.4))
+
+    def _build_expansion_plan(
+        self,
+        hits: Sequence[SearchHit],
+        direct_records: dict[str, RetrievedRecord],
+        intent: QueryIntent,
+    ) -> GraphExpansionPlan:
+        profile = classify_graph_expansion_profile(intent)
+        expansion_depth = self._expansion_depth(intent)
+        max_expanded_chunks = max(0, int(self.config.max_expanded_chunks))
+        min_confidence = max(0.0, float(self.config.min_confidence))
+        seed_confidence = self._seed_confidence(hits, direct_records, intent)
+        should_expand = self._should_expand(intent)
+
+        if profile == "paraphrased_real_user":
+            expansion_depth = min(expansion_depth, 2)
+            if seed_confidence >= 0.78:
+                max_expanded_chunks = min(max_expanded_chunks, 8)
+                min_confidence = min(0.98, min_confidence + 0.05)
+            else:
+                max_expanded_chunks = min(max_expanded_chunks, 4)
+                min_confidence = min(0.98, min_confidence + 0.16)
+                should_expand = should_expand and (
+                    self._is_multi_hop_query(intent)
+                    or self._has_natural_graph_trigger(intent)
+                    or bool(set(classify_graph_query_intent(intent)).intersection(GRAPH_FAVORED_QUERY_TYPES))
+                )
+        elif profile == "hard_negative":
+            expansion_depth = min(expansion_depth, 2)
+            max_expanded_chunks = min(max_expanded_chunks, 4)
+            min_confidence = min(0.98, min_confidence + 0.18)
+        elif profile == "graph_favored":
+            max_expanded_chunks = max_expanded_chunks
+            min_confidence = max(0.0, min_confidence - 0.02)
+
+        return GraphExpansionPlan(
+            profile=profile,
+            should_expand=should_expand and max_expanded_chunks > 0,
+            expansion_depth=max(1, expansion_depth),
+            max_expanded_chunks=max(0, max_expanded_chunks),
+            min_confidence=min_confidence,
+            seed_confidence=seed_confidence,
+        )
 
     def _is_multi_hop_query(self, intent: QueryIntent) -> bool:
         graph_query_types = set(classify_graph_query_intent(intent))
@@ -763,6 +977,9 @@ class Neo4jLegalGraphExpander:
     def priority_references_for_intent(self, intent: QueryIntent) -> tuple[GraphPriorityReference, ...]:
         return graph_priority_references_for_intent(intent)
 
+    def expansion_profile_for_intent(self, intent: QueryIntent) -> str:
+        return classify_graph_expansion_profile(intent)
+
     @staticmethod
     def _score_graph_hit(
         *,
@@ -840,7 +1057,10 @@ class Neo4jLegalGraphExpander:
         direct_records: dict[str, RetrievedRecord],
         intent: QueryIntent,
     ) -> tuple[SearchHit, ...]:
-        if not hits or not self._should_expand(intent):
+        if not hits:
+            return ()
+        plan = self._build_expansion_plan(hits, direct_records, intent)
+        if not plan.should_expand:
             return ()
 
         seed_chunk_ids = dedupe_preserve_order(
@@ -849,12 +1069,12 @@ class Neo4jLegalGraphExpander:
         if not seed_chunk_ids:
             return ()
 
-        expansion_depth = self._expansion_depth(intent)
+        expansion_depth = plan.expansion_depth
         result = self.store.expand_from_chunk_ids(
             seed_chunk_ids,
             depth=expansion_depth,
-            limit=self.config.max_expanded_chunks,
-            min_confidence=self.config.min_confidence,
+            limit=plan.max_expanded_chunks,
+            min_confidence=plan.min_confidence,
             edge_types=GRAPH_EXPANSION_EDGE_TYPES,
         )
         if self.config.trace:
@@ -874,10 +1094,68 @@ class Neo4jLegalGraphExpander:
             expansion_depth=expansion_depth,
         )
 
+    def filter_expanded_hits_for_intent(
+        self,
+        hits: Sequence[SearchHit],
+        direct_records: dict[str, RetrievedRecord],
+        intent: QueryIntent,
+    ) -> tuple[SearchHit, ...]:
+        profile = classify_graph_expansion_profile(intent)
+        if profile not in {"paraphrased_real_user", "hard_negative"}:
+            return tuple(hits)
+
+        priority_documents, priority_articles = self._priority_reference_targets(intent)
+        filtered: list[SearchHit] = []
+        for hit in hits:
+            retrieval_method = str(hit.payload.get("retrieval_method") or "")
+            retrieval_source = str(hit.payload.get("retrieval_source") or "")
+            vector_score = float(hit.payload.get("vector_score") or 0.0)
+            is_graph_only = (
+                vector_score <= 0.0
+                and (retrieval_source == "graph" or retrieval_method.startswith("neo4j") or retrieval_method == "graph_query_policy")
+            )
+            if not is_graph_only:
+                filtered.append(hit)
+                continue
+
+            record = direct_records.get(hit.chunk_id)
+            if record is None:
+                continue
+            payload = record.payload
+            document_id = str(payload.get("document_id") or "")
+            article_number = str(payload.get("article_number") or "")
+            issue_values = {str(value) for value in (payload.get("issue_type") or ())}
+            topic_values = {str(value) for value in (payload.get("topic") or ())}
+            clause_ref = str(payload.get("clause_ref") or "")
+            point_ref = str(payload.get("point_ref") or "")
+
+            exact_reference_match = bool(
+                (article_number and article_number in intent.all_article_numbers)
+                or (clause_ref and clause_ref in intent.clause_refs)
+                or (point_ref and point_ref in intent.point_refs)
+            )
+            issue_or_topic_match = bool(
+                issue_values.intersection(intent.issue_filters)
+                or topic_values.intersection(intent.topic_filters)
+            )
+            priority_match = document_id in priority_documents or (document_id, article_number) in priority_articles
+
+            keep = exact_reference_match or priority_match
+            if profile == "paraphrased_real_user":
+                keep = keep or issue_or_topic_match
+            else:
+                keep = keep or (issue_or_topic_match and document_id == PRIMARY_LAW_DOCUMENT_ID)
+
+            if keep:
+                filtered.append(hit)
+        return tuple(filtered)
+
 
 __all__ = [
     "Neo4jLegalGraphExpander",
     "GraphPriorityReference",
+    "GraphExpansionPlan",
+    "classify_graph_expansion_profile",
     "classify_graph_query_intent",
     "dedupe_search_hits",
     "graph_priority_references_for_intent",

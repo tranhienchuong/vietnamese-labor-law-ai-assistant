@@ -262,6 +262,35 @@ def validate_answer_quality(
     )
 
     direct_answer_present = len(_meaningful_tokens(_first_substantive_line(answer))) >= 4
+    if parsed.insufficient_context:
+        required_legal_rule_present = (
+            "khong du can cu" in normalized
+            or "chua du can cu" in normalized
+            or "khong co du can cu" in normalized
+        )
+        warnings: list[str] = []
+        if not direct_answer_present:
+            warnings.append("Insufficient-context answer does not start with a direct conclusion.")
+        if not required_legal_rule_present:
+            warnings.append("Insufficient-context answer does not state that legal basis is insufficient.")
+        if low_information_quotes:
+            warnings.append("Insufficient-context answer should not include evidence quotes.")
+        return AnswerQualityValidationResult(
+            passed=direct_answer_present and required_legal_rule_present and not low_information_quotes,
+            applied_answer_intent=intent,
+            direct_answer_present=direct_answer_present,
+            required_legal_rule_present=required_legal_rule_present,
+            low_information_quotes_count=len(low_information_quotes),
+            low_information_quotes=low_information_quotes,
+            numeric_answer_present=NOT_APPLICABLE,
+            yes_no_answer_present=NOT_APPLICABLE,
+            conditions_listed=NOT_APPLICABLE,
+            exception_answer_present=NOT_APPLICABLE,
+            no_article_title_only_answer=True,
+            all_legal_claims_have_citations=True,
+            warnings=tuple(warnings),
+        )
+
     required_legal_rule_present = _required_rule_present(
         intent,
         answer,

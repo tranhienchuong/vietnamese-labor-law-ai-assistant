@@ -306,27 +306,6 @@
       \field{title}{Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks}
       \field{year}{2020}
     \endentry
-    \entry{vietnam2015promulgation}{misc}{}
-      \name{author}{1}{}{%
-        {{hash=92c5720be7c66f2723600c95e379de1f}{%
-           family={{National Assembly of Vietnam}},
-           familyi={N\bibinitperiod}}}%
-      }
-      \strng{namehash}{92c5720be7c66f2723600c95e379de1f}
-      \strng{fullhash}{92c5720be7c66f2723600c95e379de1f}
-      \strng{bibnamehash}{92c5720be7c66f2723600c95e379de1f}
-      \strng{authorbibnamehash}{92c5720be7c66f2723600c95e379de1f}
-      \strng{authornamehash}{92c5720be7c66f2723600c95e379de1f}
-      \strng{authorfullhash}{92c5720be7c66f2723600c95e379de1f}
-      \field{extraname}{1}
-      \field{sortinit}{N}
-      \field{sortinithash}{22369a73d5f88983a108b63f07f37084}
-      \field{labelnamesource}{author}
-      \field{labeltitlesource}{title}
-      \field{note}{Official Gazette of the Socialist Republic of Vietnam}
-      \field{title}{Law No. 80/2015/QH13 on Promulgation of Legislative Documents}
-      \field{year}{2015}
-    \endentry
     \entry{vietnam2015law80}{misc}{}
       \name{author}{1}{}{%
         {{hash=92c5720be7c66f2723600c95e379de1f}{%
@@ -339,7 +318,6 @@
       \strng{authorbibnamehash}{92c5720be7c66f2723600c95e379de1f}
       \strng{authornamehash}{92c5720be7c66f2723600c95e379de1f}
       \strng{authorfullhash}{92c5720be7c66f2723600c95e379de1f}
-      \field{extraname}{2}
       \field{sortinit}{N}
       \field{sortinithash}{22369a73d5f88983a108b63f07f37084}
       \field{labelnamesource}{author}
