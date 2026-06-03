@@ -178,7 +178,7 @@ class Settings(BaseSettings):
     )
 
     dense_model: str = Field(
-        default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        default="keepitreal/vietnamese-sbert",
         alias="DENSE_MODEL",
     )
 

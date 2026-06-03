@@ -101,6 +101,9 @@ class ThesisAlignmentTests(unittest.TestCase):
 
         self.assertEqual(manifest["document_count"], 6)
         self.assertEqual(manifest["chunk_count"], 1556)
+        self.assertEqual(manifest["embedding_model"], "keepitreal/vietnamese-sbert")
+        self.assertEqual(manifest["dense_model_name"], "keepitreal/vietnamese-sbert")
+        self.assertEqual(manifest["vector_dimension"], 768)
         self.assertEqual(manifest["collection_name"], "vietnamese_labor_law_chunks")
         self.assertEqual(manifest["record_source"], "qdrant_payload")
         self.assertEqual(documents, OFFICIAL_DOCUMENT_IDS)

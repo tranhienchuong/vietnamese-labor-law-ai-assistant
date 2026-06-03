@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=os.getenv(
             "DENSE_MODEL",
-            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            "keepitreal/vietnamese-sbert",
         ),
         help="Sentence-transformers model used for dense embeddings.",
     )

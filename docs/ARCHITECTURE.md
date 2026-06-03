@@ -13,7 +13,7 @@ The official corpus is the six-document thesis corpus:
 | `nghi-dinh-135-2020-nd-cp` | Retirement age decree |
 | `nghi-dinh-145-2020-nd-cp` | Labor Code implementation decree |
 | `thong-tu-09-2020-tt-bldtbxh` | Child labor circular |
-| `thong-tu-10-2020-tt-bldtbxh` | Labor mediation and arbitration circular |
+| `thong-tu-10-2020-tt-bldtbxh` | Labor contract content guidance |
 
 ## Retrieval And Answer Flow
 
@@ -52,13 +52,13 @@ Where:
 | Hierarchical chunking | `scripts/build_legal_chunks.py` |
 | Chunk enrichment | `scripts/enrich_legal_chunks.py` |
 | Legal reference edge extraction | `scripts/build_reference_edges.py` |
-| Qdrant hybrid retrieval index | `scripts/build_index.py`, `src/vn_labor_law_ai_assistant/retrieval/` |
-| Query routing and scope guard | `src/vn_labor_law_ai_assistant/rules/routing_config.yaml`, `src/vn_labor_law_ai_assistant/core/scope_guard.py` |
-| Neo4j legal graph build | `scripts/build_legal_graph.py`, `src/vn_labor_law_ai_assistant/graph/` |
-| Graph expansion during retrieval | `src/vn_labor_law_ai_assistant/rag/graph_expansion.py` |
-| Context rerank and budget | `src/vn_labor_law_ai_assistant/reranker.py`, `src/vn_labor_law_ai_assistant/query_answering.py` |
-| Grounded generation | `src/vn_labor_law_ai_assistant/llm.py`, `src/vn_labor_law_ai_assistant/query_answering.py` |
-| Citation validation | `src/vn_labor_law_ai_assistant/core/citation_validation.py` |
+| Qdrant hybrid retrieval index | `scripts/build_index.py`, `src/vn_labor_law_ai_assistant/rag/retrieval/` |
+| Query routing and scope guard | `src/vn_labor_law_ai_assistant/rules/routing_config.yaml`, `src/vn_labor_law_ai_assistant/rag/scope_guard.py` |
+| Neo4j legal graph build | `scripts/build_legal_graph.py`, `src/vn_labor_law_ai_assistant/rag/graph/` |
+| Graph expansion during retrieval | `src/vn_labor_law_ai_assistant/rag/graph/expander.py` |
+| Context rerank and budget | `src/vn_labor_law_ai_assistant/rag/retrieval/semantic_reranker.py`, `src/vn_labor_law_ai_assistant/rag/answering/synthesis.py` |
+| Grounded generation | `src/vn_labor_law_ai_assistant/llm.py`, `src/vn_labor_law_ai_assistant/rag/answering/generation.py` |
+| Citation validation | `src/vn_labor_law_ai_assistant/rag/answering/citation_guard.py`, `src/vn_labor_law_ai_assistant/rag/answering/validation.py` |
 | Deterministic evaluation | `scripts/ablation_retrieval_100.py`, `scripts/evaluate_end_to_end_rag.py`, `scripts/compute_100_split_metrics.py` |
 
 ## Citation Contract

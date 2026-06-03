@@ -68,7 +68,7 @@ python scripts/build_index.py `
   --chunks-dir artifacts/chunks `
   --chunk-file artifacts/chunks/legal_chunks_enriched.jsonl `
   --artifacts-dir artifacts/index `
-  --dense-model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 `
+  --dense-model keepitreal/vietnamese-sbert `
   --collection-name vietnamese_labor_law_chunks
 ```
 

@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-k", type=int, default=8)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--reranker-model", type=str, default=os.getenv("RERANKER_MODEL", ""))
-    parser.add_argument("--output-dir", type=Path, default=REPO_ROOT / "artifacts" / "eval")
+    parser.add_argument("--output-dir", type=Path, default=REPO_ROOT / "artifacts" / "evaluation")
     return parser.parse_args()
 
 
