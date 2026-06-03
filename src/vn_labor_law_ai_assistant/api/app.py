@@ -13,7 +13,7 @@ settings = get_settings()
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Vietnamese Labor Law AI Assistant")
+    app = FastAPI(title="Vietnamese Labor Law GraphRAG QA")
 
     app.add_middleware(
         CORSMiddleware,

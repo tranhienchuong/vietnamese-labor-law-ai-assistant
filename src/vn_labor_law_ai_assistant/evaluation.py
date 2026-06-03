@@ -1,3 +1,13 @@
+"""Evaluation helpers and legacy benchmark compatibility utilities.
+
+Official thesis evaluation uses deterministic scripts:
+`scripts/ablation_retrieval_100.py`, `scripts/evaluate_end_to_end_rag.py`,
+and `scripts/compute_100_split_metrics.py`.
+
+The judge schema and workbook-style benchmark helpers remain for legacy or
+exploratory runs only; they are not the final evaluation method.
+"""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -21,6 +31,7 @@ from .evaluation_citation_matcher import (
 
 WORKBOOK_SHEET_NAME = "golden_benchmark"
 WORKBOOK_RESULTS_SHEET_NAME = "evaluation_results"
+OFFICIAL_BENCHMARK_JSONL_NAME = "golden_benchmark_100_extended.jsonl"
 BENCHMARK_JSONL_NAME = "golden_benchmark_100_answered_v1.jsonl"
 RESULTS_COLUMNS = (
     "id",
@@ -59,6 +70,7 @@ RESULTS_COLUMNS = (
     "insufficient_context",
 )
 
+# Legacy exploratory judge schema. Deterministic validation is the official path.
 JUDGE_JSON_SCHEMA = {
     "type": "object",
     "properties": {
@@ -717,8 +729,8 @@ def benchmark_case_from_json_record(payload: Mapping[str, object]) -> BenchmarkC
             first_json_value(payload, ("id", "sample_id", "case_id")),
             "id",
         ),
-        category=coerce_optional_text(payload.get("category")) or "ragas_eval",
-        subtopic=coerce_optional_text(payload.get("subtopic")) or "ragas_template",
+        category=coerce_optional_text(payload.get("category")) or "legacy_benchmark",
+        subtopic=coerce_optional_text(payload.get("subtopic")) or "imported_jsonl",
         difficulty=coerce_optional_text(payload.get("difficulty")) or "unspecified",
         question_type=coerce_optional_text(payload.get("question_type")) or "direct_qa",
         question=question,
@@ -1301,6 +1313,7 @@ def summarize_benchmark_cases(cases: Sequence[BenchmarkCase]) -> dict[str, objec
 __all__ = [
     "BENCHMARK_JSONL_NAME",
     "BenchmarkCase",
+    "OFFICIAL_BENCHMARK_JSONL_NAME",
     "RESULTS_COLUMNS",
     "WORKBOOK_RESULTS_SHEET_NAME",
     "WORKBOOK_SHEET_NAME",

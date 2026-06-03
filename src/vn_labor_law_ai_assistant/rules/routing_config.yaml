@@ -814,12 +814,50 @@ documents:
     - qh 14
     - qh14
     description: Vietnam Labor Code 2019
+  92-2015-qh13-labor-only:
+    keywords:
+    - bo luat to tung dan su
+    - to tung dan su
+    - tranh chap lao dong
+    - vu an lao dong
+    - giai quyet tranh chap lao dong
+    - 92/2015
+    - 92/2015/qh13
+    - qh13
+    description: Civil Procedure Code 2015 labor-only provisions
+  nghi-dinh-135-2020-nd-cp:
+    keywords:
+    - nghi dinh 135
+    - 135/2020
+    - tuoi nghi huu
+    - nghi huu
+    - dieu kien nghi huu
+    - lo trinh tuoi nghi huu
+    description: Decree 135/2020/ND-CP on retirement age
   nghi-dinh-145-2020-nd-cp:
     keywords:
     - nghi dinh 145
     - 145/2020
     - nd-cp
     description: Decree 145/2020/ND-CP implementation guidance
+  thong-tu-09-2020-tt-bldtbxh:
+    keywords:
+    - thong tu 09
+    - 09/2020
+    - lao dong chua thanh nien
+    - nguoi chua thanh nien
+    - tre em lam viec
+    - cong viec nhe
+    description: Circular 09/2020/TT-BLDTBXH on child labor and minor workers
+  thong-tu-10-2020-tt-bldtbxh:
+    keywords:
+    - thong tu 10
+    - 10/2020
+    - hoa giai vien lao dong
+    - trong tai vien lao dong
+    - hoi dong trong tai lao dong
+    - tranh chap lao dong
+    description: Circular 10/2020/TT-BLDTBXH on labor mediation and arbitration
 query_types:
   yes_no:
     keywords:
@@ -929,7 +967,12 @@ label_aliases:
   non_compete: han_che_viec_lam_sau_nghi
   confidentiality: bao_mat_bi_mat_kinh_doanh
   45_2019_qh14: 45-2019-qh14
+  92_2015_qh13_labor_only: 92-2015-qh13-labor-only
+  bo_luat_to_tung_dan_su_labor_only: 92-2015-qh13-labor-only
+  nghi_dinh_135_2020_nd_cp: nghi-dinh-135-2020-nd-cp
   nghi_dinh_145_2020_nd_cp: nghi-dinh-145-2020-nd-cp
+  thong_tu_09_2020_tt_bldtbxh: thong-tu-09-2020-tt-bldtbxh
+  thong_tu_10_2020_tt_bldtbxh: thong-tu-10-2020-tt-bldtbxh
 direct_reference_rules:
 - name: definition_nguoi_lao_dong
   confidence: high
@@ -3385,7 +3428,11 @@ issue_descriptions:
   bao_mat_bi_mat_kinh_doanh: confidentiality, trade secret, or technology secret protection agreement
 document_descriptions:
   45-2019-qh14: Vietnam Labor Code 2019
+  92-2015-qh13-labor-only: Civil Procedure Code 2015 labor-only provisions
+  nghi-dinh-135-2020-nd-cp: Decree 135/2020/ND-CP on retirement age
   nghi-dinh-145-2020-nd-cp: Decree 145/2020/ND-CP implementation guidance
+  thong-tu-09-2020-tt-bldtbxh: Circular 09/2020/TT-BLDTBXH on child labor and minor workers
+  thong-tu-10-2020-tt-bldtbxh: Circular 10/2020/TT-BLDTBXH on labor mediation and arbitration
 query_type_descriptions:
   yes_no: asks whether something is allowed, required, lawful, or unlawful
   time_limit: asks about deadlines, periods, number of days, or duration

@@ -1,0 +1,434 @@
+{
+  "generated_at": "2026-05-27T15:46:36.669105+00:00",
+  "benchmark_path": "artifacts\\evaluation\\end_to_end_expanded_benchmark.jsonl",
+  "benchmark_count": 69,
+  "modes": [
+    "vector_only",
+    "hybrid",
+    "graph_augmented"
+  ],
+  "overall_metrics": {
+    "vector_only": {
+      "recall_at_5": 0.012077294685990336,
+      "recall_at_10": 0.012077294685990336,
+      "precision_at_5": 0.026086956521739132,
+      "precision_at_10": 0.020289855072463767,
+      "mrr": 0.021739130434782608,
+      "hit_rate_at_5": 0.028985507246376812,
+      "hit_rate_at_10": 0.028985507246376812,
+      "required_citation_coverage": 0.012077294685990336,
+      "forbidden_citation_violation": 0.0,
+      "average_rank_of_first_required_citation": 0.043478260869565216,
+      "document_count": 1.8115942028985508,
+      "graph_expanded_chunks": 0.0
+    },
+    "hybrid": {
+      "recall_at_5": 0.859903381642512,
+      "recall_at_10": 0.9202898550724637,
+      "precision_at_5": 0.5710144927536233,
+      "precision_at_10": 0.37971014492753624,
+      "mrr": 0.8331492983666898,
+      "hit_rate_at_5": 0.927536231884058,
+      "hit_rate_at_10": 0.9565217391304348,
+      "required_citation_coverage": 0.9202898550724637,
+      "forbidden_citation_violation": 0.0,
+      "average_rank_of_first_required_citation": 1.5072463768115942,
+      "document_count": 1.8405797101449275,
+      "graph_expanded_chunks": 0.0
+    },
+    "graph_augmented": {
+      "recall_at_5": 0.9613526570048311,
+      "recall_at_10": 1.0,
+      "precision_at_5": 0.5623188405797102,
+      "precision_at_10": 0.35942028985507246,
+      "mrr": 0.8724637681159422,
+      "hit_rate_at_5": 1.0,
+      "hit_rate_at_10": 1.0,
+      "required_citation_coverage": 1.0,
+      "forbidden_citation_violation": 0.0,
+      "average_rank_of_first_required_citation": 1.3623188405797102,
+      "document_count": 1.8840579710144927,
+      "graph_expanded_chunks": 5.7101449275362315
+    }
+  },
+  "category_metrics": {
+    "definition_qa": {
+      "vector_only": {
+        "recall_at_10": 0.0,
+        "precision_at_10": 0.0,
+        "mrr": 0.0,
+        "required_citation_coverage": 0.0,
+        "query_count": 7.0
+      },
+      "hybrid": {
+        "recall_at_10": 1.0,
+        "precision_at_10": 0.14285714285714285,
+        "mrr": 1.0,
+        "required_citation_coverage": 1.0,
+        "query_count": 7.0
+      },
+      "graph_augmented": {
+        "recall_at_10": 1.0,
+        "precision_at_10": 0.1142857142857143,
+        "mrr": 0.7857142857142857,
+        "required_citation_coverage": 1.0,
+        "query_count": 7.0
+      }
+    },
+    "direct_qa": {
+      "vector_only": {
+        "recall_at_10": 0.0,
+        "precision_at_10": 0.0,
+        "mrr": 0.0,
+        "required_citation_coverage": 0.0,
+        "query_count": 19.0
+      },
+      "hybrid": {
+        "recall_at_10": 1.0,
+        "precision_at_10": 0.3421052631578948,
+        "mrr": 0.8452380952380952,
+        "required_citation_coverage": 1.0,
+        "query_count": 19.0
+      },
+      "graph_augmented": {
+        "recall_at_10": 1.0,
+        "precision_at_10": 0.2947368421052632,
+        "mrr": 0.881578947368421,
+        "required_citation_coverage": 1.0,
+        "query_count": 19.0
+      }
+    },
+    "comparison_qa": {
+      "vector_only": {
+        "recall_at_10": 0.0,
+        "precision_at_10": 0.0,
+        "mrr": 0.0,
+        "required_citation_coverage": 0.0,
+        "query_count": 4.0
+      },
+      "hybrid": {
+        "recall_at_10": 1.0,
+        "precision_at_10": 0.625,
+        "mrr": 1.0,
+        "required_citation_coverage": 1.0,
+        "query_count": 4.0
+      },
+      "graph_augmented": {
+        "recall_at_10": 1.0,
+        "precision_at_10": 0.475,
+        "mrr": 1.0,
+        "required_citation_coverage": 1.0,
+        "query_count": 4.0
+      }
+    },
+    "document_guidance_qa": {
+      "vector_only": {
+        "recall_at_10": 0.0,
+        "precision_at_10": 0.0,
+        "mrr": 0.0,
+        "required_citation_coverage": 0.0,
+        "query_count": 10.0
+      },
+      "hybrid": {
+        "recall_at_10": 0.6833333333333333,
+        "precision_at_10": 0.4699999999999999,
+        "mrr": 0.6533333333333333,
+        "required_citation_coverage": 0.6833333333333333,
+        "query_count": 10.0
+      },
+      "graph_augmented": {
+        "recall_at_10": 1.0,
+        "precision_at_10": 0.49000000000000005,
+        "mrr": 0.9333333333333332,
+        "required_citation_coverage": 1.0,
+        "query_count": 10.0
+      }
+    },
+    "exception_based_qa": {
+      "vector_only": {
+        "recall_at_10": 0.045454545454545456,
+        "precision_at_10": 0.045454545454545456,
+        "mrr": 0.09090909090909091,
+        "required_citation_coverage": 0.045454545454545456,
+        "query_count": 11.0
+      },
+      "hybrid": {
+        "recall_at_10": 0.9545454545454546,
+        "precision_at_10": 0.29090909090909095,
+        "mrr": 0.8818181818181817,
+        "required_citation_coverage": 0.9545454545454546,
+        "query_count": 11.0
+      },
+      "graph_augmented": {
+        "recall_at_10": 1.0,
+        "precision_at_10": 0.32727272727272727,
+        "mrr": 0.8363636363636363,
+        "required_citation_coverage": 1.0,
+        "query_count": 11.0
+      }
+    },
+    "calculation_or_table_lookup": {
+      "vector_only": {
+        "recall_at_10": 0.06666666666666667,
+        "precision_at_10": 0.18,
+        "mrr": 0.1,
+        "required_citation_coverage": 0.06666666666666667,
+        "query_count": 5.0
+      },
+      "hybrid": {
+        "recall_at_10": 1.0,
+        "precision_at_10": 0.48,
+        "mrr": 1.0,
+        "required_citation_coverage": 1.0,
+        "query_count": 5.0
+      },
+      "graph_augmented": {
+        "recall_at_10": 1.0,
+        "precision_at_10": 0.5,
+        "mrr": 1.0,
+        "required_citation_coverage": 1.0,
+        "query_count": 5.0
+      }
+    },
+    "procedure_qa": {
+      "vector_only": {
+        "recall_at_10": 0.0,
+        "precision_at_10": 0.0,
+        "mrr": 0.0,
+        "required_citation_coverage": 0.0,
+        "query_count": 7.0
+      },
+      "hybrid": {
+        "recall_at_10": 0.8571428571428571,
+        "precision_at_10": 0.3285714285714286,
+        "mrr": 0.5277777777777778,
+        "required_citation_coverage": 0.8571428571428571,
+        "query_count": 7.0
+      },
+      "graph_augmented": {
+        "recall_at_10": 1.0,
+        "precision_at_10": 0.3,
+        "mrr": 0.7023809523809524,
+        "required_citation_coverage": 1.0,
+        "query_count": 7.0
+      }
+    },
+    "scenario_based_qa": {
+      "vector_only": {
+        "recall_at_10": 0.0,
+        "precision_at_10": 0.0,
+        "mrr": 0.0,
+        "required_citation_coverage": 0.0,
+        "query_count": 4.0
+      },
+      "hybrid": {
+        "recall_at_10": 1.0,
+        "precision_at_10": 0.475,
+        "mrr": 1.0,
+        "required_citation_coverage": 1.0,
+        "query_count": 4.0
+      },
+      "graph_augmented": {
+        "recall_at_10": 1.0,
+        "precision_at_10": 0.45,
+        "mrr": 0.875,
+        "required_citation_coverage": 1.0,
+        "query_count": 4.0
+      }
+    },
+    "multi_hop_qa": {
+      "vector_only": {
+        "recall_at_10": 0.0,
+        "precision_at_10": 0.0,
+        "mrr": 0.0,
+        "required_citation_coverage": 0.0,
+        "query_count": 2.0
+      },
+      "hybrid": {
+        "recall_at_10": 0.5833333333333333,
+        "precision_at_10": 0.85,
+        "mrr": 0.75,
+        "required_citation_coverage": 0.5833333333333333,
+        "query_count": 2.0
+      },
+      "graph_augmented": {
+        "recall_at_10": 1.0,
+        "precision_at_10": 0.8,
+        "mrr": 1.0,
+        "required_citation_coverage": 1.0,
+        "query_count": 2.0
+      }
+    }
+  },
+  "graph_diagnostics": {
+    "graph_expansion_used_count": 67,
+    "average_graph_depth": 2.418781725888325,
+    "top_graph_edge_types": [
+      [
+        "MENTIONS_TOPIC",
+        1
+      ]
+    ],
+    "graph_hit_ratio": 0.6314102564102564,
+    "direct_vector_hit_ratio": 0.3685897435897436,
+    "number_of_queries_improved_over_vector_only": 69,
+    "number_of_queries_worse_than_vector_only": 0,
+    "improved_examples": [
+      {
+        "id": "def_employee",
+        "query": "Nguoi lao dong duoc dinh nghia nhu the nao theo Bo luat Lao dong 2019?",
+        "category": "definition_qa",
+        "vector_quality_score": 0.0,
+        "graph_quality_score": 3.0,
+        "delta": 3.0,
+        "vector_top3": [
+          "Bộ luật Lao động 2019, Điều 154 (Người lao động nước ngoài làm việc tại Việt Nam không thuộc diện cấp giấy phép lao động), khoản 1",
+          "Bộ luật Lao động 2019, Điều 154 (Người lao động nước ngoài làm việc tại Việt Nam không thuộc diện cấp giấy phép lao động), khoản 2",
+          "Bộ luật Lao động 2019, Điều 154 (Người lao động nước ngoài làm việc tại Việt Nam không thuộc diện cấp giấy phép lao động), khoản 3"
+        ],
+        "graph_top3": [
+          "Bộ luật Lao động 2019, Điều 3 (Giải thích từ ngữ), khoản 1",
+          "Bộ luật Lao động 2019, Điều 3 (Giải thích từ ngữ)"
+        ]
+      },
+      {
+        "id": "def_employer",
+        "query": "Nguoi su dung lao dong la gi theo Bo luat Lao dong?",
+        "category": "definition_qa",
+        "vector_quality_score": 0.0,
+        "graph_quality_score": 3.0,
+        "delta": 3.0,
+        "vector_top3": [
+          "Bộ luật Lao động 2019, Điều 152 (Điều kiện tuyển dụng, sử dụng người lao động nước ngoài làm việc tại Việt Nam), khoản 1",
+          "Bộ luật Lao động 2019, Điều 152 (Điều kiện tuyển dụng, sử dụng người lao động nước ngoài làm việc tại Việt Nam), khoản 3",
+          "Bộ luật Lao động 2019, Điều 152 (Điều kiện tuyển dụng, sử dụng người lao động nước ngoài làm việc tại Việt Nam), khoản 2"
+        ],
+        "graph_top3": [
+          "Bộ luật Lao động 2019, Điều 3 (Giải thích từ ngữ), khoản 2",
+          "Bộ luật Lao động 2019, Điều 3 (Giải thích từ ngữ)"
+        ]
+      },
+      {
+        "id": "def_employee_representative_org",
+        "query": "To chuc dai dien nguoi lao dong tai co so la gi?",
+        "category": "definition_qa",
+        "vector_quality_score": 0.0,
+        "graph_quality_score": 3.0,
+        "delta": 3.0,
+        "vector_top3": [
+          "Bộ luật Lao động 2019, Điều 154 (Người lao động nước ngoài làm việc tại Việt Nam không thuộc diện cấp giấy phép lao động), khoản 1",
+          "Bộ luật Lao động 2019, Điều 154 (Người lao động nước ngoài làm việc tại Việt Nam không thuộc diện cấp giấy phép lao động), khoản 2",
+          "Bộ luật Lao động 2019, Điều 154 (Người lao động nước ngoài làm việc tại Việt Nam không thuộc diện cấp giấy phép lao động), khoản 3"
+        ],
+        "graph_top3": [
+          "Bộ luật Lao động 2019, Điều 3 (Giải thích từ ngữ), khoản 3",
+          "Bộ luật Lao động 2019, Điều 3 (Giải thích từ ngữ)",
+          "Nghị định 135/2020/NĐ-CP, Điều 8 (Hiệu lực thi hành), khoản 2, các điểm a, b, c"
+        ]
+      },
+      {
+        "id": "def_labor_relationship",
+        "query": "Quan he lao dong duoc hieu nhu the nao?",
+        "category": "definition_qa",
+        "vector_quality_score": 0.0,
+        "graph_quality_score": 3.0,
+        "delta": 3.0,
+        "vector_top3": [
+          "Bộ luật Lao động 2019, Điều 154 (Người lao động nước ngoài làm việc tại Việt Nam không thuộc diện cấp giấy phép lao động), khoản 1",
+          "Bộ luật Lao động 2019, Điều 154 (Người lao động nước ngoài làm việc tại Việt Nam không thuộc diện cấp giấy phép lao động), khoản 2",
+          "Bộ luật Lao động 2019, Điều 154 (Người lao động nước ngoài làm việc tại Việt Nam không thuộc diện cấp giấy phép lao động), khoản 3"
+        ],
+        "graph_top3": [
+          "Bộ luật Lao động 2019, Điều 3 (Giải thích từ ngữ), khoản 5",
+          "Bộ luật Lao động 2019, Điều 3 (Giải thích từ ngữ)",
+          "Nghị định 135/2020/NĐ-CP, Điều 8 (Hiệu lực thi hành), khoản 2, các điểm a, b, c"
+        ]
+      },
+      {
+        "id": "contract_definition",
+        "query": "Hop dong lao dong la gi?",
+        "category": "definition_qa",
+        "vector_quality_score": 0.0,
+        "graph_quality_score": 2.5,
+        "delta": 2.5,
+        "vector_top3": [
+          "Nghị định 145/2020/NĐ-CP, Điều 18 (Rút tiền ký quỹ), khoản 1, điểm đ",
+          "Nghị định 145/2020/NĐ-CP, Điều 18 (Rút tiền ký quỹ), khoản 1, các điểm a, b, c, d",
+          "Nghị định 145/2020/NĐ-CP, Điều 18 (Rút tiền ký quỹ), khoản 2, các điểm a, b, c, d"
+        ],
+        "graph_top3": [
+          "Bộ luật Lao động 2019, Điều 3 (Giải thích từ ngữ)",
+          "Bộ luật Lao động 2019, Điều 13 (Hợp đồng lao động), khoản 1",
+          "Bộ luật Lao động 2019, Điều 13 (Hợp đồng lao động), khoản 2"
+        ]
+      },
+      {
+        "id": "contract_form",
+        "query": "Hop dong lao dong co bat buoc phai lap bang van ban khong?",
+        "category": "direct_qa",
+        "vector_quality_score": 0.0,
+        "graph_quality_score": 3.0,
+        "delta": 3.0,
+        "vector_top3": [
+          "Bộ luật Lao động 2019, Điều 151 (Điều kiện người lao động nước ngoài làm việc tại Việt Nam), khoản 2",
+          "Bộ luật Lao động 2019, Điều 156 (Các trường hợp giấy phép lao động hết hiệu lực), khoản 2",
+          "Bộ luật Lao động 2019, Điều 150 (Người lao động Việt Nam đi làm việc ở nước ngoài, lao động cho các tổ chức, cá nhân nước ngoài tại Việt Nam), khoản 1"
+        ],
+        "graph_top3": [
+          "Bộ luật Lao động 2019, Điều 14 (Hình thức hợp đồng lao động), khoản 1",
+          "Bộ luật Lao động 2019, Điều 14 (Hình thức hợp đồng lao động), khoản 2",
+          "Nghị định 145/2020/NĐ-CP, Điều 17 (Quản lý tiền ký quỹ), khoản 2"
+        ]
+      },
+      {
+        "id": "contract_types",
+        "query": "Co may loai hop dong lao dong theo Bo luat Lao dong 2019?",
+        "category": "direct_qa",
+        "vector_quality_score": 0.0,
+        "graph_quality_score": 3.0,
+        "delta": 3.0,
+        "vector_top3": [
+          "Bộ luật Lao động 2019, Điều 21 (Nội dung hợp đồng lao động), khoản 5",
+          "Bộ luật Lao động 2019, Điều 151 (Điều kiện người lao động nước ngoài làm việc tại Việt Nam), khoản 2",
+          "Bộ luật Lao động 2019, Điều 156 (Các trường hợp giấy phép lao động hết hiệu lực), khoản 2"
+        ],
+        "graph_top3": [
+          "Bộ luật Lao động 2019, Điều 20 (Loại hợp đồng lao động), khoản 1, các điểm a, b",
+          "Bộ luật Lao động 2019, Điều 21 (Nội dung hợp đồng lao động), khoản 1, các điểm a, b, c, d, đ, e, g, h, i, k",
+          "Bộ luật Lao động 2019, Điều 21 (Nội dung hợp đồng lao động), khoản 2"
+        ]
+      },
+      {
+        "id": "contract_fixed_vs_indefinite",
+        "query": "So sanh hop dong xac dinh thoi han va khong xac dinh thoi han.",
+        "category": "comparison_qa",
+        "vector_quality_score": 0.0,
+        "graph_quality_score": 3.0,
+        "delta": 3.0,
+        "vector_top3": [
+          "Bộ luật Lao động 2019, Điều 151 (Điều kiện người lao động nước ngoài làm việc tại Việt Nam), khoản 2",
+          "Bộ luật Lao động 2019, Điều 151 (Điều kiện người lao động nước ngoài làm việc tại Việt Nam), khoản 3",
+          "Nghị định 145/2020/NĐ-CP, Mẫu số 02/PLI"
+        ],
+        "graph_top3": [
+          "Bộ luật Lao động 2019, Điều 20 (Loại hợp đồng lao động), khoản 1, các điểm a, b",
+          "Bộ luật Lao động 2019, Điều 21 (Nội dung hợp đồng lao động), khoản 1, các điểm a, b, c, d, đ, e, g, h, i, k",
+          "Bộ luật Lao động 2019, Điều 21 (Nội dung hợp đồng lao động), khoản 2"
+        ]
+      }
+    ],
+    "worse_examples": [],
+    "vector_result_count": 689
+  },
+  "vector_only_diagnostics": {
+    "query_count": 69,
+    "nonempty_result_queries": 69,
+    "context_count": 689,
+    "contexts_with_document_id": 689,
+    "contexts_with_article_or_appendix": 689,
+    "metadata_document_id_rate": 1.0,
+    "metadata_article_or_appendix_rate": 1.0,
+    "all_zero_recall_and_coverage": false,
+    "zero_metric_interpretation": "nonzero_metrics"
+  }
+}

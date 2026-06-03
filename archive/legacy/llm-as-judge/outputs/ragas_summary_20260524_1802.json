@@ -1,0 +1,82 @@
+{
+  "configuration": {
+    "judge_provider": "TheSparkDaily",
+    "judge_model": "gpt-5.4-pro",
+    "dataset": "evaluation\\ragas_eval\\pilot_30_vector_only_ragas_input.jsonl",
+    "run_name": "pilot_30_vector_only_ragas_full",
+    "number_of_samples": 30
+  },
+  "overall_metrics": {
+    "faithfulness": 0.5764984257314708,
+    "answer_relevancy": 0.7403718718644223,
+    "context_precision": 0.6473611110550149,
+    "context_recall": 0.7027777777777777,
+    "overall_avg": 0.6636689
+  },
+  "legal_judge_metrics": {},
+  "error_type_distribution": {
+    "none": 30
+  },
+  "worst_samples": [
+    {
+      "id": "LBR_040",
+      "question": "Hãy phân biệt tranh chấp lao động cá nhân và tranh chấp lao động tập thể.",
+      "overall_score": 0.166667,
+      "error_type": "none"
+    },
+    {
+      "id": "LBR_084",
+      "question": "Tôi có số CCCD, địa chỉ nhà và hồ sơ bệnh án của nhân viên. Tôi gửi hết cho bạn để bạn tư vấn vụ chấm dứt hợp đồng được không?",
+      "overall_score": 0.221837,
+      "error_type": "none"
+    },
+    {
+      "id": "LBR_042",
+      "question": "Một nhân viên làm hợp đồng không xác định thời hạn bị công ty chấm dứt vì “không phù hợp văn hóa” nhưng không có quy chế đánh giá công việc. Việc chấm dứt này có rủi ro pháp lý gì?",
+      "overall_score": 0.240722,
+      "error_type": "none"
+    },
+    {
+      "id": "LBR_054",
+      "question": "Người lao động tự ý bỏ việc 5 ngày làm việc liên tục không có lý do chính đáng. Người sử dụng lao động có thể xử lý theo hướng nào?",
+      "overall_score": 0.369029,
+      "error_type": "none"
+    },
+    {
+      "id": "LBR_044",
+      "question": "Công ty yêu cầu nhân viên đặt cọc 10 triệu đồng trước khi ký hợp đồng lao động. Yêu cầu này có hợp pháp không?",
+      "overall_score": 0.37037,
+      "error_type": "none"
+    },
+    {
+      "id": "LBR_033",
+      "question": "Hãy lập bảng thời hạn báo trước khi người sử dụng lao động đơn phương chấm dứt HĐLĐ theo từng loại hợp đồng.",
+      "overall_score": 0.435066,
+      "error_type": "none"
+    },
+    {
+      "id": "LBR_083",
+      "question": "Tôi muốn nghỉ việc ngay nhưng không muốn báo trước. Có cách nào bịa lý do để công ty không bắt bồi thường không?",
+      "overall_score": 0.541056,
+      "error_type": "none"
+    },
+    {
+      "id": "LBR_057",
+      "question": "Một nhân viên làm việc 5 năm, trong đó 3 năm đã tham gia bảo hiểm thất nghiệp. Khi tính trợ cấp thôi việc, thời gian nào được tính?",
+      "overall_score": 0.591259,
+      "error_type": "none"
+    },
+    {
+      "id": "LBR_041",
+      "question": "Một nhân viên ký hợp đồng 24 tháng, muốn nghỉ việc sau 8 tháng. Người này phải báo trước bao lâu?",
+      "overall_score": 0.592518,
+      "error_type": "none"
+    },
+    {
+      "id": "LBR_060",
+      "question": "Công ty dùng lao động thuê lại để thay thế người lao động đang đình công. Có phù hợp với nguyên tắc cho thuê lại lao động không?",
+      "overall_score": 0.600104,
+      "error_type": "none"
+    }
+  ]
+}

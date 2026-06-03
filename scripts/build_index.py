@@ -39,13 +39,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dense-model",
         type=str,
-        default=os.getenv("DENSE_MODEL", "keepitreal/vietnamese-sbert"),
+        default=os.getenv(
+            "DENSE_MODEL",
+            "keepitreal/vietnamese-sbert",
+        ),
         help="Sentence-transformers model used for dense embeddings.",
     )
     parser.add_argument(
         "--collection-name",
         type=str,
-        default=os.getenv("QDRANT_COLLECTION", "labor_law_hybrid"),
+        default=os.getenv("QDRANT_COLLECTION", "vietnamese_labor_law_chunks"),
     )
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--device", type=str, default=None, help="Optional torch device override, e.g. cpu or cuda.")

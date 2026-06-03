@@ -93,8 +93,18 @@ class Settings(BaseSettings):
     groq_model: str = Field(default="qwen/qwen3-32b", alias="GROQ_MODEL")
     llm_provider: str = Field(default="groq", alias="LLM_PROVIDER")
 
+    # Legacy exploratory judge settings. Official thesis metrics use deterministic checks.
     benchmark_judge_provider: str = Field(default="groq", alias="BENCHMARK_JUDGE_PROVIDER")
     benchmark_judge_model: str = Field(default="", alias="BENCHMARK_JUDGE_MODEL")
+    benchmark_path: Path = Field(
+        default=Path("artifacts/evaluation/golden_benchmark_100_extended.jsonl"),
+        alias="BENCHMARK_PATH",
+    )
+    benchmark_metric_mode: str = Field(
+        default="deterministic_100_split",
+        alias="BENCHMARK_METRIC_MODE",
+    )
+    citation_validation_mode: str = Field(default="deterministic", alias="CITATION_VALIDATION_MODE")
     eval_citation_match_mode: str = Field(default="containment", alias="EVAL_CITATION_MATCH_MODE")
 
     qdrant_url: str = Field(default="", alias="QDRANT_URL")
@@ -105,7 +115,7 @@ class Settings(BaseSettings):
     )
     qdrant_timeout: float = Field(default=120.0, alias="QDRANT_TIMEOUT")
 
-    retriever_record_source: str = Field(default="", alias="RETRIEVER_RECORD_SOURCE")
+    retriever_record_source: str = Field(default="qdrant_payload", alias="RETRIEVER_RECORD_SOURCE")
     index_path: Path = Field(default=Path("artifacts/index"), alias="INDEX_PATH")
     reranker_model: str = Field(default="", alias="RERANKER_MODEL")
     reranker_top_n: int = Field(default=24, alias="RERANKER_TOP_N")
@@ -167,7 +177,10 @@ class Settings(BaseSettings):
         alias="GROQ_RATE_LIMIT_MAX_SLEEP_SECONDS",
     )
 
-    dense_model: str = Field(default="keepitreal/vietnamese-sbert", alias="DENSE_MODEL")
+    dense_model: str = Field(
+        default="keepitreal/vietnamese-sbert",
+        alias="DENSE_MODEL",
+    )
 
     @field_validator("auth_seed_default_users", mode="before")
     @classmethod
@@ -279,6 +292,9 @@ class Settings(BaseSettings):
             "queryRouterEnabled": self.query_router_enabled,
             "llmProvider": self.llm_provider,
             "groqModel": self.groq_model,
+            "benchmarkPath": str(self.benchmark_path),
+            "benchmarkMetricMode": self.benchmark_metric_mode,
+            "citationValidationMode": self.citation_validation_mode,
         }
 
     def public_retrieval_config(
@@ -304,6 +320,9 @@ class Settings(BaseSettings):
             "queryRouterFallbackToHeuristic": self.query_router_fallback_to_heuristic,
             "embeddingProvider": self.embedding_provider,
             "denseModel": dense_model or self.dense_model,
+            "benchmarkPath": str(self.benchmark_path),
+            "benchmarkMetricMode": self.benchmark_metric_mode,
+            "citationValidationMode": self.citation_validation_mode,
             "legalGraphEnabled": self.legal_graph_enabled,
             "legalGraphBackend": self.legal_graph_backend,
             "legalGraphExpansionDepth": self.legal_graph_expansion_depth,

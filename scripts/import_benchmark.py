@@ -30,8 +30,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("eval/data") / BENCHMARK_JSONL_NAME,
-        help=f"Output JSONL path (default: eval/data/{BENCHMARK_JSONL_NAME}).",
+        default=Path("archive/legacy/eval/data") / BENCHMARK_JSONL_NAME,
+        help=(
+            "Legacy output JSONL path "
+            f"(default: archive/legacy/eval/data/{BENCHMARK_JSONL_NAME})."
+        ),
     )
     return parser.parse_args()
 

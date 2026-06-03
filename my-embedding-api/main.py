@@ -9,16 +9,19 @@ from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 
 
-DEFAULT_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_MODEL_NAME = "keepitreal/vietnamese-sbert"
 MODEL_NAME = os.getenv("MODEL_NAME", DEFAULT_MODEL_NAME)
 
 app = FastAPI(title="Free Embedding API")
 
+ERROR_MESSAGE = None
 try:
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     MODEL = SentenceTransformer(MODEL_NAME, device=DEVICE)
 except Exception as exc:  # pragma: no cover - startup failure is surfaced by the endpoint.
-    print(f"Failed to load embedding model: {exc}")
+    import traceback
+    ERROR_MESSAGE = f"{exc}\n{traceback.format_exc()}"
+    print(f"Failed to load embedding model: {ERROR_MESSAGE}")
     DEVICE = "unavailable"
     MODEL = None
 
@@ -33,11 +36,12 @@ class EmbedResponse(BaseModel):
 
 
 @app.get("/")
-def read_root() -> dict[str, str]:
+def read_root() -> dict[str, Union[str, None]]:
     return {
         "status": "ok" if MODEL is not None else "model_unavailable",
         "model": MODEL_NAME,
         "device": DEVICE,
+        "error": ERROR_MESSAGE,
     }
 
 

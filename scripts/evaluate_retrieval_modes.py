@@ -30,7 +30,9 @@ MODE_HYBRID = "hybrid"
 MODE_GRAPH = "graph_augmented"
 MODES = (MODE_VECTOR_ONLY, MODE_HYBRID, MODE_GRAPH)
 PRIMARY_LABOR_CODE_ID = "45-2019-qh14"
-DEFAULT_BENCHMARK_PATH = REPO_ROOT / "artifacts" / "evaluation" / "retrieval_modes_benchmark.jsonl"
+DEFAULT_BENCHMARK_PATH = (
+    REPO_ROOT / "artifacts" / "evaluation" / "golden_benchmark_100_extended.jsonl"
+)
 
 
 @dataclass(frozen=True)

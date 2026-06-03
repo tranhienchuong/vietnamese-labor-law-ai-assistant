@@ -15,6 +15,7 @@ _SETTINGS = load_settings()
 SUPPORTED_PROVIDERS = ("groq",)
 DEFAULT_PROVIDER = "groq"
 DEFAULT_GROQ_MODEL = _SETTINGS.groq_model
+# Legacy exploratory judge default; official thesis evaluation is deterministic.
 DEFAULT_GROQ_BENCHMARK_JUDGE_MODEL = "openai/gpt-oss-120b"
 GROQ_STRICT_JSON_MODELS = frozenset(
     {
@@ -68,11 +69,13 @@ def default_model_for_provider(provider: str) -> str:
 
 
 def default_benchmark_judge_provider() -> str:
+    """Return the legacy exploratory judge provider."""
     configured = load_settings().benchmark_judge_provider
     return normalize_provider(configured)
 
 
 def default_benchmark_judge_model(provider: str | None = None) -> str:
+    """Return the legacy exploratory judge model."""
     configured = load_settings().benchmark_judge_model.strip()
     provider_name = normalize_provider(provider or default_benchmark_judge_provider())
     if configured:
