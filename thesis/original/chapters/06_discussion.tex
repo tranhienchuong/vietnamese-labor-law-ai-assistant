@@ -1,0 +1,71 @@
+\chapter{Discussion}
+\label{ch:discussion}
+
+\section{Key Findings}
+The final evaluation shows a mixed result. The system performs well on many structured and direct in-corpus questions. It can retrieve and cite legal provisions from the indexed corpus, and the validation layer keeps final citations tied to retrieved context.
+
+The strongest result is citation grounding. On the final 100-query benchmark, the citation validation pass rate is 1.000. This means that the final answers did not cite legal bases outside the retrieved context. The answer pass rate is 0.970 and the quality validation pass rate is 0.970, which also indicates that most generated answers are well formed when the needed evidence is available.
+
+The main weakness is in-corpus retrieval. On the 94 in-corpus queries, graph-augmented retrieval achieves Recall@10 of 0.835 and Required Citation Coverage of 0.835. The Forbidden Citation Violation Rate is 0.043. The adjusted end-to-end pass rate over all 100 queries is 0.780. This gap shows that missing or distracting retrieved evidence still affects the full pipeline even when citation validation remains strong.
+
+The 6 out-of-corpus queries are also important. The out-of-corpus QA pass rate is 1.000 in the final benchmark. The scope guard and intent gate prevented unsupported answers for these tests by returning refusal or insufficient-context behavior.
+
+\section{Impact of Hierarchical Chunking}
+Hierarchical chunking remains useful for legal retrieval. Vietnamese legal documents are organized by document, article, clause, point, and appendix. If these structures are split into arbitrary text windows, the retriever may lose the legal context needed for citation and interpretation.
+
+The implemented chunking pipeline preserves legal coordinates and parent-child relations. This helps the system return evidence with clear citation paths. It also supports deterministic validation, because each generated citation can be checked against retrieved metadata.
+
+However, hierarchical chunking is not enough by itself. The final benchmark shows that some questions still fail because the required chunk is not retrieved. This happens especially when a user uses informal wording, when the answer depends on a table or appendix row, or when the query requires procedural information from another legal document.
+
+\section{Graph-Augmented Retrieval}
+Graph expansion helps connect retrieved seed chunks to related legal provisions. This is useful when a Labor Code article is implemented by a decree, when a circular gives detailed guidance, or when a civil procedure provision is linked to a substantive labor-law issue. These relations are difficult to recover using only semantic similarity.
+
+The retrieval ablation shows that graph-augmented retrieval improves over hybrid-only retrieval. Recall@10 increases from 0.748 to 0.835, Required Citation Coverage increases from 0.748 to 0.835, and the retrieval pass rate increases from 0.660 to 0.766.
+
+One unexpected result is that graph expansion improves retrieval recall but also introduces a small increase in forbidden citation violations. The Forbidden Citation Violation Rate increases from 0.032 for hybrid-only retrieval to 0.043 for graph-augmented retrieval. This suggests that structural proximity in the graph is useful, but it is not always the same as legal relevance. A nearby provision can be related to the same legal topic while still being the wrong basis for a specific answer.
+
+If I were to redesign the retrieval pipeline, I would separate query understanding from graph expansion more clearly. Graph traversal can add useful related provisions, but it cannot fix weak seed retrieval for paraphrased user questions. When the initial seed misses the legal issue, graph expansion may follow the wrong neighborhood and add more context without adding the required rule.
+
+\section{Role of Normative Hierarchy in Legal QA}
+Vietnamese legislation has a vertical authority structure. Codes and laws establish broad rules, while decrees and circulars provide implementation details. The graph represents this structure through document ranks and directed legal relations.
+
+This structure helps context assembly. When both a primary rule and a lower-level implementing provision are available, the system can include both types of evidence. This is important because a legal answer may require the general rule and the detailed administrative condition.
+
+The final benchmark shows that this modeling is useful, but it does not solve every query. Multi-hop questions and labor-dispute procedure questions still fail when the retriever does not find all required legal bases. Normative hierarchy helps organize retrieved evidence, but it cannot compensate for missing retrieval.
+
+\section{Citation Grounding and Hallucination Control}
+Citation hallucination is a central risk in legal QA. The implemented validation layer reduces this risk by checking that answer citations and article coordinates are present in the retrieved context. If the answer cites a legal basis that was not retrieved, the answer fails validation or falls back to safer behavior.
+
+The citation grounding pass rate of 1.000 shows that this layer works well on the final benchmark. The system did not produce unsupported citation surfaces under the deterministic checks.
+
+This result should be interpreted carefully. Citation grounding only checks whether the cited source was retrieved. It does not prove that the retrieved source is the best source or that the answer fully covers all required legal issues. A grounded answer can still fail if retrieval misses an important citation or if the retrieved context contains a distracting but related provision.
+
+\section{Practical Applications}
+The system can be useful as a citation-grounded legal information assistant within the indexed corpus. It can support students, researchers, and HR staff who need to locate relevant statutory passages, retirement-age tables, contract rules, or labor procedure provisions.
+
+The system should be used as a lookup aid, not as a replacement for professional legal advice. Its strongest use case is helping users find and verify legal sources. The final benchmark shows that it is less reliable when the question is informal, when the answer requires a specific table or appendix, or when the query involves labor-dispute procedure. Out-of-corpus QA passes in the benchmark, but this behavior depends on a rule-based guard for known unsupported topic families.
+
+\section{Limitations}
+The main limitation is retrieval robustness. The system performs better on direct and structured in-corpus questions than on paraphrased user queries, hard-negative citation cases, multi-hop questions, table and appendix lookup, and labor-dispute procedure questions.
+
+The scope guard improves unsupported-question handling in the benchmark, but it is rule-based. It is limited to known unsupported topic families and should not be treated as a complete detector for every legal topic outside the indexed corpus.
+
+The evaluation is also limited by the corpus and validation method. The corpus contains six indexed documents, so the system cannot answer questions that require external legal instruments. The benchmark is deterministic and does not include human legal expert review. These checks are useful for reproducible software evaluation, but they cannot replace expert assessment of legal interpretation.
+
+\begin{table}[H]
+  \centering
+  \caption{Limitations summary.}
+  \label{tab:limitations}
+  \begin{tabular}{p{0.28\linewidth}p{0.58\linewidth}}
+    \toprule
+    Limitation & Thesis Treatment \\
+    \midrule
+    Scoped corpus & Covers six indexed legal documents and does not cover all Vietnamese law. \\
+    Retrieval misses & Report Recall@10, Required Citation Coverage, and failed cases on the final benchmark. \\
+    Out-of-corpus behavior & Report refusal tests separately and limit claims to known unsupported topic families. \\
+    Deterministic validation & Quality was not reviewed by human legal experts or LLM-as-Judge. \\
+    Table and appendix lookup & Identify lookup failures where specific numeric rows are not retrieved. \\
+    Legal updates & Newer or external legal sources require corpus refresh and re-evaluation. \\
+    \bottomrule
+  \end{tabular}
+\end{table}

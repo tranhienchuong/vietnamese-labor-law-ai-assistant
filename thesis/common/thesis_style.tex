@@ -1,0 +1,202 @@
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+\usepackage{times}
+\else
+  \usepackage{fontspec}
+  \setmainfont{Times New Roman}
+  \setsansfont{Arial}
+  \setmonofont{Consolas}
+\fi
+
+\usepackage[english]{babel}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\graphicspath{{../common/}{../common/figures/}}
+\usepackage{float}
+\usepackage{pdflscape}
+\usepackage{subcaption}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{enumitem}
+\usepackage{fvextra}
+\usepackage{csquotes}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{makecell}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage[table]{xcolor}
+\usepackage{colortbl}
+\makeatletter
+\providecommand{\insert@pcolumn}{\insert@column}
+\makeatother
+\usepackage{caption}
+\usepackage{tocloft}
+\usepackage{titlesec}
+\usepackage{tikz}
+\usetikzlibrary{calc}
+\usepackage{fancyhdr}
+\usepackage[
+  backend=biber,
+  style=numeric,
+  sorting=nyt
+]{biblatex}
+\usepackage[
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue,
+  urlcolor=blue
+]{hyperref}
+
+\addbibresource{../common/system-references.bib}
+
+\newcommand{\thesistitle}{AI Assistant for Vietnamese Labor Law: A Case Study on Employment Contract Termination}
+\newcommand{\thesisauthor}{Tran Hien Chuong}
+\newcommand{\thesisstudentid}{22BA13056}
+\newcommand{\thesissupervisor}{Dr. Tran Hoang Tung}
+\newcommand{\thesisprogram}{Information and Communication Technology}
+\newcommand{\thesisyear}{2025--2026}
+\newcommand{\systemtitle}{\thesistitle}
+
+\hypersetup{
+  pdftitle={AI Assistant for Vietnamese Labor Law: A Case Study on Employment Contract Termination},
+  pdfauthor={Tran Hien Chuong},
+  pdfsubject={Final thesis report},
+  pdfkeywords={Vietnamese labor law, legal question answering, retrieval-augmented generation, Qdrant, Neo4j, citation validation}
+}
+
+\setcounter{secnumdepth}{4}
+\setcounter{tocdepth}{4}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{1em}
+\raggedbottom
+\emergencystretch=2em
+\urlstyle{same}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\titleformat{name=\section,numberless}[display]
+  {\normalfont\huge\bfseries\filcenter}
+  {}
+  {0pt}
+  {\centerline{\rule{\textwidth}{0.5pt}}\vspace{1.5ex}}
+  [\vspace{0.5ex}\centerline{\rule{\textwidth}{0.5pt}}]
+
+\titleformat{\section}
+  {\normalfont\Large\bfseries}
+  {\thesection}
+  {1em}
+  {}
+\titleformat{\subsection}
+  {\normalfont\large\bfseries}
+  {\thesubsection}
+  {1em}
+  {}
+\titleformat{\subsubsection}
+  {\normalfont\normalsize\bfseries}
+  {\thesubsubsection}
+  {1em}
+  {}
+\titleformat{\paragraph}
+  {\normalfont\normalsize\bfseries}
+  {\theparagraph}
+  {1em}
+  {}
+
+\titlespacing*{\section}{0pt}{15pt}{10pt}
+\titlespacing*{\subsection}{0pt}{12pt}{4pt}
+\titlespacing*{\subsubsection}{0pt}{8pt}{2pt}
+\titlespacing*{\paragraph}{0pt}{6pt}{0.75em}
+
+\setlist[itemize]{topsep=0.2em,itemsep=0.15em,leftmargin=1.6em}
+\setlist[enumerate]{topsep=0.2em,itemsep=0.15em,leftmargin=1.8em}
+
+\captionsetup{
+  font=small,
+  labelfont=bf,
+  labelsep=period,
+  skip=6pt
+}
+
+\setlength{\cftbeforesecskip}{0.25em}
+\setlength{\cftbeforesubsecskip}{0.1em}
+\renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
+
+\definecolor{badred}{HTML}{F4CCCC}
+\definecolor{goodgreen}{HTML}{D9EAD3}
+\definecolor{bestgreen}{HTML}{93C47D}
+\definecolor{codebackground}{RGB}{248,248,248}
+\definecolor{codeframe}{RGB}{210,210,210}
+\definecolor{usthblue}{RGB}{43,61,154}
+\definecolor{usthred}{RGB}{237,28,36}
+
+\newcommand{\cR}[1]{\cellcolor{badred}#1}
+\newcommand{\cG}[1]{\cellcolor{goodgreen}#1}
+\newcommand{\cB}[1]{\cellcolor{bestgreen}\textbf{#1}}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+\renewcommand{\arraystretch}{1.12}
+
+\DefineVerbatimEnvironment{ThesisCode}{Verbatim}{
+  breaklines=true,
+  breakanywhere=true,
+  fontsize=\footnotesize,
+  baselinestretch=1.0
+}
+
+\lstdefinestyle{thesislisting}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebackground},
+  frame=single,
+  rulecolor=\color{codeframe},
+  breaklines=true,
+  columns=fullflexible,
+  showstringspaces=false,
+  tabsize=2,
+  captionpos=b
+}
+\lstset{style=thesislisting}
+
+\newcommand{\thesispageborder}{%
+  \begin{tikzpicture}[remember picture, overlay]
+    \draw[line width=1pt]
+      ($(current page.north west) + (2cm,-2cm)$)
+      rectangle
+      ($(current page.south east) + (-2cm,2cm)$);
+  \end{tikzpicture}%
+}
+
+\newcommand{\frontmattersection}[1]{%
+  \clearpage
+  \section*{#1}
+  \addcontentsline{toc}{section}{#1}
+}
+
+\newcommand{\thesisfigure}[4][0.95\linewidth]{%
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=#1]{#2}
+    \caption{#3}
+    \label{#4}
+  \end{figure}
+}
+
+\newcommand{\placeholderfigure}[1]{%
+  \fbox{%
+    \begin{minipage}[c][0.2\textheight][c]{0.86\linewidth}
+      \centering
+      \textbf{Figure placeholder}\\[0.75em]
+      #1
+    \end{minipage}%
+  }%
+}

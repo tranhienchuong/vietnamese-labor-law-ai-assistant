@@ -36,6 +36,10 @@ class QueryRouterGeneralizationTests(unittest.TestCase):
                 "Hop dong lao dong phai co nhung noi dung chu yeu nao?",
                 ("45-2019-qh14", "21", "1", ""),
             ),
+            (
+                "What is the legal definition of an employee?",
+                ("45-2019-qh14", "3", "1", ""),
+            ),
         )
 
         for query, expected in cases:
@@ -113,6 +117,18 @@ class QueryRouterGeneralizationTests(unittest.TestCase):
                 "Cong ty noi toi nghi roi nhung khong co quyet dinh gi, co chac la ho sai luat khong?",
                 {"34", "36", "37", "39", "41", "48"},
                 {"can_cu_cham_dut", "trai_phap_luat"},
+                set(),
+            ),
+            (
+                "What rules apply to workers under 15?",
+                {"143", "145", "146", "147"},
+                {"lao_dong_chua_thanh_nien"},
+                set(),
+            ),
+            (
+                "When can an employee terminate a contract without prior notice?",
+                {"35"},
+                {"quyen_don_phuong_cham_dut", "thoi_han_bao_truoc"},
                 set(),
             ),
         )

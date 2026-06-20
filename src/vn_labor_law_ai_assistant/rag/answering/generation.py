@@ -9,7 +9,7 @@ from ...corpus_pipeline import normalize_for_matching
 from ..scope_guard import assess_scope, build_scope_refusal_payload
 from ...retriever import RetrievalContext, dedupe_preserve_order
 from .citation_guard import extract_evidence_sentence
-from .formatter import format_answer_for_user
+from .formatter import answer_language, format_answer_for_user
 from .parser import parse_answer_payload
 from .prompt import build_messages, order_contexts_for_answer
 from .schema import ANSWER_JSON_SCHEMA, AnswerValidationResult, EvidenceQuote, ParsedAnswer
@@ -176,25 +176,38 @@ def _first_citation_for_rank(contexts: Sequence[RetrievalContext], *ranks: int) 
 
 def _query_lead(question: str, contexts: Sequence[RetrievalContext]) -> str:
     normalized = normalize_for_matching(question)
+    english = answer_language(question) == "en"
     citations = tuple(context.citation_text for context in contexts if context.citation_text)
     primary = citations[0] if citations else ""
     second_law = _first_citation_for_rank(contexts[1:], 1)
     guidance = _first_citation_for_rank(contexts, 2, 3)
     secondary = guidance or second_law or (citations[1] if len(citations) > 1 else "")
 
-    if "14 tuoi" in normalized or "chua du 15 tuoi" in normalized:
+    if "14 tuoi" in normalized or "chua du 15 tuoi" in normalized or "under 15" in normalized or "under-15" in normalized:
+        if english:
+            return (
+                "Workers under 15 may work only if the retrieved sources support the required statutory conditions, "
+                "including written contracting, protection of study time, health checks, and age-appropriate safe working conditions."
+            )
         return (
             f"Người chưa đủ 15 tuổi chỉ được làm việc khi đáp ứng các điều kiện luật định; "
             f"căn cứ trước hết là {primary}"
             + (f", đồng thời đối chiếu hướng dẫn tại {secondary}." if secondary else ".")
         )
-    if "nghi huu" in normalized or "huu tri" in normalized:
+    if "nghi huu" in normalized or "huu tri" in normalized or "retirement" in normalized:
+        if english:
+            return (
+                "Retirement age must be determined from the statutory roadmap in the Labor Code and the implementing decree, "
+                "then checked against any applicable year, sex, occupation, or birth-date table in the retrieved context."
+            )
         return (
             f"Cần xác định tuổi nghỉ hưu theo lộ trình của Bộ luật Lao động và nghị định hướng dẫn; "
             f"căn cứ trước hết là {primary}"
             + (f", sau đó đối chiếu {secondary}." if secondary else ".")
         )
-    if "noi dung" in normalized and "hop dong" in normalized:
+    if ("noi dung" in normalized and "hop dong" in normalized) or ("contract" in normalized and "content" in normalized):
+        if english:
+            return "The employment contract must include the main contents required by the retrieved Labor Code provision."
         return (
             f"Hợp đồng lao động phải có các nội dung chủ yếu theo {primary}"
             + (f"; văn bản hướng dẫn chi tiết là {secondary}." if secondary else ".")
@@ -212,13 +225,17 @@ def _query_lead(question: str, contexts: Sequence[RetrievalContext]) -> str:
             + (f" và trợ cấp mất việc theo {second_law}." if second_law else ".")
             + (f" Văn bản hướng dẫn chi tiết được dùng kèm là {guidance}." if guidance else "")
         )
-    if "khong can bao truoc" in normalized or "khong phai bao truoc" in normalized:
+    if "khong can bao truoc" in normalized or "khong phai bao truoc" in normalized or "without prior notice" in normalized or "without notice" in normalized:
+        if english:
+            return "An employee may terminate without prior notice only in the statutory cases supported by the retrieved provision."
         return f"Người lao động được nghỉ việc không cần báo trước trong các trường hợp được liệt kê tại {primary}."
     if "lam them" in normalized and ("gioi han" in normalized or "theo thang" in normalized):
         return (
             f"Điều kiện và giới hạn làm thêm giờ được xác định trực tiếp theo {primary}"
             + (f"; giới hạn chi tiết được hướng dẫn thêm tại {secondary}." if secondary else ".")
         )
+    if english:
+        return "The retrieved legal context provides a basis to answer this question within the indexed Vietnamese labor-law corpus."
     return f"Căn cứ vào {primary}, có cơ sở pháp lý để trả lời trong phạm vi dữ liệu được truy xuất."
 
 
@@ -230,11 +247,18 @@ def build_extractive_answer_payload(
 ) -> dict[str, object]:
     ordered_contexts = order_contexts_for_answer(contexts)
     if not ordered_contexts:
-        return {
-            "answer": (
+        if answer_language(question) == "en":
+            answer = (
+                "I could not find enough legal context in the indexed sources to answer this reliably. "
+                "Additional directly relevant legal provisions are needed."
+            )
+        else:
+            answer = (
                 "Không đủ căn cứ trong dữ liệu hiện có để kết luận chắc chắn. "
                 "Cần bổ sung ngữ cảnh pháp lý trực tiếp liên quan đến câu hỏi."
-            ),
+            )
+        return {
+            "answer": answer,
             "legal_basis": [],
             "evidence_quotes": [],
             "insufficient_context": True,
@@ -264,23 +288,8 @@ def build_extractive_answer_payload(
         )
     evidence_quotes = tuple(evidence_quotes_list)
     lead = _query_lead(question, selected)
-    detail_lines = [
-        f"- {quote.quote} ({quote.citation})"
-        for quote in evidence_quotes
-    ]
-    answer_parts = [
-        lead,
-        "",
-        "Nội dung cụ thể như sau:",
-        *detail_lines,
-        "",
-        "Tóm lại:",
-        f"- Ưu tiên áp dụng căn cứ cấp cao hơn trước: {legal_basis[0]}.",
-    ]
-    if len(legal_basis) > 1:
-        answer_parts.append(f"- Dùng căn cứ hướng dẫn/chi tiết khi phù hợp: {legal_basis[1]}.")
     return {
-        "answer": "\n".join(answer_parts),
+        "answer": lead,
         "legal_basis": list(legal_basis),
         "evidence_quotes": [asdict(quote) for quote in evidence_quotes],
         "insufficient_context": False,

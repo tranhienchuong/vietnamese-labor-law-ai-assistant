@@ -211,6 +211,30 @@ class QueryRouterTests(unittest.TestCase):
         self.assertIn("giu_giay_to_goc", intent.issue_filters)
         self.assertTrue(any("giay to tuy than" in value for value in intent.query_expansions))
 
+    def test_query_intent_from_metadata_uses_heuristic_safety_net_when_llm_labels_are_empty(self) -> None:
+        metadata = QueryMetadata.model_validate(
+            {
+                "actor": None,
+                "actors": [],
+                "topics": [],
+                "issues": [],
+                "document_ids": [],
+                "query_types": ["definition"],
+                "article_numbers": [],
+                "clause_refs": [],
+                "point_refs": [],
+            }
+        )
+
+        intent = query_intent_from_metadata(
+            "What rules apply to workers under 15?",
+            metadata,
+        )
+
+        self.assertIn("lao_dong_chua_thanh_nien", intent.topic_filters)
+        self.assertIn("lao_dong_chua_thanh_nien", intent.issue_filters)
+        self.assertTrue({"143", "145", "146", "147"}.issubset(set(intent.inferred_article_numbers)))
+
     def test_query_intent_from_metadata_preserves_direct_reference_over_llm_article(self) -> None:
         metadata = QueryMetadata.model_validate(
             {

@@ -154,8 +154,9 @@ class ChatTracingTest(TestCase):
                 "vn_labor_law_ai_assistant.api.routes.chat.get_retriever",
                 return_value=FakeRetriever(),
             ),
-            patch(
-                "vn_labor_law_ai_assistant.api.routes.chat.ChatTraceService.record_chat_trace",
+            patch.object(
+                self.store,
+                "record_chat_trace",
                 side_effect=RuntimeError("trace database unavailable"),
             ),
             patch("vn_labor_law_ai_assistant.api.routes.chat.LOGGER.warning"),

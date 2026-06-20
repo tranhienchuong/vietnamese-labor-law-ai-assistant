@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ...auth_store import AuthUser
-from ..deps import get_auth_store, require_current_user
+from ..deps import get_app_store, require_current_user
 
 
 router = APIRouter()
@@ -12,7 +12,7 @@ router = APIRouter()
 @router.get("/conversations")
 def list_conversations(current_user: AuthUser = Depends(require_current_user)):
     return {
-        "conversations": get_auth_store().list_conversations(user_id=current_user.id)
+        "conversations": get_app_store().list_conversations(user_id=current_user.id)
     }
 
 
@@ -22,8 +22,8 @@ async def create_conversation(
     current_user: AuthUser = Depends(require_current_user),
 ):
     payload = await request.json()
-    title = str(payload.get("title") or "Cuộc trò chuyện mới")
-    conversation = get_auth_store().create_conversation(
+    title = str(payload.get("title") or "New research")
+    conversation = get_app_store().create_conversation(
         user_id=current_user.id,
         title=title,
     )
@@ -35,7 +35,7 @@ def get_conversation(
     conversation_id: str,
     current_user: AuthUser = Depends(require_current_user),
 ):
-    store = get_auth_store()
+    store = get_app_store()
     conversation = store.get_conversation(
         user_id=current_user.id,
         conversation_id=conversation_id,
@@ -55,7 +55,7 @@ def list_messages(
     conversation_id: str,
     current_user: AuthUser = Depends(require_current_user),
 ):
-    messages = get_auth_store().list_messages(
+    messages = get_app_store().list_messages(
         user_id=current_user.id,
         conversation_id=conversation_id,
     )

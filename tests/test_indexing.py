@@ -83,6 +83,7 @@ class IndexingTests(unittest.TestCase):
             {
                 "QDRANT_URL": "https://example.qdrant.io",
                 "QDRANT_API_KEY": "secret",
+                "QDRANT_TIMEOUT": "120",
             },
         ):
             client = build_qdrant_client(FakeQdrantClient, Path("ignored"))
@@ -97,7 +98,10 @@ class IndexingTests(unittest.TestCase):
             def __init__(self, **kwargs) -> None:
                 self.kwargs = kwargs
 
-        with patch.dict("os.environ", {"QDRANT_URL": "", "QDRANT_API_KEY": ""}):
+        with patch.dict(
+            "os.environ",
+            {"QDRANT_URL": "", "QDRANT_API_KEY": "", "QDRANT_TIMEOUT": "120"},
+        ):
             client = build_qdrant_client(FakeQdrantClient, Path("artifacts/index/qdrant"))
 
         self.assertEqual(

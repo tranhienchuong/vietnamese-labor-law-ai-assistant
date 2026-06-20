@@ -19,6 +19,7 @@ from .core.security import (
     verify_password,
 )
 from .db.sqlite import SQLiteDatabase, default_database_path, utc_timestamp
+from .observability import ChatTraceService
 
 
 class AuthStore:
@@ -29,6 +30,7 @@ class AuthStore:
         self.auth_service = AuthService(self.auth_repository)
         self.conversation_repository = ConversationRepository(self.database)
         self.conversation_service = ConversationService(self.conversation_repository)
+        self.trace_service = ChatTraceService(self.database)
         self.initialize()
 
     def connect(self) -> sqlite3.Connection:
@@ -54,6 +56,27 @@ class AuthStore:
             email=email,
             password=password,
             role=role,
+        )
+
+    def upsert_external_user(
+        self,
+        *,
+        user_id: str,
+        name: str,
+        email: str,
+        auth_provider: str,
+        provider_id: str,
+        role: Role,
+        avatar_url: str | None = None,
+    ) -> AuthUser:
+        return self.auth_service.upsert_external_user(
+            user_id=user_id,
+            name=name,
+            email=email,
+            auth_provider=auth_provider,
+            provider_id=provider_id,
+            role=role,
+            avatar_url=avatar_url,
         )
 
     def _row_to_user(self, row: sqlite3.Row | None) -> AuthUser | None:
@@ -137,6 +160,42 @@ class AuthStore:
             conversation_id=conversation_id,
             question=question,
         )
+
+    def record_chat_trace(self, **kwargs: Any) -> dict[str, Any]:
+        return self.trace_service.record_chat_trace(**kwargs)
+
+    def list_recent_traces(self, **kwargs: Any) -> list[dict[str, Any]]:
+        return self.trace_service.list_recent_traces(**kwargs)
+
+    def get_trace(self, trace_id: str) -> dict[str, Any] | None:
+        return self.trace_service.get_trace(trace_id)
+
+    def count_users(self) -> int:
+        return self.auth_repository.count_users()
+
+    def count_active_users(self) -> int:
+        return self.auth_repository.count_active_users()
+
+    def count_admin_users(self) -> int:
+        return self.auth_repository.count_admin_users()
+
+    def count_active_sessions(self) -> int:
+        return self.auth_repository.count_active_sessions()
+
+    def count_conversations(self) -> int:
+        return self.conversation_repository.count_conversations()
+
+    def count_messages(self) -> int:
+        return self.conversation_repository.count_messages()
+
+    def count_traces(self) -> int:
+        return self.trace_service.count_traces()
+
+    def count_traces_with_errors(self) -> int:
+        return self.trace_service.count_traces_with_errors()
+
+    def count_insufficient_context_traces(self) -> int:
+        return self.trace_service.count_insufficient_context_traces()
 
 
 __all__ = [

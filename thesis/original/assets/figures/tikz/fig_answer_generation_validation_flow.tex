@@ -1,0 +1,38 @@
+\begin{tikzpicture}[
+  node distance=7mm and 14mm,
+  every node/.style={font=\footnotesize},
+  valbox/.style={block, minimum height=8mm, minimum width=38mm, text width=38mm, align=center},
+  constructbox/.style={valbox, fill=black!4},
+  checkbox/.style={valbox, fill=orange!12},
+  failbox/.style={valbox, fill=red!8, minimum width=42mm, text width=42mm},
+  notebox/.style={valbox, fill=black!5, dashed, minimum width=44mm, text width=44mm, font=\scriptsize},
+  valgroup/.style={container, fill=black!3, inner sep=7pt,
+    label={[anchor=west, fill=black!3, inner sep=2pt, font=\footnotesize\bfseries]north west:#1}}
+]
+  \node[constructbox] (contexts) {Retrieved Contexts};
+  \node[constructbox, below=of contexts] (ordering) {Context Ordering};
+  \node[constructbox, below=of ordering] (construction) {Extractive Answer Construction};
+  \node[constructbox, below=of construction] (draft) {Draft Answer with Citations};
+  \node[checkbox, below=of draft] (citation) {Citation Grounding Check};
+  \node[checkbox, below=of citation] (quality) {Quality Rule Checks};
+  \node[constructbox, below=of quality] (final) {Final Validated Answer};
+
+  \node[failbox, right=of citation, yshift=-8mm] (failure) {Evaluation Failure / Insufficient Context};
+  \node[notebox, below=of failure] (note)
+    {Deterministic rule-based validation; not LLM-as-Judge.};
+
+  \begin{scope}[on background layer]
+    \node[valgroup=Answer Construction and Validation, fit=(contexts) (ordering) (construction) (draft) (citation) (quality) (final)] {};
+    \node[valgroup=Validation Outcome, fit=(failure) (note)] {};
+  \end{scope}
+
+  \draw[arrow] (contexts) -- (ordering);
+  \draw[arrow] (ordering) -- (construction);
+  \draw[arrow] (construction) -- (draft);
+  \draw[arrow] (draft) -- (citation);
+  \draw[arrow] (citation) -- (quality);
+  \draw[arrow] (quality) -- (final);
+
+  \draw[arrow] (citation.east) -- ++(7mm,0) |- (failure.west);
+  \draw[arrow] (quality.east) -- ++(7mm,0) |- (failure.west);
+\end{tikzpicture}

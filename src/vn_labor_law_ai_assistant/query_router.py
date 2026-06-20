@@ -15,6 +15,7 @@ from .heuristic_router import (
     collect_keyword_matches,
     collect_mapped_article_expansions,
     collect_rule_based_routing,
+    contains_normalized_phrase,
     dedupe_preserve_order,
 )
 from .rule_loader import DEFAULT_RULE_CONFIG
@@ -309,14 +310,33 @@ def query_intent_from_metadata(query: str, metadata: QueryMetadata) -> QueryInte
             *collect_keyword_matches(normalized_query, RULE_CONFIG.QUERY_TYPE_KEYWORDS),
         )
     )
+    if "definition" in query_types and not contains_normalized_phrase(
+        normalized_query,
+        RULE_CONFIG.QUERY_TYPE_KEYWORDS.get("definition", ()),
+    ):
+        query_types = tuple(query_type for query_type in query_types if query_type != "definition")
     rule_routing = collect_rule_based_routing(
         normalized_query,
         RULE_CONFIG,
         query_types=query_types,
         document_filters=document_filters,
     )
-    topic_filters = dedupe_preserve_order((*metadata.topics, *rule_routing.topics))
-    issue_filters = dedupe_preserve_order((*metadata.issues, *rule_routing.issues))
+    heuristic_topics = collect_keyword_matches(normalized_query, RULE_CONFIG.TOPIC_KEYWORDS)
+    heuristic_issues = collect_keyword_matches(normalized_query, RULE_CONFIG.ISSUE_KEYWORDS)
+    topic_filters = dedupe_preserve_order(
+        (
+            *metadata.topics,
+            *(heuristic_topics if not metadata.topics else ()),
+            *rule_routing.topics,
+        )
+    )
+    issue_filters = dedupe_preserve_order(
+        (
+            *metadata.issues,
+            *(heuristic_issues if not metadata.issues else ()),
+            *rule_routing.issues,
+        )
+    )
     mapped_articles, mapped_expansions = collect_mapped_article_expansions(
         topic_filters=topic_filters,
         issue_filters=issue_filters,

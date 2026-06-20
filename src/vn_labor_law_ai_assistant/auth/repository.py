@@ -53,6 +53,56 @@ class AuthRepository:
                 ),
             )
 
+    def upsert_external_user(
+        self,
+        *,
+        user_id: str,
+        name: str,
+        email: str,
+        auth_provider: str,
+        provider_id: str,
+        role: Role,
+        avatar_url: str | None,
+        now: str,
+    ) -> AuthUser:
+        normalized_email = email.strip().lower()
+        clean_name = name.strip() or normalized_email
+        with self.database.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO users (
+                    id, name, email, password_hash, auth_provider,
+                    provider_id, role, avatar_url, is_active, created_at, updated_at
+                )
+                VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    email = excluded.email,
+                    auth_provider = excluded.auth_provider,
+                    provider_id = excluded.provider_id,
+                    role = excluded.role,
+                    avatar_url = excluded.avatar_url,
+                    is_active = 1,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    user_id,
+                    clean_name,
+                    normalized_email,
+                    auth_provider,
+                    provider_id,
+                    role,
+                    avatar_url,
+                    now,
+                    now,
+                ),
+            )
+
+        user = self.get_user_by_id(user_id)
+        if user is None:
+            raise RuntimeError("Failed to upsert external user.")
+        return user
+
     def get_user_by_id(self, user_id: str) -> AuthUser | None:
         with self.database.connect() as connection:
             row = connection.execute(

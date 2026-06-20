@@ -1,0 +1,121 @@
+\section{Evaluation and Discussion}
+
+\subsection{Benchmark Design}
+The benchmark contains 100 queries. Ninety-four are in-corpus questions with required citation annotations. Six are out-of-corpus questions where the correct behavior is refusal or insufficient context. The benchmark tests direct questions, definitions, document guidance, exceptions, multi-hop cases, table lookups, hard-negative citation cases, paraphrased user questions, dispute procedure questions, comparisons, scenarios, and unsupported topics.
+
+The evaluation is designed to check software behavior rather than legal authority in the abstract. Retrieval is judged by required citation recovery and forbidden citation avoidance. End-to-end QA is judged by answer quality rules, citation containment, and refusal behavior for questions outside the indexed corpus.
+
+\begin{table}[H]
+  \centering
+  \caption{Benchmark Composition}
+  \label{tab:benchmark-composition-draft}
+  \begin{tabular}{@{}lr@{}}
+    \toprule
+    Category & Queries \\
+    \midrule
+    Direct QA & 19 \\
+    Definition QA & 7 \\
+    Document guidance QA & 10 \\
+    Exception-based QA & 11 \\
+    Multi-hop QA & 7 \\
+    Table and appendix lookup & 10 \\
+    Hard-negative citation QA & 5 \\
+    Paraphrased real-user QA & 5 \\
+    Labor dispute and procedure QA & 5 \\
+    Procedure QA & 7 \\
+    Comparison QA & 4 \\
+    Scenario-based QA & 4 \\
+    Out-of-corpus QA & 6 \\
+    \midrule
+    Total & 100 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Retrieval Results}
+Table~\ref{tab:retrieval-results-draft} reports the final retrieval ablation. Graph expansion improves recall and query-level retrieval pass rate. It also slightly increases forbidden citation violations, which shows that graph proximity can introduce legally related but distracting provisions.
+
+\begin{table}[H]
+  \centering
+  \caption{Retrieval and Graph Expansion Results}
+  \label{tab:retrieval-results-draft}
+  \begin{tabular}{@{}lrrrrr@{}}
+    \toprule
+    Mode & Queries & Recall@10 & Coverage & Forbidden rate & Pass rate \\
+    \midrule
+    Hybrid-only & 94 & 0.735 & 0.735 & \cG{0.032} & 0.649 \\
+    Graph-augmented & 94 & \cB{0.835} & \cB{0.835} & \cR{0.043} & \cB{0.766} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{End-to-End Results}
+Table~\ref{tab:e2e-results-draft} reports the final deterministic end-to-end run. The final pass rate is limited mainly by retrieval misses, not citation hallucination.
+
+\begin{table}[H]
+  \centering
+  \caption{End-to-End QA and Citation Validation Results}
+  \label{tab:e2e-results-draft}
+  \begin{tabular}{@{}lr@{}}
+    \toprule
+    Metric & Value \\
+    \midrule
+    Total benchmark queries & 100 \\
+    Adjusted end-to-end pass rate & 0.780 \\
+    Retrieval pass rate & 0.780 \\
+    Answer pass rate & \cG{0.980} \\
+    Citation validation pass rate & \cB{1.000} \\
+    Quality validation pass rate & \cG{0.980} \\
+    Average final quality score & 94.11 \\
+    Low-information quotes & 1 \\
+    Unsupported article numbers & \cB{0} \\
+    Unretrieved citations & \cB{0} \\
+    Out-of-corpus QA pass rate & \cB{1.000} \\
+    Graph expansion used & 89 queries \\
+    Average graph depth & 2.160 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Category-Level Results}
+The end-to-end evaluation shows that direct QA, definition QA, document guidance QA, exception-based QA, comparison QA, procedure QA, and scenario-based QA all pass in the final run. The weakest categories are labor-dispute procedure QA, hard-negative citation QA, paraphrased real-user QA, multi-hop QA, and table or appendix lookup. This pattern points to engineering limits in query understanding, table-aware retrieval, and filtering of nearby but wrong legal bases.
+
+Graph-required queries have lower pass rates because they often require multiple legal bases and cross-document evidence. This does not contradict the retrieval ablation: graph expansion improves retrieval over hybrid-only search, but the hardest benchmark items still remain difficult.
+
+\subsection{Case Studies and Error Taxonomy}
+The successful cases confirm that the system can answer direct and structured questions when the required evidence is retrieved. For example, retirement-age questions can combine the Labor Code with Decree 135/2020/ND-CP tables, and out-of-corpus minimum wage questions are refused because the relevant legal instrument is absent from the corpus.
+
+The failed cases show the main weakness. Informal paraphrases, table rows, hard negatives, and labor-dispute procedure questions often miss required evidence. Table~\ref{tab:error-taxonomy-draft} summarizes representative cases and error types.
+
+\begin{table}[H]
+  \centering
+  \caption{Case Studies and Error Taxonomy}
+  \label{tab:error-taxonomy-draft}
+  \begin{tabularx}{\linewidth}{@{}L{0.28\linewidth}L{0.24\linewidth}Y@{}}
+    \toprule
+    Case or error & Result & Interpretation \\
+    \midrule
+    Female retirement age in 2026 & \cB{Pass} & Retrieved Labor Code and Decree 135 table evidence. \\
+    Minimum wage by region in 2026 & \cB{Pass refusal} & Correctly identified insufficient indexed context. \\
+    Temporary transfer paraphrase & \cR{Fail} & Missed Labor Code Article 29 required citations. \\
+    Domestic worker contract template & \cR{Fail} & Missed appendix/form evidence and produced low-information answer. \\
+    Holiday overtime pay hard negative & \cR{Fail} & Mixed missing citation with over-expansion to overtime limit provisions. \\
+    Labor-dispute court choice & \cR{Fail} & Cross-code procedure retrieval remained incomplete. \\
+    \midrule
+    Retrieval missing required context & 20 cases & Dominant failure reason. \\
+    Retrieval over-expansion & 4 cases & Related but forbidden citations entered top results. \\
+    Low-information answer & 2 cases & Extractive answer lacked enough useful rule content. \\
+    Answer missing required rule & 1 case & Answer quality failed after retrieval gap. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Discussion}
+The evaluation supports the central design claim: graph augmentation helps when vector retrieval reaches the correct legal neighborhood but misses a related provision. The graph-augmented retriever improves Recall@10 by 0.100 absolute over hybrid-only retrieval, indicating that cross-reference and hierarchy paths recover evidence that dense--sparse search can miss. The higher forbidden citation rate, however, shows the cost of this design. A graph edge represents legal relatedness, not necessarily answer relevance, so expansion must remain query-sensitive and budgeted.
+
+Citation validation is the most reliable component in the final run: there are no unsupported article numbers and no unretrieved citations. This result should be read as citation containment, not proof of legal correctness. The remaining failures are concentrated before generation, where paraphrased, table-heavy, hard-negative, and cross-code procedure questions still require stronger query understanding and more precise evidence selection.
+
+\subsection{Threats to Validity}
+The benchmark is manually constructed and scoped to six document groups. Its metrics should be read as software-level evidence, not proof of legal correctness. Deterministic validation is strong at checking citation containment but weaker at judging interpretation. The extractive provider improves reproducibility but can produce less fluent answers than a carefully controlled LLM. The out-of-corpus tests are useful but limited to known unsupported topic families.
+
+Reproducibility also depends on the pinned benchmark, index manifest, and final structured outputs listed in Appendix~A.

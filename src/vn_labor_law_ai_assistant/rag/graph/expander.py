@@ -407,14 +407,26 @@ def classify_graph_query_intent(intent: QueryIntent) -> tuple[str, ...]:
         "lao_dong_chua_thanh_nien" in topics
         or "lao_dong_chua_thanh_nien" in issues
         or "lao_dong_chua_thanh_nien" in actors
-        or _query_has_any(intent, ("14 tuoi", "chua du 15 tuoi", "nguoi chua thanh nien"))
+        or _query_has_any(
+            intent,
+            (
+                "14 tuoi",
+                "chua du 15 tuoi",
+                "nguoi chua thanh nien",
+                "under 15",
+                "under-15",
+                "minor worker",
+                "underage worker",
+                "child labor",
+            ),
+        )
     ):
         query_types.append("minor_worker")
 
     if (
         "tuoi_nghi_huu" in topics
         or "tuoi_nghi_huu" in issues
-        or _query_has_any(intent, ("nghi huu", "huu tri", "tuoi nghi huu"))
+        or _query_has_any(intent, ("nghi huu", "huu tri", "tuoi nghi huu", "retirement age", "decree 135"))
     ):
         query_types.append("retirement_age")
     if _query_has_any(intent, ("nu nghi huu nam 2026", "bang tuoi nghi huu", "phu luc i", "nam 2026")) and _query_has_any(
@@ -670,6 +682,10 @@ def classify_graph_query_intent(intent: QueryIntent) -> tuple[str, ...]:
             "khong bao truoc",
             "nghi viec ngay",
             "duoc nghi ngay",
+            "without prior notice",
+            "without notice",
+            "no prior notice",
+            "no notice",
         ),
     ):
         query_types.append("no_notice")

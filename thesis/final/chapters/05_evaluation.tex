@@ -1,0 +1,123 @@
+\section{Evaluation and Discussion}
+
+\subsection{Experimental Setup}
+The final evaluation is deterministic and artifact-based. Its sources are the final retrieval ablation report, the final end-to-end report, the 100-query benchmark file, and the current index manifest stored under \path{artifacts/evaluation/final/}, \path{artifacts/evaluation/}, and \path{artifacts/index/}.
+
+The benchmark has 100 queries: 94 in-corpus queries and 6 out-of-corpus refusal tests. Retrieval metrics are computed on the 94 in-corpus queries because out-of-corpus queries have no required citation set. End-to-end metrics are adjusted across all 100 queries: in-corpus queries must pass retrieval, answer, citation, and quality checks; out-of-corpus queries must refuse or report insufficient context.
+
+Table~\ref{tab:benchmark-composition-final} summarizes the benchmark categories.
+
+\begin{table}[H]
+  \centering
+  \caption{Benchmark Composition}
+  \label{tab:benchmark-composition-final}
+  \small
+  \begin{tabular}{@{}lr@{}}
+    \toprule
+    Category & Queries \\
+    \midrule
+    Direct QA & 19 \\
+    Definition QA & 7 \\
+    Document guidance QA & 10 \\
+    Exception-based QA & 11 \\
+    Multi-hop QA & 7 \\
+    Table and appendix lookup & 10 \\
+    Hard-negative citation QA & 5 \\
+    Paraphrased real-user QA & 5 \\
+    Labor dispute and procedure QA & 5 \\
+    Procedure QA & 7 \\
+    Comparison QA & 4 \\
+    Scenario-based QA & 4 \\
+    Out-of-corpus QA & 6 \\
+    \midrule
+    Total & 100 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Retrieval and Graph Expansion Results}
+Table~\ref{tab:retrieval-results-final} compares hybrid-only retrieval with graph-augmented retrieval. Graph expansion improves Recall@10 and Required Citation Coverage from 0.735 to 0.835. It also improves retrieval pass rate from 0.649 to 0.766. The trade-off is a small increase in Forbidden Citation Violation Rate from 0.032 to 0.043.
+
+\begin{table}[H]
+  \centering
+  \caption{Retrieval and Graph Expansion Results}
+  \label{tab:retrieval-results-final}
+  \small
+  \begin{tabular}{@{}lrrrrr@{}}
+    \toprule
+    Mode & Queries & Recall@10 & Coverage & Forbidden rate & Pass rate \\
+    \midrule
+    Hybrid-only & 94 & 0.735 & 0.735 & \cG{0.032} & 0.649 \\
+    Graph-augmented & 94 & \cB{0.835} & \cB{0.835} & \cR{0.043} & \cB{0.766} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The result supports the main architectural choice. Graph expansion helps recover related legal provisions that hybrid retrieval alone misses. However, graph expansion is not automatically safe. A nearby legal provision can be related but still be a forbidden citation for the benchmark query. This explains the small increase in forbidden citation violations.
+
+\subsection{End-to-End QA and Citation Validation Results}
+Table~\ref{tab:e2e-results-final} reports the final end-to-end run. The adjusted pass rate is 0.780. The citation validation pass rate is 1.000, with no unsupported article numbers and no unretrieved citations. This shows that the citation guard is effective on the benchmark. The lower end-to-end score is caused mainly by retrieval failures.
+
+\begin{table}[H]
+  \centering
+  \caption{End-to-End QA and Citation Validation Results}
+  \label{tab:e2e-results-final}
+  \small
+  \begin{tabular}{@{}lr@{}}
+    \toprule
+    Metric & Value \\
+    \midrule
+    Total benchmark queries & 100 \\
+    Adjusted end-to-end pass rate & 0.780 \\
+    Retrieval pass rate & 0.780 \\
+    Answer pass rate & \cG{0.980} \\
+    Citation validation pass rate & \cB{1.000} \\
+    Quality validation pass rate & \cG{0.980} \\
+    Average final quality score & 94.11 \\
+    Low-information quotes & 1 \\
+    Unsupported article numbers & \cB{0} \\
+    Unretrieved citations & \cB{0} \\
+    Out-of-corpus QA pass rate & \cB{1.000} \\
+    Graph expansion used & 89 queries \\
+    Average graph depth & 2.160 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Case Studies and Error Taxonomy}
+Table~\ref{tab:error-taxonomy-final} combines representative case studies with the main error categories reported by the official final evaluation.
+
+\begin{table}[H]
+  \centering
+  \caption{Case Studies and Error Taxonomy}
+  \label{tab:error-taxonomy-final}
+  \small
+  \begin{tabularx}{\linewidth}{@{}L{0.28\linewidth}L{0.24\linewidth}Y@{}}
+    \toprule
+    Case or error & Result & Interpretation \\
+    \midrule
+    Female retirement age in 2026 & \cB{Pass} & Retrieved Labor Code and Decree 135 table evidence. \\
+    Minimum wage by region in 2026 & \cB{Pass refusal} & Correctly identified insufficient indexed context. \\
+    Temporary transfer paraphrase & \cR{Fail} & Missed Labor Code Article 29 required citations. \\
+    Domestic worker contract template & \cR{Fail} & Missed appendix/form evidence and produced low-information answer. \\
+    Holiday overtime pay hard negative & \cR{Fail} & Mixed missing citation with over-expansion to overtime limit provisions. \\
+    Labor-dispute court choice & \cR{Fail} & Cross-code procedure retrieval remained incomplete. \\
+    \midrule
+    Retrieval missing required context & 20 cases & Dominant failure reason. \\
+    Retrieval over-expansion & 4 cases & Related but forbidden citations entered top results. \\
+    Low-information answer & 2 cases & Extractive answer lacked enough useful rule content. \\
+    Answer missing required rule & 1 case & Answer quality failed after retrieval gap. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Discussion and Limitations}
+Direct QA, definition QA, document guidance QA, exception-based QA, comparison QA, procedure QA, and scenario-based QA reach perfect end-to-end pass rates in the final report. The weakest groups are labor-dispute procedure QA, hard-negative citation QA, paraphrased real-user QA, multi-hop QA, and table or appendix lookup. These weak categories share a common pattern: they require the system to infer a legal issue from informal wording, avoid similar but wrong provisions, or find specific appendix/table evidence.
+
+For graph-required queries, end-to-end pass rate is 0.605. For queries not requiring graph, it is 0.912. This does not mean the graph is harmful. It means graph-required queries are harder. They often require multiple legal bases and are more likely to expose retrieval gaps.
+
+The evaluation is reproducible but bounded. It checks citation coverage, citation containment, answer shape, and refusal behavior. It does not prove full legal correctness. The corpus contains six document groups, so the assistant cannot answer every Vietnamese labor-law question. The out-of-corpus pass rate is strong on the six refusal tests, but broader out-of-scope detection would require a larger and more varied benchmark.
+
+The most important technical limitation is retrieval robustness. Citation validation prevents unsupported citations, but it cannot repair missing evidence. When the retriever misses a required provision, the answer can be grounded in retrieved context and still fail the benchmark because the retrieved context is incomplete.
+
+The final results support a nuanced conclusion. Graph expansion improves retrieval over hybrid-only search and citation validation prevents benchmark-level citation hallucination. The system is effective as a scoped, citation-grounded legal information assistant. The remaining work is not primarily about making the generator more fluent. It is about making retrieval more robust for informal language, tables, hard negatives, and cross-document procedure.

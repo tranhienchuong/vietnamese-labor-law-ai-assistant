@@ -1,0 +1,41 @@
+\begin{tikzpicture}[
+  node distance=7mm and 14mm,
+  every node/.style={font=\footnotesize},
+  retbox/.style={block, minimum height=8mm, minimum width=36mm, text width=36mm, align=center},
+  retstore/.style={retbox, fill=black!10},
+  vectorstep/.style={retbox, fill=blue!8},
+  graphstep/.style={retbox, fill=green!12},
+  graystep/.style={retbox, fill=black!5},
+  retgroup/.style={container, fill=black!3, inner sep=7pt,
+    label={[anchor=west, fill=black!3, inner sep=2pt, font=\footnotesize\bfseries]north west:#1}},
+  notebox/.style={retbox, fill=black!5, dashed, minimum width=42mm, text width=42mm, font=\scriptsize}
+]
+  \node[retbox] (query) {User Query ($q$)};
+  \node[retbox, below=of query] (intent) {Intent \& Metadata Hints};
+  \node[vectorstep, below=of intent] (hybrid) {Hybrid Seed Retrieval};
+  \node[retbox, below=of hybrid] (seeds) {Seed Chunks $S_k$};
+  \node[graystep, below=of seeds] (merge) {Merge \& Rerank};
+  \node[graystep, below=of merge] (context) {Final Context\\$C_{\mathrm{final}} = S_k \cup C_{\mathrm{graph}}$};
+  \node[retbox, below=of context] (generator) {Answer Generator};
+
+  \node[graphstep, right=of seeds] (graph) {Graph Expansion};
+  \node[graphstep, below=of graph] (expanded) {Expanded Context\\$C_{\mathrm{graph}}$};
+  \node[notebox, below=of expanded]
+    (note) {Structural, reference, taxonomy, and normative hierarchy edges};
+
+  \begin{scope}[on background layer]
+    \node[retgroup=Retrieval Pipeline, fit=(query) (intent) (hybrid) (seeds) (merge) (context) (generator)] {};
+    \node[retgroup=Graph Expansion Module, fit=(graph) (expanded) (note)] {};
+  \end{scope}
+
+  \draw[arrow] (query) -- (intent);
+  \draw[arrow] (intent) -- (hybrid);
+  \draw[arrow] (hybrid) -- (seeds);
+  \draw[arrow] (seeds) -- (merge);
+  \draw[arrow] (merge) -- (context);
+  \draw[arrow] (context) -- (generator);
+
+  \draw[arrow] (seeds) -- (graph);
+  \draw[arrow] (graph) -- (expanded);
+  \draw[arrow] (expanded.west) -- ++(-7mm,0) |- (merge.east);
+\end{tikzpicture}

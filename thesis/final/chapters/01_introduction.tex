@@ -1,0 +1,29 @@
+\section{Introduction}
+
+\subsection{Context and Problem Statement}
+Legal question answering is useful only when a user can inspect the source of an answer. In Vietnamese labor law, the source is not merely a paragraph with similar wording. A reliable answer must preserve the document, article, clause, point, appendix, and legal rank that support the response. It must also avoid answering when the required legal instrument is outside the indexed corpus. This makes Vietnamese labor-law QA a software system problem as much as a language-model problem.
+
+The implemented project began from practical employment questions such as contract termination, severance, retirement, minor workers, working time, and labor disputes. These topics quickly showed that a narrow set of termination rules is not enough. A question about ending an employment relationship may require the Labor Code, an implementing decree, a ministerial circular, a retirement-age table, or a civil procedure provision. A flat retriever can return semantically similar passages, but it does not naturally preserve this legal hierarchy.
+
+Standard retrieval-augmented generation systems usually split documents into passages, retrieve the most similar passages, and place them into a generator prompt \cite{lewis2020retrieval}. This approach is fragile for statutory QA. A legal rule may depend on a parent article, a lower-level implementing document, or a cross-reference that is not semantically close to the user query. Dense embeddings may also miss exact article numbers and table references, while generated answers may invent citations unless they are checked after generation.
+
+The core problem addressed in this thesis is therefore how an implemented Vietnamese labor-law assistant can retrieve, assemble, and validate legally grounded evidence while remaining bounded to a scoped corpus. The system is designed around the idea that evidence should remain inspectable from ingestion to final answer: legal units are preserved during processing, represented in Qdrant and Neo4j during retrieval, assembled into citation-bearing contexts, and checked again during answer validation.
+
+\subsection{Objectives and Scope}
+The thesis has four software objectives. First, it builds a reproducible corpus pipeline that turns curated Vietnamese labor-law texts into hierarchy-aware evidence chunks. Second, it implements hybrid dense-sparse retrieval in Qdrant together with policy-controlled graph expansion in Neo4j. Third, it connects retrieval to grounded answer construction, deterministic citation validation, and bounded insufficient-context behavior. Fourth, it evaluates the deployed software behavior on a fixed 100-query benchmark with both in-corpus and out-of-corpus cases.
+
+The official corpus contains six document groups: the Labor Code 2019, the labor-only subset of the Civil Procedure Code 2015, Decree 135/2020/ND-CP, Decree 145/2020/ND-CP, Circular 09/2020/TT-BLDTBXH, and Circular 10/2020/TT-BLDTBXH. The system is a legal information assistant for these indexed sources. It is not a legal advice tool, and it does not claim correctness for laws, amendments, or instruments outside the corpus.
+
+The project does not train a new language model and does not attempt to compare language models as the main research object. Its focus is the implemented software path from legal corpus processing to retrieval, graph expansion, answer construction, citation validation, frontend/backend operation, deployment, and evaluation.
+
+\subsection{Contributions and Thesis Organization}
+The main contributions are concise and implementation-oriented:
+\begin{itemize}
+  \item a hierarchy-aware processing pipeline for Vietnamese labor-law provisions;
+  \item a hybrid Qdrant retrieval layer linked to a Neo4j legal graph;
+  \item deterministic citation validation and bounded insufficient-context behavior;
+  \item a FastAPI and Next.js software implementation suitable for deployment;
+  \item a reproducible 100-query benchmark evaluation using official artifacts.
+\end{itemize}
+
+The rest of the thesis follows this system framing. Section~2 reviews legal QA, RAG, hybrid retrieval, knowledge graphs, and the research gap. Section~3 describes the system design and methodology. Section~4 explains implementation and deployment. Section~5 presents evaluation results and error analysis. Section~6 concludes and identifies future work.
