@@ -215,6 +215,18 @@ topics:
     - be 14 tuoi
     - hoc sinh lam them
     - 13 tuoi
+    - minor worker
+    - minor workers
+    - under 15
+    - under-15
+    - under 15 worker
+    - under 15 workers
+    - workers under 15
+    - worker under 15
+    - underage worker
+    - underage workers
+    - underage labor
+    - child labor
     mapped_articles:
     - '143'
     - '145'
@@ -409,6 +421,16 @@ issues:
     - don phuong
     - tu nghi
     - co duoc nghi ngay
+    - employee terminate
+    - employee terminates
+    - employee termination
+    - employee resign
+    - employee resignation
+    - resign
+    - resign without prior notice
+    - terminate a contract
+    - terminate an employment contract
+    - terminate without prior notice
     mapped_articles:
     - '35'
     query_hints:
@@ -419,6 +441,11 @@ issues:
     - bao truoc
     - bao truoc bao lau
     - thoi han bao truoc
+    - prior notice
+    - notice period
+    - without prior notice
+    - without notice
+    - no prior notice
     mapped_articles:
     - '35'
     - '36'
@@ -682,6 +709,18 @@ issues:
     - be 14 tuoi
     - hoc sinh lam them
     - 13 tuoi
+    - minor worker
+    - minor workers
+    - under 15
+    - under-15
+    - under 15 worker
+    - under 15 workers
+    - workers under 15
+    - worker under 15
+    - underage worker
+    - underage workers
+    - underage labor
+    - child labor
     mapped_articles:
     - '143'
     - '145'
@@ -913,6 +952,10 @@ query_types:
     - duoc dinh nghia nhu the nao
     - dinh nghia
     - khai niem
+    - definition
+    - legal definition
+    - what is the definition
+    - what is the legal definition
     description: asks what a legal term means
   comparison:
     keywords:
@@ -977,6 +1020,12 @@ direct_reference_rules:
 - name: definition_nguoi_lao_dong
   confidence: high
   canonical_term: nguoi lao dong
+  phrases:
+  - legal definition of an employee
+  - definition of an employee
+  - employee definition
+  - what is an employee
+  - what is the legal definition of an employee
   query_types:
   - definition
   definition_markers:
@@ -988,6 +1037,10 @@ direct_reference_rules:
   - khai niem
   - duoc hieu nhu the nao
   - the nao la
+  - definition
+  - legal definition
+  - what is the definition
+  - what is the legal definition
   excluded_phrases:
   - quyen
   - nghia vu
@@ -2727,6 +2780,16 @@ termination_article_rules:
   - nghi ngang
   - bi no luong
   - cham luong
+  - employee terminate
+  - employee terminate a contract
+  - employee terminate an employment contract
+  - employee resign
+  - employee resignation
+  - resign without prior notice
+  - terminate without prior notice
+  - terminate a contract without prior notice
+  - terminate an employment contract without prior notice
+  - without prior notice
   articles:
   - '35'
   topics:
@@ -3011,6 +3074,11 @@ various_hints:
   - nghi ngay
   - nghi viec ngay
   - nghi luon
+  - without prior notice
+  - without notice
+  - no prior notice
+  - no notice
+  - without giving notice
 query_context:
   enumeration_query_type: enumeration
   enumeration_issue: can_cu_cham_dut

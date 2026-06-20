@@ -186,6 +186,18 @@ class LegalGraphExpanderTests(unittest.TestCase):
         self.assertTrue(any(ref.document_id == "45-2019-qh14" and "145" in ref.article_numbers for ref in references))
         self.assertTrue(any(ref.document_id == "thong-tu-09-2020-tt-bldtbxh" for ref in references))
 
+    def test_public_english_prompts_use_policy_references(self) -> None:
+        minor_worker = route_query("What rules apply to workers under 15?")
+        no_notice = route_query("When can an employee terminate a contract without prior notice?")
+
+        minor_references = graph_priority_references_for_intent(minor_worker)
+        no_notice_references = graph_priority_references_for_intent(no_notice)
+
+        self.assertIn("minor_worker", classify_graph_query_intent(minor_worker))
+        self.assertTrue(any(ref.document_id == "45-2019-qh14" and "145" in ref.article_numbers for ref in minor_references))
+        self.assertIn("no_notice_resignation", classify_graph_query_intent(no_notice))
+        self.assertTrue(any(ref.document_id == "45-2019-qh14" and "35" in ref.article_numbers for ref in no_notice_references))
+
     def test_retirement_contract_and_dispute_policy_classification(self) -> None:
         retirement = route_query("N\u1eef ngh\u1ec9 h\u01b0u n\u0103m 2026 th\u00ec bao nhi\u00eau tu\u1ed5i?")
         contract = route_query("H\u1ee3p \u0111\u1ed3ng lao \u0111\u1ed9ng c\u1ea7n c\u00f3 nh\u1eefng n\u1ed9i dung g\u00ec?")

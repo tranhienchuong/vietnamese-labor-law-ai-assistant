@@ -90,6 +90,13 @@ def _answer_has_citation_marker(line: str) -> bool:
 
 
 def _all_legal_claims_have_citations(answer: str) -> bool:
+    normalized_answer = normalize_for_matching(answer)
+    has_evidence_section = (
+        "can cu va dan chung" in normalized_answer
+        or "legal basis and evidence" in normalized_answer
+    )
+    if has_evidence_section and any(marker in normalized_answer for marker in LEGAL_CITATION_MARKERS):
+        return True
     lines = [
         line.strip()
         for line in answer.splitlines()
@@ -113,7 +120,16 @@ def _first_substantive_line(answer: str) -> str:
         if not stripped:
             continue
         normalized = normalize_for_matching(stripped)
-        if normalized in {"cau tra loi", "tom lai", "can cu phap ly", "noi dung cu the nhu sau"}:
+        if normalized in {
+            "answer",
+            "tra loi",
+            "cau tra loi",
+            "tom lai",
+            "can cu phap ly",
+            "can cu va dan chung",
+            "legal basis and evidence",
+            "noi dung cu the nhu sau",
+        }:
             continue
         if stripped.endswith(":"):
             continue

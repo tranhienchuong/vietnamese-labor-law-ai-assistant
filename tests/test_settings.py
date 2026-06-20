@@ -11,6 +11,7 @@ from vn_labor_law_ai_assistant.core.config import (
     get_settings,
     load_settings,
 )
+from vn_labor_law_ai_assistant.db.postgres import SupabasePostgresDatabase
 
 
 class SettingsTest(TestCase):
@@ -58,6 +59,15 @@ class SettingsTest(TestCase):
         settings = Settings(_env_file=None, APP_DATA_BACKEND="unknown")
 
         self.assertEqual(settings.app_data_backend, "sqlite")
+
+    def test_supabase_db_url_rejects_placeholder_brackets(self) -> None:
+        settings = Settings(
+            _env_file=None,
+            SUPABASE_DB_URL="postgresql://postgres:[password]@db.example.supabase.co:5432/postgres",
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "square-bracket placeholder"):
+            SupabasePostgresDatabase(settings=settings)
 
     def test_bool_settings_keep_legacy_default_on_empty_or_unknown_values(self) -> None:
         settings = Settings(

@@ -6,6 +6,7 @@ from typing import Sequence
 
 from ...corpus_pipeline import normalize_for_matching
 from ...retriever import RetrievalContext, dedupe_preserve_order
+from .formatter import answer_language
 from .prompt import order_contexts_for_answer
 from .schema import EvidenceQuote
 
@@ -26,11 +27,28 @@ ANSWER_INTENT_GENERIC = "generic"
 
 def classify_answer_intent(question: str) -> str:
     normalized = normalize_for_matching(question)
-    if "14 tuoi" in normalized or "chua du 15 tuoi" in normalized:
+    if (
+        "14 tuoi" in normalized
+        or "chua du 15 tuoi" in normalized
+        or "under 15" in normalized
+        or "under-15" in normalized
+        or "minor worker" in normalized
+        or "underage worker" in normalized
+        or "child labor" in normalized
+    ):
         return ANSWER_INTENT_MINOR_WORKER
-    if "nghi huu" in normalized and ("nghe nang nhoc" in normalized or "doc hai" in normalized or "nghi huu som" in normalized):
+    if (
+        ("nghi huu" in normalized or "retirement" in normalized)
+        and (
+            "nghe nang nhoc" in normalized
+            or "doc hai" in normalized
+            or "nghi huu som" in normalized
+            or "hazardous" in normalized
+            or "early retirement" in normalized
+        )
+    ):
         return ANSWER_INTENT_EARLY_RETIREMENT_HAZARDOUS_WORK
-    if "nghi huu" in normalized or "huu tri" in normalized:
+    if "nghi huu" in normalized or "huu tri" in normalized or "retirement age" in normalized or "decree 135" in normalized:
         return ANSWER_INTENT_RETIREMENT_AGE
     if "noi dung" in normalized and "hop dong" in normalized:
         return ANSWER_INTENT_CONTRACT_CONTENT
@@ -44,7 +62,14 @@ def classify_answer_intent(question: str) -> str:
         return ANSWER_INTENT_JOB_LOSS_ALLOWANCE
     if "thay doi co cau" in normalized or "mat viec" in normalized:
         return ANSWER_INTENT_STRUCTURAL_CHANGE
-    if "khong can bao truoc" in normalized or "khong phai bao truoc" in normalized:
+    if (
+        "khong can bao truoc" in normalized
+        or "khong phai bao truoc" in normalized
+        or "without prior notice" in normalized
+        or "without notice" in normalized
+        or "no prior notice" in normalized
+        or "no notice" in normalized
+    ):
         return ANSWER_INTENT_NO_NOTICE_RESIGNATION
     if "lam them" in normalized and (
         "gioi han" in normalized
@@ -341,10 +366,35 @@ def _minor_worker_payload(question: str, contexts: Sequence[RetrievalContext]) -
 
     normalized = normalize_for_matching(question)
     specific_age_14 = "14 tuoi" in normalized
+    if answer_language(question) == "en":
+        subject = (
+            "A 14-year-old worker"
+            if specific_age_14
+            else "A worker under 15"
+        )
+        answer_lines = [
+            f"{subject} may work only if the employer satisfies the special statutory conditions for employing workers under 15.",
+            "- The employment contract must be made in writing with the worker under 15 and the worker's legal representative.",
+            "- Working hours must not affect the worker's study time.",
+            "- The employer must have a health certificate suitable for the work and organize periodic health checks at least once every six months.",
+            "- Working conditions, occupational safety, and occupational hygiene must be appropriate to the worker's age.",
+        ]
+        if law146:
+            answer_lines.append(
+                "- Working time must also comply with the special limits that apply to minor workers."
+            )
+        if tt09:
+            answer_lines.append(
+                "Decree/Circular-level guidance must be read consistently with Labor Code Article 145."
+            )
+        return _payload(
+            "\n".join(answer_lines),
+            [context for context in (law143, law145, law146, tt09) if context],
+        )
     direct = (
         "Có thể được làm việc, nhưng chỉ khi công việc và điều kiện sử dụng người chưa đủ 15 tuổi đáp ứng đúng luật."
         if "co duoc" in normalized or normalized.endswith("khong")
-        else "Cần đáp ứng các điều kiện sử dụng người chưa đủ 15 tuổi theo luật."
+        else "Người chưa đủ 15 tuổi chỉ được làm việc nếu đáp ứng các điều kiện sử dụng người chưa đủ 15 tuổi theo luật."
     )
     subject_sentence = (
         "Người 14 tuổi thuộc nhóm lao động chưa thành niên/người chưa đủ 15 tuổi"
@@ -724,11 +774,25 @@ def _early_retirement_payload(contexts: Sequence[RetrievalContext]) -> dict[str,
     return _payload(answer, [context for context in (law169, nd135, appendix) if context])
 
 
-def _no_notice_payload(contexts: Sequence[RetrievalContext]) -> dict[str, object] | None:
+def _no_notice_payload(question: str, contexts: Sequence[RetrievalContext]) -> dict[str, object] | None:
     law35_2 = _find_context(contexts, document_id="45-2019-qh14", article="35", clause="2")
     if law35_2 is None:
         return None
     cite = _cite(law35_2)
+    if answer_language(question) == "en":
+        answer = "\n".join(
+            [
+                "An employee may terminate an employment contract without prior notice only in the statutory cases listed in the retrieved Labor Code provision.",
+                "- The employee is not assigned the agreed work, workplace, or working conditions.",
+                "- The employee is not paid fully or is not paid on time.",
+                "- The employee is abused, beaten, insulted, subjected to conduct affecting health, dignity, or honor, or forced to work.",
+                "- The employee is sexually harassed at the workplace.",
+                "- A pregnant employee must stop working under the applicable legal rule.",
+                "- The employee reaches retirement age, unless the parties have another agreement.",
+                "- The employer provides untruthful information that affects performance of the employment contract.",
+            ]
+        )
+        return _payload(answer, [law35_2])
     answer = "\n".join(
         [
             f"Người lao động được đơn phương chấm dứt hợp đồng lao động không cần báo trước trong các trường hợp được liệt kê tại {cite}.",
@@ -816,7 +880,7 @@ def build_rule_based_answer_payload(
     if intent == ANSWER_INTENT_SEVERANCE_VS_JOB_LOSS:
         return _severance_vs_job_loss_payload(contexts)
     if intent == ANSWER_INTENT_NO_NOTICE_RESIGNATION:
-        return _no_notice_payload(contexts)
+        return _no_notice_payload(question, contexts)
     if intent == ANSWER_INTENT_OVERTIME_LIMITS:
         return _overtime_payload(contexts)
     return None

@@ -718,7 +718,31 @@ function Sidebar({
 }
 
 function AppHeader() {
-  const { signOut, user } = useAuth()
+  const { session, signOut, user } = useAuth()
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    if (!session) {
+      setIsAdmin(false)
+      return
+    }
+    getCurrentUser(session)
+      .then((payload) => {
+        if (active) {
+          setIsAdmin(payload.user.role === "admin")
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setIsAdmin(false)
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [session])
+
   return (
     <header className="flex h-16 items-center justify-between border-b border-border bg-surface px-4 sm:px-6">
       <Logo />
@@ -729,9 +753,11 @@ function AppHeader() {
         <Link className="button-secondary h-9" to="/account">
           Account
         </Link>
-        <Link className="button-secondary h-9" to="/admin">
-          Admin
-        </Link>
+        {isAdmin ? (
+          <Link className="button-secondary h-9" to="/admin">
+            Admin
+          </Link>
+        ) : null}
         <button className="button-secondary h-9" onClick={() => void signOut()} type="button">
           <LogOut className="h-4 w-4" />
           Sign out

@@ -96,11 +96,11 @@ class AnsweringTests(unittest.TestCase):
         )
 
         self.assertNotIn("Câu hỏi:", formatted)
-        self.assertIn("Câu trả lời:", formatted)
-        self.assertIn("Căn cứ pháp lý:", formatted)
-        self.assertIn("Nội dung cụ thể như sau:", formatted)
-        self.assertIn("Tóm lại:", formatted)
-        self.assertIn("Khuyến nghị:", formatted)
+        self.assertIn("Trả lời:", formatted)
+        self.assertIn("Căn cứ và dẫn chứng:", formatted)
+        self.assertNotIn("Nội dung cụ thể như sau:", formatted)
+        self.assertNotIn("Tóm lại:", formatted)
+        self.assertNotIn("Khuyến nghị:", formatted)
 
     def test_format_answer_for_user_does_not_duplicate_styled_answer_sections(self) -> None:
         parsed = parse_answer_payload(
@@ -133,10 +133,14 @@ class AnsweringTests(unittest.TestCase):
 
         formatted = format_answer_for_user(parsed, question="Tôi nghỉ việc phải báo trước không?")
 
-        self.assertEqual(formatted.count("Câu trả lời:"), 1)
+        self.assertEqual(formatted.count("Trả lời:"), 1)
+        self.assertEqual(formatted.count("Căn cứ và dẫn chứng:"), 1)
         self.assertNotIn("Câu hỏi:", formatted)
         self.assertNotIn("Căn cứ pháp lý:", formatted)
-        self.assertEqual(formatted.count("Nội dung cụ thể như sau:"), 1)
+        self.assertNotIn("Nội dung cụ thể như sau:", formatted)
+        self.assertNotIn("Tóm lại:", formatted)
+        self.assertNotIn("Khuyến nghị:", formatted)
+        self.assertIn("Phải báo trước theo loại hợp đồng.", formatted)
 
     def test_format_answer_for_user_strips_model_question_section(self) -> None:
         parsed = parse_answer_payload(
@@ -155,7 +159,7 @@ class AnsweringTests(unittest.TestCase):
         formatted = format_answer_for_user(parsed, question="Tôi nghỉ việc phải báo trước không?")
 
         self.assertFalse(formatted.startswith("Câu hỏi:"))
-        self.assertTrue(formatted.startswith("Câu trả lời:"))
+        self.assertTrue(formatted.startswith("Trả lời:"))
 
     def test_parse_answer_payload_accepts_valid_evidence_quotes(self) -> None:
         contexts = (
@@ -706,8 +710,8 @@ class AnsweringTests(unittest.TestCase):
         )
 
         self.assertEqual(messages[0]["role"], "system")
-        self.assertIn("Cau hoi:\nCau hoi mau?", messages[1]["content"])
-        self.assertIn("CONTEXT:\n[NGU CANH 1]", messages[1]["content"])
+        self.assertIn("Question:\nCau hoi mau?", messages[1]["content"])
+        self.assertIn("CONTEXT:\n[CONTEXT 1]", messages[1]["content"])
         self.assertIn("Dieu 36, khoan 1", messages[1]["content"])
         self.assertNotIn("Dieu 36, khoan 2", messages[1]["content"])
         context_text = messages[1]["content"].split("CONTEXT:\n", 1)[1]
@@ -909,6 +913,51 @@ class AnsweringTests(unittest.TestCase):
         normalized_answer = normalize_for_matching(result.answer)
         self.assertNotIn("nguoi 14 tuoi", normalized_answer)
         self.assertIn("nguoi chua du 15 tuoi chi duoc lam viec neu", normalized_answer)
+
+    def test_minor_worker_english_query_includes_article_145_conditions(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="bll-145-1",
+                citation_text="Bo luat Lao dong 2019, Dieu 145, khoan 1",
+                text=(
+                    "Dieu 145. Su dung nguoi chua du 15 tuoi lam viec\n\n"
+                    "1. Khi su dung nguoi chua du 15 tuoi lam viec, nguoi su dung lao dong phai "
+                    "giao ket hop dong lao dong bang van ban voi nguoi chua du 15 tuoi va nguoi dai dien theo phap luat; "
+                    "bo tri gio lam viec khong anh huong den thoi gian hoc tap; co giay kham suc khoe phu hop; "
+                    "kiem tra suc khoe dinh ky it nhat mot lan trong 06 thang; bao dam dieu kien an toan ve sinh lao dong."
+                ),
+                payload={"document_id": "45-2019-qh14", "document_type": "bo_luat", "normative_rank": 1, "article_number": "145", "clause_ref": "1"},
+                score=1.0,
+                matched_chunk_ids=("bll-145-1",),
+                matched_citations=("Bo luat Lao dong 2019, Dieu 145, khoan 1",),
+            ),
+            RetrievalContext(
+                chunk_id="tt09-3",
+                citation_text="Thong tu 09/2020/TT-BLDTBXH, Dieu 3",
+                text="Dieu 3. Nguoi su dung lao dong phai tuan thu Dieu 145 khi su dung nguoi chua du 15 tuoi lam viec.",
+                payload={"document_id": "thong-tu-09-2020-tt-bldtbxh", "document_type": "thong_tu", "normative_rank": 3, "article_number": "3"},
+                score=0.9,
+                matched_chunk_ids=("tt09-3",),
+                matched_citations=("Thong tu 09/2020/TT-BLDTBXH, Dieu 3",),
+            ),
+        )
+
+        result = generate_grounded_answer(
+            "What rules apply to workers under 15?",
+            contexts,
+            provider="extractive",
+        )
+
+        normalized_answer = normalize_for_matching(result.answer)
+        self.assertTrue(result.answer.startswith("Answer:"))
+        self.assertIn("Legal basis and evidence:", result.answer)
+        self.assertNotIn("Trả lời:", result.answer)
+        self.assertNotIn("Tóm lại:", result.answer)
+        self.assertIn("worker under 15", result.answer.lower())
+        self.assertIn("dieu 145", normalized_answer)
+        self.assertIn("giao ket hop dong lao dong bang van ban", normalized_answer)
+        self.assertIn("bo tri gio lam viec", normalized_answer)
+        self.assertIn("kiem tra suc khoe dinh ky", normalized_answer)
 
     def test_minor_worker_specific_14_year_old_query_may_mention_14_year_old(self) -> None:
         contexts = (

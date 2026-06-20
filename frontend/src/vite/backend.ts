@@ -89,12 +89,23 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
   return payload as T
 }
 
+async function apiFetch(input: string, init?: RequestInit) {
+  try {
+    return await fetch(input, init)
+  } catch {
+    const message =
+      `Cannot reach the backend at ${apiBaseUrl}. ` +
+      "Make sure the FastAPI server is running, VITE_API_BASE_URL is correct, and the backend Supabase database connection is valid."
+    throw new ApiError(message, 0)
+  }
+}
+
 export async function sendChatQuestion(
   session: Session,
   question: string,
   conversationId?: string | null
 ) {
-  const response = await fetch(`${apiBaseUrl}/chat`, {
+  const response = await apiFetch(`${apiBaseUrl}/chat`, {
     method: "POST",
     headers: {
       ...authHeaders(session),
@@ -117,14 +128,14 @@ export async function sendChatQuestion(
 }
 
 export async function listConversations(session: Session) {
-  const response = await fetch(`${apiBaseUrl}/conversations`, {
+  const response = await apiFetch(`${apiBaseUrl}/conversations`, {
     headers: authHeaders(session)
   })
   return parseJsonResponse<{ conversations: ConversationSummary[] }>(response)
 }
 
 export async function createConversation(session: Session, title = "New research") {
-  const response = await fetch(`${apiBaseUrl}/conversations`, {
+  const response = await apiFetch(`${apiBaseUrl}/conversations`, {
     method: "POST",
     headers: {
       ...authHeaders(session),
@@ -136,21 +147,21 @@ export async function createConversation(session: Session, title = "New research
 }
 
 export async function getConversation(session: Session, conversationId: string) {
-  const response = await fetch(`${apiBaseUrl}/conversations/${conversationId}`, {
+  const response = await apiFetch(`${apiBaseUrl}/conversations/${conversationId}`, {
     headers: authHeaders(session)
   })
   return parseJsonResponse<ConversationDetail>(response)
 }
 
 export async function getCurrentUser(session: Session) {
-  const response = await fetch(`${apiBaseUrl}/auth/me`, {
+  const response = await apiFetch(`${apiBaseUrl}/auth/me`, {
     headers: authHeaders(session)
   })
   return parseJsonResponse<{ user: CurrentUser }>(response)
 }
 
 export async function getAdminStats(session: Session) {
-  const response = await fetch(`${apiBaseUrl}/admin/stats`, {
+  const response = await apiFetch(`${apiBaseUrl}/admin/stats`, {
     headers: authHeaders(session)
   })
   return parseJsonResponse<{
@@ -161,7 +172,7 @@ export async function getAdminStats(session: Session) {
 }
 
 export async function getAdminHealth(session: Session) {
-  const response = await fetch(`${apiBaseUrl}/admin/health`, {
+  const response = await apiFetch(`${apiBaseUrl}/admin/health`, {
     headers: authHeaders(session)
   })
   return parseJsonResponse<{
@@ -171,14 +182,14 @@ export async function getAdminHealth(session: Session) {
 }
 
 export async function getAdminRetrievalConfig(session: Session) {
-  const response = await fetch(`${apiBaseUrl}/admin/retrieval-config`, {
+  const response = await apiFetch(`${apiBaseUrl}/admin/retrieval-config`, {
     headers: authHeaders(session)
   })
   return parseJsonResponse<Record<string, unknown>>(response)
 }
 
 export async function getAdminTraces(session: Session, limit = 20) {
-  const response = await fetch(`${apiBaseUrl}/admin/traces?limit=${limit}`, {
+  const response = await apiFetch(`${apiBaseUrl}/admin/traces?limit=${limit}`, {
     headers: authHeaders(session)
   })
   return parseJsonResponse<{ traces: AdminTrace[] }>(response)
