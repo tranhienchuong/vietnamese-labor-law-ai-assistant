@@ -1,0 +1,27 @@
+\babel@toc {english}{}\relax 
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {3.1}{\ignorespaces Summary of the scoped Vietnamese labor law corpus and document metadata.}}{14}{table.caption.7}%
+\contentsline {table}{\numberline {3.2}{\ignorespaces Legal chunking and data integrity validation results.}}{17}{table.caption.9}%
+\contentsline {table}{\numberline {3.3}{\ignorespaces Summary of loaded node and edge counts in the Neo4j legal knowledge graph.}}{21}{table.caption.11}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {4.1}{\ignorespaces Technology stack.}}{29}{table.caption.14}%
+\contentsline {table}{\numberline {4.2}{\ignorespaces Final implementation configuration.}}{30}{table.caption.15}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {5.1}{\ignorespaces Corpus and index statistics.}}{34}{table.caption.16}%
+\contentsline {table}{\numberline {5.2}{\ignorespaces Final benchmark composition.}}{35}{table.caption.17}%
+\contentsline {table}{\numberline {5.3}{\ignorespaces Retrieval results on the final benchmark.}}{37}{table.caption.18}%
+\contentsline {table}{\numberline {5.4}{\ignorespaces Retrieval ablation on the 94 in-corpus queries.}}{37}{table.caption.19}%
+\contentsline {table}{\numberline {5.5}{\ignorespaces Adjusted end-to-end results on the final benchmark.}}{38}{table.caption.20}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {6.1}{\ignorespaces Limitations summary.}}{42}{table.caption.21}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {A.1}{\ignorespaces Scoped Vietnamese labor-law corpus documents.}}{46}{table.caption.24}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }

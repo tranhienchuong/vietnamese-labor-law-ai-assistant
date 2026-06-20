@@ -1,0 +1,43 @@
+\babel@toc {english}{}\relax 
+\contentsline {section}{ABSTRACT}{i}{Doc-Start}%
+\contentsline {section}{LIST OF ABBREVIATIONS}{iii}{Doc-Start}%
+\contentsline {section}{\numberline {1}Introduction}{1}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Context and Problem Statement}{1}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Objectives and Scope}{1}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}Contributions and Thesis Organization}{2}{subsection.1.3}%
+\contentsline {section}{\numberline {2}Background and Related Work}{2}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Retrieval-Augmented Generation}{2}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Legal Question Answering}{2}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Graph-Augmented Retrieval}{2}{subsection.2.3}%
+\contentsline {subsection}{\numberline {2.4}Evaluation of RAG Systems}{3}{subsection.2.4}%
+\contentsline {subsection}{\numberline {2.5}Research Gap}{3}{subsection.2.5}%
+\contentsline {section}{\numberline {3}System Design and Methodology}{3}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Overall Architecture}{3}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Scoped Legal Corpus}{4}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Hierarchy-Aware Processing}{4}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}Hybrid Retrieval Pipeline}{4}{subsection.3.4}%
+\contentsline {subsection}{\numberline {3.5}Policy-Controlled Legal Graph Expansion}{5}{subsection.3.5}%
+\contentsline {subsection}{\numberline {3.6}Context Budgeting}{6}{subsection.3.6}%
+\contentsline {subsection}{\numberline {3.7}Citation Validation and Refusal}{6}{subsection.3.7}%
+\contentsline {section}{\numberline {4}Implementation and Deployment}{6}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Technology Stack}{6}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Offline Index and Graph Build}{7}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Runtime Backend and \texttt {/chat} Flow}{7}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}Answering and Safety Implementation}{8}{subsection.4.4}%
+\contentsline {subsection}{\numberline {4.5}Configuration}{8}{subsection.4.5}%
+\contentsline {subsection}{\numberline {4.6}Frontend Proxy and Deployment Architecture}{8}{subsection.4.6}%
+\contentsline {subsection}{\numberline {4.7}Evaluation Reproducibility}{9}{subsection.4.7}%
+\contentsline {section}{\numberline {5}Evaluation and Discussion}{9}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Benchmark Design}{9}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Retrieval Results}{10}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}End-to-End Results}{10}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}Category-Level Results}{11}{subsection.5.4}%
+\contentsline {subsection}{\numberline {5.5}Case Studies and Error Taxonomy}{11}{subsection.5.5}%
+\contentsline {subsection}{\numberline {5.6}Discussion}{12}{subsection.5.6}%
+\contentsline {subsection}{\numberline {5.7}Threats to Validity}{12}{subsection.5.7}%
+\contentsline {section}{\numberline {6}Conclusion and Future Work}{13}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Conclusion}{13}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Future Work}{13}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}Final Remark}{13}{subsection.6.3}%
+\contentsline {section}{References}{14}{subsection.6.3}%
+\contentsline {section}{\numberline {A}Reproducibility Sources}{14}{appendix.A}%

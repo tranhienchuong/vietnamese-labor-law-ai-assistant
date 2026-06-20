@@ -1,0 +1,109 @@
+\documentclass[11pt]{extarticle}
+\input{../common/thesis_style}
+
+\title{\thesistitle}
+\author{\thesisauthor}
+\date{Academic Year \thesisyear}
+
+\begin{document}
+
+\begin{titlepage}
+  \thispagestyle{empty}
+  \thesispageborder
+  \begin{center}
+    \vspace*{0.45cm}
+    {\large\bfseries UNIVERSITY OF SCIENCE AND TECHNOLOGY OF HANOI\par}
+    \vspace{0.25cm}
+    {\large Information and Communication Technology Department\par}
+    \vspace{0.8cm}
+    \includegraphics[width=0.36\textwidth]{usth.png}\par
+    \vspace{0.85cm}
+    {\fontsize{24}{29}\selectfont\bfseries FINAL THESIS REPORT\par}
+    \vspace{0.85cm}
+    {\Large\bfseries \thesisauthor\par}
+    \vspace{0.6cm}
+    {\large Student ID: \thesisstudentid\par}
+    \vspace{0.8cm}
+    {\large\itshape Supervised by:\par}
+    \vspace{0.2cm}
+    {\large\bfseries \thesissupervisor\par}
+    \vspace{1.0cm}
+    {\Large Title:\par}
+    \vspace{0.35cm}
+    {\fontsize{19}{23}\selectfont\bfseries \thesistitle\par}
+    \vfill
+    {\large Program: \thesisprogram\par}
+    \vspace{0.25cm}
+    {\large Academic Year: \thesisyear\par}
+  \end{center}
+\end{titlepage}
+
+\pagenumbering{roman}
+
+\frontmattersection{SUPERVISOR CERTIFICATION AND SIGNATURE PAGE}
+I certify that this thesis report was prepared by \thesisauthor{} under my supervision. The work presents the design, implementation, deployment architecture, and evaluation of an AI/software system for citation-grounded Vietnamese labor-law question answering.
+
+\vspace{2.2cm}
+Supervisor signature:\hfill Date:\hspace{3.0cm}
+
+\vspace{1.5cm}
+\thesissupervisor
+
+\frontmattersection{ACKNOWLEDGEMENT}
+I would like to thank my supervisor, \thesissupervisor, for his guidance throughout this project. I am also grateful to the instructors and classmates at the University of Science and Technology of Hanoi for comments on the system design, evaluation methodology, and report structure. This work depends on open-source software and public engineering documentation from the Python, FastAPI, Qdrant, Neo4j, Next.js, and retrieval-augmented generation communities.
+
+\clearpage
+\tableofcontents
+
+\frontmattersection{LIST OF ABBREVIATIONS}
+\begin{table}[H]
+  \centering
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    Abbreviation & Meaning \\
+    \midrule
+    API & Application Programming Interface \\
+    BLLD & Vietnamese Labor Code 2019 \\
+    BLTTDS & Vietnamese Civil Procedure Code 2015 \\
+    E2E & End-to-End \\
+    LLM & Large Language Model \\
+    QA & Question Answering \\
+    RAG & Retrieval-Augmented Generation \\
+    RRF & Reciprocal Rank Fusion \\
+    SBERT & Sentence-BERT \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\clearpage
+\listoftables
+
+\clearpage
+\listoffigures
+
+\frontmattersection{ABSTRACT}
+This thesis, \textit{\thesistitle}, presents a citation-grounded AI assistant for Vietnamese labor-law question answering. The work is framed as a software system thesis rather than a pure model-comparison study. The system addresses a practical limitation of flat and hybrid retrieval-augmented generation: legal answers require preservation of statutory hierarchy, exact citations, cross-references, and bounded refusal when the indexed corpus does not contain the required legal instrument.
+
+The implemented system processes a scoped six-document Vietnamese labor-law corpus into hierarchy-aware chunks, enriches each chunk with legal metadata and citation surfaces, indexes dense and sparse retrieval signals in Qdrant, expands retrieved evidence through a Neo4j legal graph, validates generated citations deterministically, and exposes the assistant through a FastAPI backend and Next.js frontend. The deployment architecture separates a Vercel-hosted frontend from a Render-hosted backend, with Qdrant and Neo4j used as retrieval stores.
+
+The official evaluation uses a deterministic 100-query benchmark with 94 in-corpus questions and 6 out-of-corpus refusal tests. On the final retrieval ablation, graph-augmented retrieval improves Recall@10 from 0.735 to 0.835 and retrieval pass rate from 0.649 to 0.766, while Forbidden Citation Violation Rate increases from 0.032 to 0.043. The final end-to-end run obtains an adjusted pass rate of 0.780, citation validation pass rate of 1.000, quality validation pass rate of 0.980, and out-of-corpus QA pass rate of 1.000. The results indicate strong benchmark-level citation containment and refusal behavior, while retrieval robustness for paraphrased, multi-hop, hard-negative, table, and labor-dispute procedure queries remains the main limitation.
+
+\textbf{Keywords}: Vietnamese labor law, legal question answering, retrieval-augmented generation, hybrid retrieval, knowledge graph, citation validation
+
+\clearpage
+\pagenumbering{arabic}
+
+\input{chapters/01_introduction}
+\input{chapters/02_background}
+\input{chapters/03_system_design}
+\input{chapters/04_implementation}
+\input{chapters/05_evaluation}
+\input{chapters/06_conclusion}
+
+\clearpage
+\printbibliography[heading=bibintoc,title={References}]
+
+\appendix
+\input{appendices/appendix_a}
+
+\end{document}

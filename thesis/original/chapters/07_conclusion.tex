@@ -1,0 +1,32 @@
+\chapter{Conclusion and Future Work}
+
+\section{Conclusion}
+This thesis investigated how hybrid retrieval, legal knowledge graphs, and deterministic validation can support citation-grounded question answering for Vietnamese labor law. Legal QA requires more than fluent summaries. The answer must be linked to the legal source that supports it, and users must be able to verify the document, article, clause, point, or appendix used as the basis.
+
+The project began with employment contract termination, but the final scope was expanded to a broader Vietnamese labor-law assistant. This expansion was necessary because termination questions often depend on related contract rules, retirement rules, minor-worker protections, labor dispute rules, and civil procedure provisions.
+
+The system implements a graph-augmented RAG architecture over six indexed legal documents. It combines hierarchy-aware chunking, deterministic metadata enrichment, hybrid vector-sparse retrieval, a Neo4j legal graph, graph-based retrieval expansion, deterministic intent gating, a rule-based scope guard, and rule-based answer validation. The system is designed to help users locate and verify legal information within the indexed corpus.
+
+The final 100-query benchmark shows both strengths and limitations. The benchmark contains 94 in-corpus queries and 6 out-of-corpus refusal tests. On the in-corpus queries, graph-augmented retrieval reaches Recall@10 of 0.835 and Required Citation Coverage of 0.835. The Forbidden Citation Violation Rate is 0.043, and the in-corpus retrieval pass rate is 0.766. Over the full benchmark, the adjusted end-to-end pass rate is 0.780. The retrieval pass rate is 0.780, the answer pass rate is 0.970, the citation validation pass rate is 1.000, and the quality validation pass rate is 0.970. The average final quality score is 93.9693, with 2 low-information quotes, no unsupported article numbers, and no unretrieved citations. The out-of-corpus QA pass rate is 1.000.
+
+These results show that citation grounding and out-of-corpus refusal are strong in the benchmark. The system is useful as a citation-grounded legal information assistant for questions supported by the indexed corpus. However, the results do not prove perfect legal correctness. The remaining weaknesses are difficult in-corpus retrieval cases, especially paraphrased user questions, hard-negative citation cases, multi-hop questions, table and appendix lookup, and labor-dispute procedure questions.
+
+\section{Future Work}
+Future work should improve query rewriting for informal and paraphrased user questions. Many users describe legal problems in everyday language and do not name the relevant article. Better rewriting and legal issue classification could help map these questions to the correct legal provisions.
+
+Table and appendix retrieval also needs further work. Some labor-law answers depend on specific numeric rows, schedules, or forms. Future systems should treat table and appendix content as first-class retrievable evidence rather than ordinary text chunks only.
+
+Hard-negative filtering is another priority. The final benchmark shows that similar but wrong citations can still enter the retrieved context. Future retrieval pipelines should include stronger filtering or reranking for provisions that are lexically similar but legally irrelevant.
+
+Future work should also revisit procedural routing without anchor crowd-out. Labor procedure questions often need several linked legal bases, but forced anchors can distract retrieval if they are added too broadly. A safer version should add procedure context only when it improves the relevant evidence set.
+
+The evaluation should be expanded with an expert-validated benchmark and real user queries. Legal experts can assess whether the answers are legally correct beyond citation containment. Real, anonymized user questions can test informal wording, ambiguity, and practical intent more directly than constructed benchmark items.
+
+Finally, the corpus should be expanded and maintained over time. Vietnamese labor law changes through new laws, decrees, circulars, and administrative guidance. A practical system must support corpus updates, temporal validity checks, and re-evaluation after each major corpus change.
+
+\subsection*{Lessons Learned}
+The main lesson is that graph expansion is useful, but it is not a universal fix. It can recover related legal provisions, but it still depends on good seed retrieval and careful filtering.
+
+Procedural routing was tested, but it is disabled by default because it introduced retrieval regressions through procedural anchor crowd-out. The final system keeps the more stable scope guard and intent gating configuration.
+
+Relative reference resolution was harder than expected. Cases such as Article 219 show that phrases like ``Luật này'' can point to external amended laws rather than the local document, so reference extraction needs legal context as well as pattern matching.

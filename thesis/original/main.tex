@@ -1,0 +1,190 @@
+\documentclass[12pt,a4paper,oneside]{report}
+
+\usepackage{iftex}
+\ifXeTeX
+  \usepackage{fontspec}
+  \setmainfont{Latin Modern Roman}
+  \setsansfont{Latin Modern Sans}
+  \setmonofont{Consolas}
+\else\ifLuaTeX
+  \usepackage{fontspec}
+  \setmainfont{Latin Modern Roman}
+  \setsansfont{Latin Modern Sans}
+  \setmonofont{Consolas}
+\else
+  \PackageError{main}{This template requires XeLaTeX or LuaLaTeX}{Compile with xelatex or lualatex.}
+\fi\fi
+
+\usepackage[english]{babel}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{enumitem}
+\usepackage{csquotes}
+\usepackage{float}
+\usepackage[section]{placeins}
+\usepackage{fvextra}
+\DefineVerbatimEnvironment{ThesisCode}{Verbatim}{
+  breaklines=true,
+  breakanywhere=true,
+  fontsize=\footnotesize,
+  baselinestretch=1.0
+}
+\usepackage[
+  backend=biber,
+  style=numeric,
+  sorting=nyt
+]{biblatex}
+\usepackage[
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black
+]{hyperref}
+\setcounter{tocdepth}{1}
+
+\addbibresource{references.bib}
+
+% TikZ setup and libraries
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, calc, backgrounds}
+
+% Centralized TikZ style definitions for Academic Grayscale Figures
+\tikzset{
+  % Shapes
+  block/.style={draw, rectangle, rounded corners=2pt, minimum height=2.4em, minimum width=7em, text centered, font=\small, fill=white, line width=0.6pt},
+  database/.style={draw, cylinder, cylinder uses custom fill, cylinder body fill=white, cylinder end fill=black!10, shape border rotate=90, minimum height=3em, minimum width=3em, text centered, font=\small, line width=0.6pt},
+  decision/.style={draw, diamond, aspect=1.6, minimum width=4.5em, minimum height=2.8em, text centered, font=\small, fill=white, line width=0.6pt},
+  ovalnode/.style={draw, rounded corners=8pt, minimum height=2.2em, minimum width=6.5em, text centered, font=\small, fill=white, line width=0.6pt},
+  circlenode/.style={draw, circle, minimum size=3em, text centered, font=\small, fill=white, line width=0.6pt},
+  % Grayscale shades
+  lightgray/.style={fill=black!5},
+  midgray/.style={fill=black!12},
+  darkgray/.style={fill=black!25},
+  % Arrows and Lines
+  arrow/.style={-{Latex[scale=0.8]}, line width=0.6pt},
+  dashedarrow/.style={-{Latex[scale=0.8]}, dashed, line width=0.6pt},
+  thickarrow/.style={-{Latex[scale=0.85]}, line width=1.1pt},
+  line/.style={line width=0.6pt},
+  dashedline/.style={dashed, line width=0.6pt},
+  % Groups/Containers
+  container/.style={draw, dashed, inner sep=10pt, rounded corners=4pt, line width=0.5pt, fill=black!2!white}
+}
+
+\definecolor{codebackground}{RGB}{248,248,248}
+\definecolor{codeframe}{RGB}{210,210,210}
+\definecolor{usthblue}{RGB}{43,61,154}
+\definecolor{usthred}{RGB}{237,28,36}
+
+\lstdefinestyle{thesislisting}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebackground},
+  frame=single,
+  rulecolor=\color{codeframe},
+  breaklines=true,
+  columns=fullflexible,
+  showstringspaces=false,
+  tabsize=2,
+  captionpos=b
+}
+\lstset{style=thesislisting}
+
+\setlist[itemize]{topsep=0.35em,itemsep=0.2em}
+\setlist[enumerate]{topsep=0.35em,itemsep=0.2em}
+
+\newcommand{\placeholderbox}[1]{%
+  \fbox{%
+    \begin{minipage}[c][0.24\textheight][c]{0.86\linewidth}
+      \centering
+      \textbf{Placeholder figure}\\[0.75em]
+      #1
+    \end{minipage}%
+  }%
+}
+
+\title{Graph-Augmented Retrieval-Augmented Generation for Vietnamese Labor Law Question Answering}
+\author{Tran Hien Chuong}
+\date{Academic Year 2025--2026}
+
+\begin{document}
+
+\begin{titlepage}
+  \thispagestyle{empty}
+  \centering
+  \vspace*{1.25cm}
+
+  \includegraphics[width=0.62\textwidth]{assets/usth.png}\par
+  \vspace{0.18cm}
+  {\sffamily\large
+    \textcolor{usthred}{VIETNAM}%
+    \textcolor{usthblue}{\hspace{0.25em}FRANCE UNIVERSITY}\par
+  }
+
+  \vspace{0.55cm}
+  \begin{minipage}{0.92\textwidth}
+    \centering
+    {\Large\bfseries Graph-Augmented Retrieval-Augmented\par}
+    \vspace{0.18cm}
+    {\Large\bfseries Generation for Vietnamese Labor Law\par}
+    \vspace{0.18cm}
+    {\Large\bfseries Question Answering\par}
+  \end{minipage}
+
+  \vspace{1.05cm}
+  {\normalsize Thesis Report\par}
+
+  \vspace{0.95cm}
+  {\normalsize Supervisor: Dr. Tran Hoang Tung\par}
+
+  \vspace{0.85cm}
+  {\normalsize Student:\par}
+  \vspace{0.35cm}
+  \begin{tabular}{@{}ll@{}}
+    Tran Hien Chuong & 22BA13056 \\
+  \end{tabular}
+
+  \vfill
+  {\normalsize Academic Year 2025--2026\par}
+\end{titlepage}
+
+\pagenumbering{roman}
+
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+This thesis studies citation-grounded question answering for Vietnamese labor law. We focus on answers that users can verify through the cited document, article, clause, point, or appendix. The project was first motivated by employment contract termination, but the final scope covers a broader labor-law corpus because termination questions often depend on contract rules, retirement rules, minor-worker rules, and labor dispute procedures.
+
+The system combines hierarchy-aware legal chunking, deterministic metadata enrichment, hybrid vector-sparse retrieval in Qdrant, and a Neo4j legal knowledge graph. The graph stores document structure, cross-references, and authority relations. At query time, hybrid retrieval provides seed contexts and graph expansion adds related legal provisions. The final candidate also uses intent gating and a deterministic scope guard before answer synthesis. If a query belongs to an unsupported topic family and the retrieved evidence is insufficient, the system returns an insufficient-context response instead of a legal answer. A rule-based validation layer checks that any generated answer cites only legal bases and article coordinates supported by the retrieved context.
+
+We evaluated the system on six indexed Vietnamese labor-law and labor-procedure documents, divided into 1,556 legal chunks. The final benchmark contains 100 queries: 94 in-corpus queries with required citations and 6 out-of-corpus refusal tests. We found that graph expansion improves Recall@10 from 0.748 to 0.835, but increases the Forbidden Citation Violation Rate from 0.032 to 0.043. For the final graph-augmented retriever, Required Citation Coverage was also 0.835. The adjusted end-to-end pass rate over the full benchmark was 0.780. The answer pass rate was 0.970, the citation validation pass rate was 1.000, the quality validation pass rate was 0.970, and the out-of-corpus QA pass rate was 1.000. These results show that citation grounding and out-of-corpus refusal are strong in the benchmark, but in-corpus retrieval robustness remains limited.
+
+
+\tableofcontents
+\listoffigures
+\listoftables
+\clearpage
+
+\pagenumbering{arabic}
+
+\input{chapters/01_introduction}
+\input{chapters/02_background}
+\input{chapters/03_methodology}
+\input{chapters/04_implementation}
+\input{chapters/05_evaluation}
+\input{chapters/06_discussion}
+\input{chapters/07_conclusion}
+
+\printbibliography[heading=bibintoc,title={References}]
+
+\appendix
+\input{appendices/appendix_a}
+
+\end{document}

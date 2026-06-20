@@ -1,0 +1,20 @@
+\section{Background and Related Work}
+
+\subsection{Retrieval-Augmented Generation}
+RAG combines an external retriever with a generator so that answers can be grounded in retrieved passages \cite{lewis2020retrieval}. Dense retrieval methods such as DPR \cite{karpukhin2020dense} and sentence embedding models such as SBERT \cite{reimers2019sentencebert} make it practical to search large text collections by semantic similarity. For legal QA, however, semantic similarity alone is not enough. Legal questions often require exact coordinates, hierarchy, and negative distinctions between similar provisions.
+
+\subsection{Legal Question Answering}
+Legal QA has stricter grounding requirements than open-domain QA. A fluent answer is not sufficient if it cannot be traced to the legal authority that supports it. Legal NLP benchmarks such as LexGLUE \cite{chalkidis2021lexglue} and LegalBench \cite{guha2023legalbench} show the importance of legal language understanding, while legal QA research highlights the need to contextualize legal provisions \cite{zhong2020legalqa}. This thesis focuses on a narrower but operationally important setting: Vietnamese labor-law provision retrieval with citation validation.
+
+In Vietnamese labor-law QA, hierarchy is part of meaning. A code article may set the general rule, a decree may provide implementation details, and a circular may define administrative forms or technical lists. A table or appendix can be the only place where a numeric answer appears. A system that retrieves only a similar paragraph may therefore miss the actual legal basis. The background assumption of this thesis is that legal QA needs evidence assembly, not only text generation.
+
+\subsection{Graph-Augmented Retrieval}
+GraphRAG-style systems use graph structure to expand or organize retrieval. Microsoft GraphRAG focuses on global understanding through LLM-generated graph communities \cite{edge2024graphrag}. The system in this thesis is different. It builds a deterministic legal graph from document structure, cross-reference extraction, normative rank, and metadata. The graph is used for local provision-level expansion, not broad corpus summarization.
+
+\subsection{Evaluation of RAG Systems}
+RAG evaluation frameworks such as Ragas \cite{es2023ragas} and ARES \cite{saadfalcon2023ares} separate retrieval, answer quality, and faithfulness. In this thesis, the final evaluation avoids stochastic LLM-as-Judge scoring. Instead, it uses deterministic checks over benchmark annotations: required citation recovery, forbidden citation violations, citation containment, answer quality rules, and out-of-corpus refusal behavior. This choice makes the evaluation reproducible, although it does not replace expert legal review.
+
+\subsection{Research Gap}
+The gap addressed here is a practical software gap: building and evaluating a scoped Vietnamese labor-law assistant that can preserve hierarchy, retrieve cross-referenced provisions, validate citations, and refuse unsupported questions. Existing RAG and legal NLP work motivates the components, but the implemented system integrates them into a deployed, citation-grounded QA workflow over Vietnamese legal texts.
+
+The final system also makes a deliberate evaluation choice. It does not rely on generic semantic answer similarity as the main metric. A semantically plausible answer can still be unacceptable if it cites the wrong article or if it answers a question that the corpus does not cover. Therefore, the benchmark is organized around citation recovery, forbidden citation avoidance, answer validation, and refusal behavior.

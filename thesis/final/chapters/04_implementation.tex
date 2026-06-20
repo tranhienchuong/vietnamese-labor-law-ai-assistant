@@ -1,0 +1,61 @@
+\section{Implementation and Deployment}
+
+\subsection{System Modules and Technology Stack}
+The implementation is organized around repository modules rather than a monolithic script. The \texttt{scripts/} directory contains corpus, graph, index, and evaluation commands. The Python package under \texttt{src/vn\_labor\_law\_ai\_assistant/} contains retrieval, graph, answering, API, auth, conversation, and observability modules. The \texttt{frontend/} directory contains the Next.js interface. The \texttt{docs/} directory records architecture and reproducibility instructions, and \texttt{artifacts/evaluation/final/} stores the official evaluation outputs used in this thesis.
+
+Table~\ref{tab:tech-stack-final} summarizes the main modules and technologies.
+
+\begin{table}[H]
+  \centering
+  \caption{Technology Stack and System Modules}
+  \label{tab:tech-stack-final}
+  \small
+  \begin{tabularx}{\linewidth}{@{}L{0.22\linewidth}L{0.25\linewidth}Y@{}}
+    \toprule
+    Layer & Technology & System role \\
+    \midrule
+    Corpus pipeline & Python scripts & Validate, chunk, enrich, and export legal evidence. \\
+    Embeddings & Sentence Transformers & Build dense Vietnamese SBERT vectors. \\
+    Vector search & Qdrant & Dense and sparse hybrid retrieval with payload metadata. \\
+    Graph store & Neo4j & Legal hierarchy, references, taxonomy, and expansion. \\
+    Backend API & FastAPI & Chat, health, auth, admin, and conversation routes. \\
+    Frontend & Next.js & Chat interface, admin pages, and backend proxy. \\
+    Evaluation & Python scripts & Retrieval ablation, end-to-end metrics, and failure reports. \\
+    Deployment & Vercel and Render & Frontend and backend hosting architecture. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Offline Indexing and Graph Loading}
+The offline pipeline follows the reproducibility guide. The main scripts are:
+\begin{itemize}
+  \item \texttt{validate\_curated\_legal\_texts.py} for curated source checks;
+  \item \texttt{build\_legal\_chunks.py} for hierarchy-aware chunking;
+  \item \texttt{enrich\_legal\_chunks.py} for metadata and citation surfaces;
+  \item \texttt{build\_reference\_edges.py} for cross-reference extraction;
+  \item \texttt{build\_index.py} for Qdrant hybrid indexing;
+  \item \texttt{build\_legal\_graph.py} for Neo4j graph construction.
+\end{itemize}
+
+The official index manifest records 1,556 chunks from six documents, no duplicate chunk IDs, no missing retrieval text, no missing citation text, preserved document types, preserved normative ranks, and a successful validation status. The vector store uses Qdrant payload records, dense vector name \texttt{dense}, sparse vector name \texttt{sparse}, and collection name \path{vietnamese_labor_law_chunks}.
+
+\subsection{Runtime QA Pipeline}
+The retrieval modules perform hybrid search, payload filtering, graph expansion, fallback, scoring, and context assembly. The runtime formula is:
+\[
+C_{\mathrm{final}} =
+\operatorname{Rerank}(S_k \cup C_{\mathrm{graph}} \cup C_{\mathrm{fallback}}).
+\]
+The implementation uses chunk IDs as the bridge between Qdrant and Neo4j. This avoids fuzzy linking at runtime. A context entering the answer layer has both text and metadata, which lets the citation validator inspect legal coordinates rather than only raw strings.
+
+The answer layer is implemented in the \texttt{rag/answering} modules. The key functions parse answer payloads, format legal bases, build extractive fallbacks, and validate grounded answers. The validation rules check whether cited legal bases are present in the retrieved contexts and whether mentioned article numbers are supported. This design treats citation validation as part of the product behavior, not just as an evaluation metric.
+
+The official final evaluation uses the deterministic extractive provider. This provider is less fluent than a carefully constrained LLM, but it is reproducible and exposes retrieval failures clearly. When evidence is missing, no generator can recover the correct legal basis safely.
+
+\subsection{Deployment and Reproducibility}
+The backend is a FastAPI application with routes for health checks, chat, authentication, conversations, and admin functions. The frontend is a Next.js application with chat and admin pages. The frontend can proxy chat requests to the backend through a configured \texttt{BACKEND\_URL}. This separation makes it possible to review the UI independently and then connect it to the hosted backend.
+
+The deployment architecture separates browser UI, backend orchestration, and retrieval stores. The Next.js frontend is designed for Vercel hosting. The FastAPI backend can run on Render with environment variables for Qdrant, Neo4j, provider settings, CORS origins, and authentication. Qdrant stores the hybrid index, while Neo4j stores graph relations used during expansion.
+
+\thesisfigure{deployment_architecture.pdf}{Deployment Architecture with Vercel frontend and Render backend.}{fig:deployment-architecture}
+
+Reproducibility is supported by fixed commands, saved JSON/CSV/Markdown reports, and deterministic evaluation scripts. The official final run uses the 100-query benchmark, top-k 10, prefetch limit 24, maximum answer contexts 8, provider \texttt{extractive}, graph expansion on 89 queries, and average graph depth 2.160. The final reports under \path{artifacts/evaluation/final/} are treated as the source of truth for Section~5.

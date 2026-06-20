@@ -1,0 +1,27 @@
+\section{Background and Related Work}
+
+\subsection{Legal Question Answering and Citation Grounding}
+Legal QA differs from open-domain QA because the answer must be authoritative, traceable, and bounded. In this thesis, authority means that a cited provision belongs to the indexed legal corpus and has an identifiable statutory coordinate. Traceability means that each final answer citation can be matched to a retrieved context. Boundedness means that the assistant should refuse or disclose insufficient context for unsupported topics.
+
+Legal NLP benchmarks such as LexGLUE \cite{chalkidis2021lexglue} and LegalBench \cite{guha2023legalbench} show the importance of legal-domain evaluation, but they do not directly measure Vietnamese labor-law article retrieval with deterministic citation validation. The benchmark in this thesis is smaller and more specialized. It is designed to test whether the implemented system retrieves required legal bases and avoids benchmark-defined forbidden citations.
+
+For Vietnamese labor law, citation grounding is a product requirement rather than a presentation detail. Users need to know whether an answer depends on the Labor Code, an implementing decree, a circular, an appendix, or the labor-related subset of the Civil Procedure Code. A useful assistant must therefore expose evidence and reject unsupported legal instruments instead of relying on model memory.
+
+\subsection{Retrieval-Augmented Generation and Hybrid Retrieval}
+Retrieval-Augmented Generation combines an external retriever with a generator so that generated text can be conditioned on retrieved evidence \cite{lewis2020retrieval}. The retriever normally embeds a query and searches an indexed document collection. The generator then writes an answer from the retrieved context. Dense retrieval methods such as DPR \cite{karpukhin2020dense} and sentence embedding methods such as SBERT \cite{reimers2019sentencebert} support semantic matching beyond exact keywords.
+
+For general QA, this design reduces reliance on model memory and makes knowledge updates easier. For legal QA, it is only the starting point. Legal users need exact legal bases, not only relevant passages. The retriever must recover statutory coordinates, tables, and cross-referenced provisions. The generator must be constrained by retrieved context and checked after generation because hallucinated legal citations are a known risk in neural generation \cite{ji2023survey}.
+
+Hybrid retrieval combines dense semantic search with sparse lexical search. Dense vectors help match concepts expressed in different wording. Sparse lexical signals help match exact legal terms, article numbers, document identifiers, and short coordinate expressions. In Vietnamese labor law, both are required. A user may ask an informal question such as whether a company can transfer a worker to another job for nearly three months, but the legal answer depends on a precise article. Conversely, a user may ask directly about a legal coordinate, in which case exact matching should dominate.
+
+The implemented system uses Qdrant to store dense and sparse vectors together with metadata payloads. The payload is not auxiliary decoration; it is part of the legal contract between retrieval and answer validation. It stores document ID, article number, clause, point, normative rank, citation text, and taxonomy labels.
+
+\subsection{Knowledge Graphs for Legal Retrieval}
+Graph-augmented retrieval uses graph structure to add relational context beyond the seed passages found by search. Microsoft GraphRAG uses graph communities and generated summaries for broad corpus exploration \cite{edge2024graphrag}. The graph in this thesis has a different purpose. It is a deterministic provision-level legal graph. Its nodes and edges are built from known document structure, cross-reference extraction, metadata, and normative rank.
+
+This design is appropriate for a scoped legal assistant because graph traversal can recover context that is not semantically close to the user query but is legally connected. Examples include a Labor Code article and its implementing decree, a circular that lists permitted light work for minors, a retirement-age appendix, or a civil procedure article needed for labor-dispute jurisdiction.
+
+\subsection{Research Gap}
+RAG evaluation frameworks such as Ragas \cite{es2023ragas} and ARES \cite{saadfalcon2023ares} motivate separation between retrieval quality, answer quality, and faithfulness. This thesis adopts that separation but uses deterministic software checks rather than LLM-as-Judge scoring for final metrics. Deterministic checks are narrower than human legal review, but they are repeatable. For this project, repeatability is important because the system is a software artifact whose behavior must be inspected and improved across retrieval, graph expansion, citation validation, and refusal logic.
+
+The research gap is an engineering gap: a complete citation-grounded Vietnamese labor-law assistant over a scoped corpus. The contribution is not a new LLM, nor a claim that graph expansion solves legal reasoning. The contribution is the integration of corpus processing, hybrid retrieval, graph expansion, deterministic validation, API/frontend deployment, and benchmark reporting into a coherent system.
