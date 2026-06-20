@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from threading import Lock
+from typing import cast
 
 from fastapi import Depends, Header, HTTPException
 
+from ..auth.models import Role
+from ..auth.supabase import SupabaseAuthError, verify_supabase_access_token
 from ..auth_store import AuthStore, AuthUser
 from ..core.config import get_settings
 from ..retriever import DEFAULT_RERANKER_TOP_N, HybridRetriever
@@ -63,6 +66,24 @@ def require_current_user(authorization: str | None = Header(default=None)) -> Au
     token = extract_bearer_token(authorization)
     if not token:
         raise HTTPException(status_code=401, detail="Authentication required.")
+
+    settings = get_settings()
+    if settings.auth_provider == "supabase":
+        try:
+            supabase_user = verify_supabase_access_token(token, settings)
+        except SupabaseAuthError as exc:
+            raise HTTPException(status_code=401, detail="Invalid or expired session.") from exc
+
+        role = cast(Role, settings.role_for_email(supabase_user.email))
+        return get_auth_store().upsert_external_user(
+            user_id=supabase_user.id,
+            name=supabase_user.name,
+            email=supabase_user.email,
+            auth_provider="supabase",
+            provider_id=supabase_user.id,
+            role=role,
+            avatar_url=supabase_user.avatar_url,
+        )
 
     user = get_auth_store().get_user_by_token(token)
     if user is None:

@@ -76,6 +76,11 @@ class Settings(BaseSettings):
 
     auth_secret: SecretStr | None = Field(default=None, alias="AUTH_SECRET")
     auth_seed_default_users: bool = Field(default=True, alias="AUTH_SEED_DEFAULT_USERS")
+    auth_provider: str = Field(default="local", alias="AUTH_PROVIDER")
+    supabase_url: str = Field(default="", alias="SUPABASE_URL")
+    supabase_anon_key: SecretStr | None = Field(default=None, alias="SUPABASE_ANON_KEY")
+    supabase_jwt_secret: SecretStr | None = Field(default=None, alias="SUPABASE_JWT_SECRET")
+    admin_emails: str = Field(default="", alias="ADMIN_EMAILS")
     default_user_name: str = Field(default="Nguoi dung", alias="DEFAULT_USER_NAME")
     default_user_email: str = Field(default="user@example.com", alias="DEFAULT_USER_EMAIL")
     default_user_password: SecretStr = Field(
@@ -187,6 +192,14 @@ class Settings(BaseSettings):
     def _validate_auth_seed_default_users(cls, value: Any) -> Any:
         return _bool_with_default(value, True)
 
+    @field_validator("auth_provider", mode="before")
+    @classmethod
+    def _validate_auth_provider(cls, value: Any) -> str:
+        provider = str(value or "local").strip().lower()
+        if provider not in {"local", "supabase"}:
+            return "local"
+        return provider
+
     @field_validator("query_router_enabled", mode="before")
     @classmethod
     def _validate_query_router_enabled(cls, value: Any) -> Any:
@@ -255,6 +268,16 @@ class Settings(BaseSettings):
             for origin in self.cors_allow_origins.split(",")
             if origin.strip()
         ] or ["*"]
+
+    def admin_email_set(self) -> set[str]:
+        return {
+            email.strip().lower()
+            for email in self.admin_emails.split(",")
+            if email.strip()
+        }
+
+    def role_for_email(self, email: str) -> str:
+        return "admin" if email.strip().lower() in self.admin_email_set() else "user"
 
     def optional_secret_value(self, value: SecretStr | None) -> str:
         return value.get_secret_value().strip() if value is not None else ""

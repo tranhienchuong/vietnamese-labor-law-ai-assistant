@@ -3,13 +3,14 @@ import type { Config } from "tailwindcss"
 const config: Config = {
   darkMode: ["class"],
   content: [
-    "./src/pages/**/*.{ts,tsx}",
-    "./src/components/**/*.{ts,tsx}",
-    "./src/app/**/*.{ts,tsx}"
+    "./index.html",
+    "./src/main.tsx",
+    "./src/vite/**/*.{ts,tsx}"
   ],
   theme: {
     extend: {
       colors: {
+        navy: "#0B1220",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         border: "hsl(var(--border))",

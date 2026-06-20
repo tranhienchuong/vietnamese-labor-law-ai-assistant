@@ -68,6 +68,28 @@ class AuthService:
             raise RuntimeError("Failed to create user.")
         return user
 
+    def upsert_external_user(
+        self,
+        *,
+        user_id: str,
+        name: str,
+        email: str,
+        auth_provider: str,
+        provider_id: str,
+        role: Role,
+        avatar_url: str | None = None,
+    ) -> AuthUser:
+        return self.repository.upsert_external_user(
+            user_id=user_id,
+            name=name,
+            email=email,
+            auth_provider=auth_provider,
+            provider_id=provider_id,
+            role=role,
+            avatar_url=avatar_url,
+            now=utc_timestamp(),
+        )
+
     def get_user_by_id(self, user_id: str) -> AuthUser | None:
         return self.repository.get_user_by_id(user_id)
 

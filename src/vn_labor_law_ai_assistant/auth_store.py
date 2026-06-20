@@ -56,6 +56,27 @@ class AuthStore:
             role=role,
         )
 
+    def upsert_external_user(
+        self,
+        *,
+        user_id: str,
+        name: str,
+        email: str,
+        auth_provider: str,
+        provider_id: str,
+        role: Role,
+        avatar_url: str | None = None,
+    ) -> AuthUser:
+        return self.auth_service.upsert_external_user(
+            user_id=user_id,
+            name=name,
+            email=email,
+            auth_provider=auth_provider,
+            provider_id=provider_id,
+            role=role,
+            avatar_url=avatar_url,
+        )
+
     def _row_to_user(self, row: sqlite3.Row | None) -> AuthUser | None:
         return self.auth_repository.row_to_user(row)
 

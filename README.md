@@ -116,7 +116,66 @@ Default local URLs:
 
 - Backend API: `http://localhost:8000`
 - Backend docs: `http://localhost:8000/docs`
-- Frontend: `http://localhost:3000`
+- Frontend: `http://localhost:5173`
+
+## Supabase Google Auth Deployment
+
+The production web architecture is:
+
+- Frontend: Vite + React + TypeScript on Vercel
+- Auth: Supabase Auth with Google OAuth
+- Backend: existing Python/FastAPI app on Render
+
+The frontend authenticates with Supabase and sends the Supabase access token to
+FastAPI:
+
+```http
+Authorization: Bearer <supabase_access_token>
+```
+
+FastAPI keeps local email/password auth by default. Set `AUTH_PROVIDER=supabase`
+only in environments that should accept Supabase Auth tokens.
+
+Frontend environment variables:
+
+```text
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_API_BASE_URL=https://your-render-backend.onrender.com
+```
+
+Backend Render environment variables:
+
+```text
+APP_ENV=production
+AUTH_PROVIDER=supabase
+AUTH_SEED_DEFAULT_USERS=0
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_ANON_KEY=your_supabase_anon_key
+ADMIN_EMAILS=your@email.com,another@email.com
+CORS_ALLOW_ORIGINS=https://trolyluatlaodong.live,https://your-vercel-domain.vercel.app
+```
+
+Keep existing backend secrets such as `GROQ_API_KEY`, `QDRANT_URL`,
+`QDRANT_API_KEY`, and `AUTH_SECRET` configured on Render. Do not commit Google
+client secrets, Supabase service role keys, or API keys.
+
+Supabase URL configuration:
+
+```text
+Site URL:
+https://trolyluatlaodong.live
+
+Redirect URLs:
+https://trolyluatlaodong.live/auth/callback
+http://localhost:5173/auth/callback
+```
+
+Google OAuth should use the Supabase callback URL as the authorized redirect URI:
+
+```text
+https://<project-ref>.supabase.co/auth/v1/callback
+```
 
 ## Rebuild Commands
 
@@ -246,7 +305,7 @@ npm run build
 artifacts/        Generated chunks, indexes, graph summaries, and evaluation outputs
 corpus/           Raw, cleaned, and curated legal source texts
 docs/             Architecture, reproducibility, and CI notes
-frontend/         Next.js user interface
+frontend/         Vite React user interface for Vercel
 scripts/          Pipeline, graph, indexing, QA, and evaluation commands
 src/              Python backend package
 tests/            Unit and integration-style tests with service mocks where possible
