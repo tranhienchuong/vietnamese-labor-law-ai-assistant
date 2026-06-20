@@ -73,12 +73,18 @@ class Settings(BaseSettings):
     cors_allow_origins: str = Field(default="*", alias="CORS_ALLOW_ORIGINS")
 
     app_db_path: Path = Field(default=Path("artifacts/app.db"), alias="APP_DB_PATH")
+    app_data_backend: str = Field(default="sqlite", alias="APP_DATA_BACKEND")
 
     auth_secret: SecretStr | None = Field(default=None, alias="AUTH_SECRET")
     auth_seed_default_users: bool = Field(default=True, alias="AUTH_SEED_DEFAULT_USERS")
     auth_provider: str = Field(default="local", alias="AUTH_PROVIDER")
     supabase_url: str = Field(default="", alias="SUPABASE_URL")
     supabase_anon_key: SecretStr | None = Field(default=None, alias="SUPABASE_ANON_KEY")
+    supabase_service_role_key: SecretStr | None = Field(
+        default=None,
+        alias="SUPABASE_SERVICE_ROLE_KEY",
+    )
+    supabase_db_url: SecretStr | None = Field(default=None, alias="SUPABASE_DB_URL")
     supabase_jwt_secret: SecretStr | None = Field(default=None, alias="SUPABASE_JWT_SECRET")
     admin_emails: str = Field(default="", alias="ADMIN_EMAILS")
     default_user_name: str = Field(default="Nguoi dung", alias="DEFAULT_USER_NAME")
@@ -200,6 +206,14 @@ class Settings(BaseSettings):
             return "local"
         return provider
 
+    @field_validator("app_data_backend", mode="before")
+    @classmethod
+    def _validate_app_data_backend(cls, value: Any) -> str:
+        backend = str(value or "sqlite").strip().lower()
+        if backend not in {"sqlite", "supabase"}:
+            return "sqlite"
+        return backend
+
     @field_validator("query_router_enabled", mode="before")
     @classmethod
     def _validate_query_router_enabled(cls, value: Any) -> Any:
@@ -307,6 +321,7 @@ class Settings(BaseSettings):
     ) -> dict[str, object]:
         return {
             "appEnv": self.app_env,
+            "appDataBackend": self.app_data_backend,
             "databasePath": str(self.app_db_path),
             "qdrantCollection": qdrant_collection or self.qdrant_collection,
             "retrieverRecordSource": retriever_record_source or self.retriever_record_source,

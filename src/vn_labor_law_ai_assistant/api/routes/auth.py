@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
 
 from ...auth_store import AuthUser, user_payload
+from ...core.config import get_settings
 from ..deps import extract_bearer_token, get_auth_store, require_current_user
 
 
@@ -14,6 +15,12 @@ router = APIRouter()
 
 @router.post("/auth/login")
 async def login(request: Request):
+    if get_settings().auth_provider == "supabase":
+        return JSONResponse(
+            {"error": "Use Supabase Google OAuth to sign in."},
+            status_code=400,
+        )
+
     payload = await request.json()
     if not isinstance(payload, dict):
         return JSONResponse({"error": "Request body must be a JSON object."}, status_code=400)
@@ -42,7 +49,7 @@ def logout(
     current_user: AuthUser = Depends(require_current_user),
 ) -> dict[str, bool]:
     token = extract_bearer_token(authorization)
-    if token:
+    if token and get_settings().auth_provider == "local":
         get_auth_store().revoke_session(token)
     return {"ok": True}
 

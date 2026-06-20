@@ -124,7 +124,9 @@ The production web architecture is:
 
 - Frontend: Vite + React + TypeScript on Vercel
 - Auth: Supabase Auth with Google OAuth
+- App data: Supabase Postgres
 - Backend: existing Python/FastAPI app on Render
+- Retrieval: Qdrant and the existing index artifacts
 
 The frontend authenticates with Supabase and sends the Supabase access token to
 FastAPI:
@@ -135,6 +137,19 @@ Authorization: Bearer <supabase_access_token>
 
 FastAPI keeps local email/password auth by default. Set `AUTH_PROVIDER=supabase`
 only in environments that should accept Supabase Auth tokens.
+
+Supabase Postgres stores production app data when `APP_DATA_BACKEND=supabase`:
+
+- `profiles`
+- `conversations`
+- `messages`
+- `chat_traces`
+
+Apply the schema in `supabase/migrations/001_app_schema.sql` before enabling the
+production backend. No migration from the old SQLite users table is required.
+When `APP_DATA_BACKEND=supabase`, `artifacts/app.db` is not used for production
+app data. Qdrant and `artifacts/index` are still used for retrieval and should
+not be deleted.
 
 Frontend environment variables:
 
@@ -149,16 +164,19 @@ Backend Render environment variables:
 ```text
 APP_ENV=production
 AUTH_PROVIDER=supabase
+APP_DATA_BACKEND=supabase
 AUTH_SEED_DEFAULT_USERS=0
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+SUPABASE_DB_URL=postgresql://postgres.your-project-ref:password@aws-0-region.pooler.supabase.com:6543/postgres
 ADMIN_EMAILS=your@email.com,another@email.com
 CORS_ALLOW_ORIGINS=https://trolyluatlaodong.live,https://your-vercel-domain.vercel.app
 ```
 
 Keep existing backend secrets such as `GROQ_API_KEY`, `QDRANT_URL`,
 `QDRANT_API_KEY`, and `AUTH_SECRET` configured on Render. Do not commit Google
-client secrets, Supabase service role keys, or API keys.
+client secrets, Supabase service role keys, database passwords, or API keys.
 
 Supabase URL configuration:
 

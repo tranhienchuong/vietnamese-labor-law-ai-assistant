@@ -10,12 +10,16 @@ from ..auth.supabase import SupabaseAuthError, verify_supabase_access_token
 from ..auth_store import AuthStore, AuthUser
 from ..core.config import get_settings
 from ..retriever import DEFAULT_RERANKER_TOP_N, HybridRetriever
+from ..supabase_store import SupabaseAppStore
 
 
 _retriever: HybridRetriever | None = None
 _retriever_lock = Lock()
 _auth_store: AuthStore | None = None
 _auth_store_lock = Lock()
+_app_store: AuthStore | SupabaseAppStore | None = None
+_app_store_backend: str | None = None
+_app_store_lock = Lock()
 
 
 def get_retriever() -> HybridRetriever:
@@ -53,6 +57,27 @@ def get_auth_store() -> AuthStore:
     return _auth_store
 
 
+def get_app_store() -> AuthStore | SupabaseAppStore:
+    global _app_store, _app_store_backend
+    settings = get_settings()
+    backend = settings.app_data_backend
+    if backend == "sqlite":
+        return get_auth_store()
+
+    if _app_store is not None and _app_store_backend == backend:
+        return _app_store
+
+    with _app_store_lock:
+        if _app_store is None or _app_store_backend != backend:
+            if backend == "supabase":
+                _app_store = SupabaseAppStore(settings=settings)
+                _app_store_backend = backend
+            else:
+                _app_store = get_auth_store()
+                _app_store_backend = "sqlite"
+    return _app_store
+
+
 def extract_bearer_token(authorization: str | None) -> str:
     if not authorization:
         return ""
@@ -75,7 +100,7 @@ def require_current_user(authorization: str | None = Header(default=None)) -> Au
             raise HTTPException(status_code=401, detail="Invalid or expired session.") from exc
 
         role = cast(Role, settings.role_for_email(supabase_user.email))
-        return get_auth_store().upsert_external_user(
+        return get_app_store().upsert_external_user(
             user_id=supabase_user.id,
             name=supabase_user.name,
             email=supabase_user.email,

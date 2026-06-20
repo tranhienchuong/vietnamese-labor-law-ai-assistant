@@ -16,7 +16,12 @@ MAX_SELECTED_CONTEXTS = 20
 
 
 class ChatTraceService:
-    def __init__(self, database: SQLiteDatabase) -> None:
+    def __init__(self, database: SQLiteDatabase | None = None, repository: Any | None = None) -> None:
+        if repository is not None:
+            self.repository = repository
+            return
+        if database is None:
+            raise ValueError("A database or repository is required.")
         self.repository = ChatTraceRepository(database)
 
     def record_chat_trace(

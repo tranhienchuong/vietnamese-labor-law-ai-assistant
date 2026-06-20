@@ -15,8 +15,16 @@ import {
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react"
 import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom"
 import {
+  ApiError,
+  AdminStats,
+  AdminTrace,
   ConversationSummary,
+  getAdminHealth,
+  getAdminRetrievalConfig,
+  getAdminStats,
+  getAdminTraces,
   getConversation,
+  getCurrentUser,
   listConversations,
   sendChatQuestion,
   ChatMessage
@@ -128,6 +136,14 @@ export function App() {
         element={
           <ProtectedRoute>
             <AccountPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <AdminPage />
           </ProtectedRoute>
         }
       />
@@ -713,6 +729,9 @@ function AppHeader() {
         <Link className="button-secondary h-9" to="/account">
           Account
         </Link>
+        <Link className="button-secondary h-9" to="/admin">
+          Admin
+        </Link>
         <button className="button-secondary h-9" onClick={() => void signOut()} type="button">
           <LogOut className="h-4 w-4" />
           Sign out
@@ -742,6 +761,206 @@ function AccountPage() {
           </button>
         </div>
       </main>
+    </div>
+  )
+}
+
+function AdminPage() {
+  const { session } = useAuth()
+  const [isLoading, setIsLoading] = useState(true)
+  const [errorStatus, setErrorStatus] = useState<number | null>(null)
+  const [errorMessage, setErrorMessage] = useState("")
+  const [stats, setStats] = useState<AdminStats | null>(null)
+  const [health, setHealth] = useState<Record<string, Record<string, unknown>>>({})
+  const [retrievalConfig, setRetrievalConfig] = useState<Record<string, unknown>>({})
+  const [traces, setTraces] = useState<AdminTrace[]>([])
+
+  useEffect(() => {
+    let active = true
+    async function loadAdminConsole() {
+      if (!session) return
+      setIsLoading(true)
+      setErrorStatus(null)
+      setErrorMessage("")
+      try {
+        const [, statsPayload, healthPayload, retrievalPayload, tracesPayload] =
+          await Promise.all([
+            getCurrentUser(session),
+            getAdminStats(session),
+            getAdminHealth(session),
+            getAdminRetrievalConfig(session),
+            getAdminTraces(session, 20)
+          ])
+        if (!active) return
+        setStats(statsPayload.stats)
+        setHealth(healthPayload.checks)
+        setRetrievalConfig(retrievalPayload)
+        setTraces(tracesPayload.traces)
+      } catch (caught) {
+        if (!active) return
+        if (caught instanceof ApiError) {
+          setErrorStatus(caught.status)
+          setErrorMessage(caught.message)
+        } else {
+          setErrorMessage(caught instanceof Error ? caught.message : "Unable to load admin console.")
+        }
+      } finally {
+        if (active) {
+          setIsLoading(false)
+        }
+      }
+    }
+    void loadAdminConsole()
+    return () => {
+      active = false
+    }
+  }, [session])
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <AppHeader />
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-3 border-b border-border pb-6 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold">Admin console</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Monitor authentication, runtime health, retrieval configuration,
+              and recent answer traces.
+            </p>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="card mt-8 flex items-center gap-3 p-5 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            Loading admin console...
+          </div>
+        ) : errorStatus ? (
+          <AdminAccessState status={errorStatus} fallbackMessage={errorMessage} />
+        ) : errorMessage ? (
+          <div className="mt-8 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {errorMessage}
+          </div>
+        ) : (
+          <div className="space-y-8 pt-8">
+            <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {adminStatCards(stats).map((card) => (
+                <article className="card p-5 shadow-sm" key={card.label}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {card.label}
+                  </p>
+                  <p className="mt-3 text-3xl font-semibold">{card.value}</p>
+                </article>
+              ))}
+            </section>
+
+            <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="card p-5 shadow-sm">
+                <h2 className="text-lg font-semibold">Health</h2>
+                <div className="mt-5 space-y-3">
+                  {["database", "settings", "index", "qdrantConfig", "llmConfig"].map((key) => (
+                    <AdminKeyValueRow key={key} label={key} value={health[key] ?? { status: "unknown" }} />
+                  ))}
+                </div>
+              </div>
+
+              <div className="card p-5 shadow-sm">
+                <h2 className="text-lg font-semibold">Retrieval configuration</h2>
+                <div className="mt-5 max-h-96 space-y-2 overflow-y-auto">
+                  {Object.entries(retrievalConfig).map(([key, value]) => (
+                    <AdminKeyValueRow key={key} label={key} value={value} />
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section className="card overflow-hidden shadow-sm">
+              <div className="border-b border-border px-5 py-4">
+                <h2 className="text-lg font-semibold">Recent traces</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-border text-sm">
+                  <thead className="bg-background text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-5 py-3 font-semibold">Created</th>
+                      <th className="px-5 py-3 font-semibold">Question</th>
+                      <th className="px-5 py-3 font-semibold">Provider / model</th>
+                      <th className="px-5 py-3 font-semibold">Insufficient context</th>
+                      <th className="px-5 py-3 font-semibold">Error</th>
+                      <th className="px-5 py-3 font-semibold">Latency</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {traces.length ? (
+                      traces.map((trace) => (
+                        <tr key={trace.id}>
+                          <td className="whitespace-nowrap px-5 py-4 text-muted-foreground">
+                            {formatDate(trace.createdAt ?? trace.created_at)}
+                          </td>
+                          <td className="max-w-md px-5 py-4 leading-6">
+                            {trace.question}
+                          </td>
+                          <td className="px-5 py-4 text-muted-foreground">
+                            {trace.provider || "Unknown"} / {trace.model || "default"}
+                          </td>
+                          <td className="px-5 py-4">
+                            {trace.insufficientContext || trace.insufficient_context ? "Yes" : "No"}
+                          </td>
+                          <td className="max-w-xs px-5 py-4 text-muted-foreground">
+                            {trace.error || "None"}
+                          </td>
+                          <td className="whitespace-nowrap px-5 py-4 text-muted-foreground">
+                            {trace.latencyMs ?? trace.latency_ms ?? "N/A"} ms
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td className="px-5 py-6 text-muted-foreground" colSpan={6}>
+                          No traces found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
+
+function AdminAccessState({
+  fallbackMessage,
+  status
+}: {
+  fallbackMessage: string
+  status: number
+}) {
+  if (status === 403) {
+    return (
+      <div className="card mt-8 max-w-2xl p-6 shadow-sm">
+        <h2 className="text-xl font-semibold">Admin access required</h2>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          Your account is authenticated, but it is not listed in ADMIN_EMAILS on the backend.
+        </p>
+      </div>
+    )
+  }
+
+  if (status === 401) {
+    return (
+      <div className="card mt-8 max-w-2xl p-6 shadow-sm">
+        <h2 className="text-xl font-semibold">Your session could not be verified. Please sign in again.</h2>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-8 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+      {fallbackMessage || "Unable to load admin console."}
     </div>
   )
 }
@@ -964,6 +1183,52 @@ function MetaRow({ label, value }: { label: string; value: string }) {
       <span className="break-all text-right font-medium">{value}</span>
     </div>
   )
+}
+
+function AdminKeyValueRow({ label, value }: { label: string; value: unknown }) {
+  return (
+    <div className="grid gap-2 rounded-md border border-border bg-background px-3 py-3 sm:grid-cols-[12rem_1fr]">
+      <span className="text-sm font-medium text-muted-foreground">{label}</span>
+      <span className="break-words text-sm leading-6">{formatAdminValue(value)}</span>
+    </div>
+  )
+}
+
+function adminStatCards(stats: AdminStats | null) {
+  return [
+    { label: "Total users", value: stats?.totalUsers ?? 0 },
+    { label: "Active users", value: stats?.activeUsers ?? 0 },
+    { label: "Admin users", value: stats?.adminUsers ?? 0 },
+    { label: "Conversations", value: stats?.totalConversations ?? 0 },
+    { label: "Messages", value: stats?.totalMessages ?? 0 },
+    { label: "Total traces", value: stats?.totalTraces ?? 0 },
+    { label: "Traces with errors", value: stats?.tracesWithErrors ?? 0 },
+    {
+      label: "Insufficient-context traces",
+      value: stats?.insufficientContextTraces ?? 0
+    }
+  ]
+}
+
+function formatAdminValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "Not configured"
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value)
+  }
+  return JSON.stringify(value)
+}
+
+function formatDate(value: string | undefined): string {
+  if (!value) {
+    return "Unknown"
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleString()
 }
 
 function Footer() {

@@ -36,11 +36,28 @@ class SettingsTest(TestCase):
         settings = Settings(
             _env_file=None,
             APP_DB_PATH="tmp/app.db",
+            APP_DATA_BACKEND="supabase",
             AUTH_SECRET="secret",
+            SUPABASE_DB_URL="postgresql://postgres:password@localhost:5432/postgres",
+            SUPABASE_SERVICE_ROLE_KEY="service-role",
         )
 
         self.assertEqual(settings.app_db_path, Path("tmp/app.db"))
+        self.assertEqual(settings.app_data_backend, "supabase")
+        self.assertEqual(
+            settings.optional_secret_value(settings.supabase_db_url),
+            "postgresql://postgres:password@localhost:5432/postgres",
+        )
+        self.assertEqual(
+            settings.optional_secret_value(settings.supabase_service_role_key),
+            "service-role",
+        )
         self.assertEqual(settings.require_auth_secret(), "secret")
+
+    def test_unknown_app_data_backend_falls_back_to_sqlite(self) -> None:
+        settings = Settings(_env_file=None, APP_DATA_BACKEND="unknown")
+
+        self.assertEqual(settings.app_data_backend, "sqlite")
 
     def test_bool_settings_keep_legacy_default_on_empty_or_unknown_values(self) -> None:
         settings = Settings(

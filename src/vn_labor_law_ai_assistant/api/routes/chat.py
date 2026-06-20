@@ -11,14 +11,13 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from ...answering import format_answer_for_user, generate_grounded_answer
 from ...auth_store import AuthUser
 from ...llm import DEFAULT_PROVIDER
-from ...observability import ChatTraceService
 from ...retriever import (
     DEFAULT_MAX_CONTEXT_CHARS,
     DEFAULT_MAX_CONTEXT_TOKENS,
     format_context_for_prompt,
     select_contexts_for_prompt,
 )
-from ..deps import get_auth_store, get_retriever, require_current_user
+from ..deps import get_app_store, get_retriever, require_current_user
 
 
 router = APIRouter()
@@ -103,7 +102,7 @@ def record_chat_trace_best_effort(
     error: str | None = None,
 ) -> None:
     try:
-        ChatTraceService(store.database).record_chat_trace(
+        store.record_chat_trace(
             user_id=user_id,
             question=question,
             request_id=request_id,
@@ -149,7 +148,7 @@ async def chat(
             headers=response_headers(request_id=request_id),
         )
 
-    store = get_auth_store()
+    store = get_app_store()
     try:
         conversation = store.ensure_conversation_for_question(
             user_id=current_user.id,

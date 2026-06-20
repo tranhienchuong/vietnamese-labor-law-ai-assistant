@@ -5,35 +5,28 @@ from pathlib import Path
 from typing import Any
 
 from ..auth.models import AuthUser
-from ..auth.repository import AuthRepository
 from ..auth.service import user_payload
-from ..auth_store import AuthStore
-from ..conversations.repository import ConversationRepository
 from ..core.config import Settings, get_settings
-from ..observability import ChatTraceService
 
 
 class AdminService:
-    def __init__(self, store: AuthStore, settings: Settings | None = None) -> None:
+    def __init__(self, store: Any, settings: Settings | None = None) -> None:
         self.store = store
         self.settings = settings or get_settings()
-        self.auth_repository = AuthRepository(store.database)
-        self.conversation_repository = ConversationRepository(store.database)
-        self.trace_service = ChatTraceService(store.database)
 
     def get_stats(self, current_user: AuthUser) -> dict[str, Any]:
         return {
             "user": user_payload(current_user),
             "stats": {
-                "totalUsers": self.auth_repository.count_users(),
-                "activeUsers": self.auth_repository.count_active_users(),
-                "adminUsers": self.auth_repository.count_admin_users(),
-                "totalConversations": self.conversation_repository.count_conversations(),
-                "totalMessages": self.conversation_repository.count_messages(),
-                "activeSessions": self.auth_repository.count_active_sessions(),
-                "totalTraces": self.trace_service.count_traces(),
-                "tracesWithErrors": self.trace_service.count_traces_with_errors(),
-                "insufficientContextTraces": self.trace_service.count_insufficient_context_traces(),
+                "totalUsers": self.store.count_users(),
+                "activeUsers": self.store.count_active_users(),
+                "adminUsers": self.store.count_admin_users(),
+                "totalConversations": self.store.count_conversations(),
+                "totalMessages": self.store.count_messages(),
+                "activeSessions": self.store.count_active_sessions(),
+                "totalTraces": self.store.count_traces(),
+                "tracesWithErrors": self.store.count_traces_with_errors(),
+                "insufficientContextTraces": self.store.count_insufficient_context_traces(),
             },
             "runtime": self.settings.public_runtime_config(
                 qdrant_collection=self._effective_qdrant_collection(),
@@ -69,7 +62,7 @@ class AdminService:
         error_only: bool = False,
     ) -> dict[str, Any]:
         return {
-            "traces": self.trace_service.list_recent_traces(
+            "traces": self.store.list_recent_traces(
                 limit=limit,
                 user_id=user_id,
                 conversation_id=conversation_id,
@@ -79,7 +72,7 @@ class AdminService:
         }
 
     def get_trace(self, trace_id: str) -> dict[str, Any] | None:
-        trace = self.trace_service.get_trace(trace_id)
+        trace = self.store.get_trace(trace_id)
         return {"trace": trace} if trace is not None else None
 
     def _database_check(self) -> dict[str, str]:
@@ -92,8 +85,9 @@ class AdminService:
 
     def _settings_check(self) -> dict[str, str]:
         try:
-            self.settings.require_auth_secret()
-            self.settings.validate_auth_seed_configuration()
+            if self.settings.auth_provider == "local":
+                self.settings.require_auth_secret()
+                self.settings.validate_auth_seed_configuration()
             return {"status": "ok", "message": "Settings loaded."}
         except Exception:
             return {"status": "error", "message": "Required settings are missing."}
