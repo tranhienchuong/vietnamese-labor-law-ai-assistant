@@ -71,6 +71,13 @@ def elapsed_ms(start: float, end: float | None = None) -> int:
     return int(round(((end or time.perf_counter()) - start) * 1000))
 
 
+def wants_json_response(payload: dict[str, Any]) -> bool:
+    response_format = str(
+        payload.get("responseFormat") or payload.get("response_format") or ""
+    ).strip().lower()
+    return response_format in {"json", "structured"}
+
+
 def trace_citations_from_parsed(parsed: Any | None) -> dict[str, Any]:
     if parsed is None:
         return {"legal_basis": [], "evidence_quotes": []}
@@ -81,6 +88,40 @@ def trace_citations_from_parsed(parsed: Any | None) -> dict[str, Any]:
             for quote in parsed.evidence_quotes
         ],
     }
+
+
+def structured_chat_payload(
+    *,
+    answer: str,
+    parsed: Any | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    insufficient_context: bool | None = None,
+    conversation_id: str | None = None,
+) -> dict[str, Any]:
+    citations = trace_citations_from_parsed(parsed)
+    legal_basis = list(citations["legal_basis"])
+    evidence_quotes = list(citations["evidence_quotes"])
+    if insufficient_context is None:
+        insufficient_context = bool(
+            getattr(parsed, "insufficient_context", False)
+        ) if parsed is not None else False
+    payload: dict[str, Any] = {
+        "answer": answer,
+        "legalBasis": legal_basis,
+        "evidenceQuotes": evidence_quotes,
+        "citations": citations,
+        "insufficientContext": bool(insufficient_context),
+    }
+    if provider is not None:
+        payload["provider"] = provider
+    if model is not None:
+        payload["model"] = model
+    if parsed is not None and getattr(parsed, "notes", ""):
+        payload["notes"] = str(parsed.notes)
+    if conversation_id:
+        payload["conversationId"] = conversation_id
+    return payload
 
 
 def record_chat_trace_best_effort(
@@ -154,6 +195,7 @@ async def chat(
     provider = str(payload.get("provider") or DEFAULT_PROVIDER)
     model = str(payload.get("model") or "")
     retrieve_only = bool(payload.get("retrieveOnly"))
+    json_response = wants_json_response(payload)
     domain_decision = assess_question_domain(question)
     if domain_decision.out_of_domain:
         store = get_app_store()
@@ -174,6 +216,16 @@ async def chat(
             citations={"legal_basis": [], "evidence_quotes": []},
             error=f"out_of_domain:{domain_decision.reason}",
         )
+        if json_response:
+            return JSONResponse(
+                structured_chat_payload(
+                    answer=answer,
+                    provider=provider,
+                    model=model,
+                    insufficient_context=True,
+                ),
+                headers=response_headers(request_id=request_id),
+            )
         return PlainTextResponse(
             answer,
             headers=response_headers(request_id=request_id),
@@ -259,6 +311,17 @@ async def chat(
             selected_contexts=(),
             citations={"legal_basis": [], "evidence_quotes": []},
         )
+        if json_response:
+            return JSONResponse(
+                structured_chat_payload(
+                    answer=answer,
+                    provider=provider,
+                    model=model,
+                    insufficient_context=True,
+                    conversation_id=conversation_id,
+                ),
+                headers=response_headers(request_id=request_id, conversation_id=conversation_id),
+            )
         return PlainTextResponse(
             answer,
             headers=response_headers(request_id=request_id, conversation_id=conversation_id),
@@ -360,6 +423,18 @@ async def chat(
         selected_contexts=contexts,
         citations=citations,
     )
+    if json_response:
+        return JSONResponse(
+            structured_chat_payload(
+                answer=answer,
+                parsed=parsed,
+                provider=answer_result.provider,
+                model=answer_result.model,
+                insufficient_context=bool(parsed.insufficient_context),
+                conversation_id=conversation_id,
+            ),
+            headers=response_headers(request_id=request_id, conversation_id=conversation_id),
+        )
     return PlainTextResponse(
         answer,
         headers=response_headers(request_id=request_id, conversation_id=conversation_id),

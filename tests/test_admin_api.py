@@ -19,6 +19,19 @@ from helpers import create_test_auth_store
 
 class AdminApiTest(TestCase):
     def setUp(self) -> None:
+        self.env_patch = patch.dict(
+            os.environ,
+            {
+                "APP_ENV": "development",
+                "ENVIRONMENT": "",
+                "AUTH_PROVIDER": "local",
+                "APP_DATA_BACKEND": "sqlite",
+                "AUTH_SEED_DEFAULT_USERS": "0",
+            },
+            clear=False,
+        )
+        self.env_patch.start()
+        get_settings.cache_clear()
         self.tmpdir = TemporaryDirectory()
         self.store = create_test_auth_store(Path(self.tmpdir.name) / "app.db")
         self.previous_auth_store = api_deps._auth_store
@@ -29,6 +42,7 @@ class AdminApiTest(TestCase):
         api_deps._auth_store = self.previous_auth_store
         get_settings.cache_clear()
         self.tmpdir.cleanup()
+        self.env_patch.stop()
 
     def _token_for(self, email: str, password: str) -> str:
         user = self.store.authenticate_user(email, password)

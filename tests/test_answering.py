@@ -889,6 +889,44 @@ class AnsweringTests(unittest.TestCase):
         self.assertIn("Bo luat Lao dong 2019, Dieu 107, khoan 2", result.answer)
         self.assertEqual(result.parsed.legal_basis, ("Bo luat Lao dong 2019, Dieu 107, khoan 2",))
 
+    def test_generate_employee_definition_answer_uses_clause_text(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="bll-3-1",
+                citation_text="Bo luat Lao dong 2019, Dieu 3, khoan 1",
+                text=(
+                    "Dieu 3. Giai thich tu ngu\n\n"
+                    "1. Nguoi lao dong la nguoi lam viec cho nguoi su dung lao dong theo thoa thuan, "
+                    "duoc tra luong va chiu su quan ly, dieu hanh, giam sat cua nguoi su dung lao dong. "
+                    "Do tuoi lao dong toi thieu cua nguoi lao dong la du 15 tuoi, tru truong hop rieng."
+                ),
+                payload={
+                    "document_id": "45-2019-qh14",
+                    "document_type": "bo_luat",
+                    "normative_rank": 1,
+                    "article_number": "3",
+                    "clause_ref": "1",
+                },
+                score=1.0,
+                matched_chunk_ids=("bll-3-1",),
+                matched_citations=("Bo luat Lao dong 2019, Dieu 3, khoan 1",),
+            ),
+        )
+
+        result = generate_grounded_answer(
+            "Nguoi lao dong duoc dinh nghia nhu the nao theo Bo luat Lao dong 2019?",
+            contexts,
+            provider="extractive",
+        )
+
+        normalized_answer = normalize_for_matching(result.answer)
+        self.assertTrue(result.validation.passed)
+        self.assertIn("nguoi lao dong la nguoi lam viec", normalized_answer)
+        self.assertIn("duoc tra luong", normalized_answer)
+        self.assertNotIn("co co so phap ly de tra loi", normalized_answer)
+        self.assertEqual(result.parsed.legal_basis, ("Bo luat Lao dong 2019, Dieu 3, khoan 1",))
+        self.assertEqual(len(result.parsed.evidence_quotes), 1)
+
     def test_low_information_quote_detection_rejects_article_titles(self) -> None:
         self.assertTrue(is_low_information_quote("Dieu 143."))
         self.assertTrue(is_low_information_quote("Tuoi nghi huu"))

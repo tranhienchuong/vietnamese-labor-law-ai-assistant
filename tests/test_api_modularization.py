@@ -45,6 +45,7 @@ class ApiModularizationTest(TestCase):
                 "maxContextTokens": 300,
                 "includeCitations": False,
                 "retrieveOnly": True,
+                "responseFormat": "json",
             }
         )
 
@@ -56,7 +57,12 @@ class ApiModularizationTest(TestCase):
         self.assertEqual(request.max_context_tokens, 300)
         self.assertFalse(request.include_citations)
         self.assertTrue(request.retrieve_only)
+        self.assertEqual(request.response_format, "json")
         self.assertEqual(
             request.model_dump(by_alias=True)["conversationId"],
             "conversation-1",
+        )
+        self.assertEqual(
+            request.model_dump(by_alias=True)["responseFormat"],
+            "json",
         )

@@ -190,6 +190,37 @@ class ChatTracingTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("X-Request-Id", response.headers)
 
+    def test_chat_json_response_includes_sources(self) -> None:
+        token = self._token_for("user@example.com", "user12345")
+
+        with patch(
+            "vn_labor_law_ai_assistant.api.routes.chat.get_retriever",
+            return_value=FakeRetriever(),
+        ):
+            response = self.client.post(
+                "/chat",
+                json={
+                    "messages": [{"role": "user", "content": "Toi muon nghi viec"}],
+                    "provider": "extractive",
+                    "responseFormat": "json",
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("answer", payload)
+        self.assertEqual(
+            payload["legalBasis"],
+            ["Bo luat so 45/2019/QH14, Dieu 35, khoan 1"],
+        )
+        self.assertEqual(
+            payload["citations"]["legal_basis"],
+            ["Bo luat so 45/2019/QH14, Dieu 35, khoan 1"],
+        )
+        self.assertEqual(len(payload["evidenceQuotes"]), 1)
+        self.assertIn("Nguoi lao dong", payload["evidenceQuotes"][0]["quote"])
+
     def test_chat_no_context_fallback_uses_valid_vietnamese_text(self) -> None:
         token = self._token_for("user@example.com", "user12345")
 

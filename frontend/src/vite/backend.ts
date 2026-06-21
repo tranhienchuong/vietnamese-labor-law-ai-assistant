@@ -14,6 +14,17 @@ export class ApiError extends Error {
 export type ChatMessage = {
   role: "user" | "assistant"
   content: string
+  citations?: ChatCitations
+}
+
+export type EvidenceQuote = {
+  citation: string
+  quote: string
+}
+
+export type ChatCitations = {
+  legalBasis: string[]
+  evidenceQuotes: EvidenceQuote[]
 }
 
 export type CurrentUser = {
@@ -39,8 +50,18 @@ export type ConversationDetail = {
     id: string
     role: "user" | "assistant" | "system"
     content: string
+    citations?: unknown
     created_at?: string
   }>
+}
+
+type ChatResponsePayload = {
+  answer?: unknown
+  legalBasis?: unknown
+  legal_basis?: unknown
+  evidenceQuotes?: unknown
+  evidence_quotes?: unknown
+  citations?: unknown
 }
 
 export type AdminStats = {
@@ -100,6 +121,45 @@ async function apiFetch(input: string, init?: RequestInit) {
   }
 }
 
+export function emptyChatCitations(): ChatCitations {
+  return {
+    legalBasis: [],
+    evidenceQuotes: []
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+}
+
+export function normalizeChatCitations(value: unknown): ChatCitations {
+  const record = asRecord(value)
+  const nested = asRecord(record.citations)
+  const legalBasisSource =
+    record.legalBasis ?? record.legal_basis ?? nested.legalBasis ?? nested.legal_basis
+  const evidenceQuotesSource =
+    record.evidenceQuotes ?? record.evidence_quotes ?? nested.evidenceQuotes ?? nested.evidence_quotes
+
+  const legalBasis = Array.isArray(legalBasisSource)
+    ? legalBasisSource.map((item) => String(item || "").trim()).filter(Boolean)
+    : []
+  const evidenceQuotes = Array.isArray(evidenceQuotesSource)
+    ? evidenceQuotesSource.flatMap((item) => {
+        const quoteRecord = asRecord(item)
+        const citation = String(quoteRecord.citation || "").trim()
+        const quote = String(quoteRecord.quote || "").trim()
+        return citation && quote ? [{ citation, quote }] : []
+      })
+    : []
+
+  return {
+    legalBasis,
+    evidenceQuotes
+  }
+}
+
 export async function sendChatQuestion(
   session: Session,
   question: string,
@@ -114,15 +174,38 @@ export async function sendChatQuestion(
     body: JSON.stringify({
       messages: [{ role: "user", content: question }],
       includeCitations: true,
+      responseFormat: "json",
       ...(conversationId ? { conversationId } : {})
     })
   })
-  const answer = await response.text()
+  const contentType = response.headers.get("content-type") || ""
   if (!response.ok) {
-    throw new Error(answer || `Chat request failed with status ${response.status}`)
+    const payload = contentType.includes("application/json")
+      ? await response.json().catch(() => ({}))
+      : {}
+    const fallback = contentType.includes("application/json")
+      ? ""
+      : await response.text().catch(() => "")
+    const message =
+      typeof payload?.detail === "string"
+        ? payload.detail
+        : typeof payload?.error === "string"
+          ? payload.error
+          : fallback || `Chat request failed with status ${response.status}`
+    throw new Error(message)
   }
+  if (contentType.includes("application/json")) {
+    const payload = (await response.json()) as ChatResponsePayload
+    return {
+      answer: String(payload.answer || ""),
+      citations: normalizeChatCitations(payload),
+      conversationId: response.headers.get("X-Conversation-Id")
+    }
+  }
+  const answer = await response.text()
   return {
     answer,
+    citations: emptyChatCitations(),
     conversationId: response.headers.get("X-Conversation-Id")
   }
 }

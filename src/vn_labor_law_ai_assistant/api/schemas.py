@@ -32,3 +32,4 @@ class ChatRequest(BaseModel):
     temperature: float | None = None
     include_citations: bool = Field(default=True, alias="includeCitations")
     retrieve_only: bool = Field(default=False, alias="retrieveOnly")
+    response_format: str | None = Field(default=None, alias="responseFormat")

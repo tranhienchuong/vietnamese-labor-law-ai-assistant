@@ -26,8 +26,10 @@ import {
   getConversation,
   getCurrentUser,
   listConversations,
+  normalizeChatCitations,
   sendChatQuestion,
-  ChatMessage
+  type ChatCitations,
+  type ChatMessage
 } from "./backend"
 import { useAuth } from "./auth"
 import { LEGAL_DISCLAIMER, missingSupabaseConfig, PRODUCT_NAME } from "./config"
@@ -548,7 +550,10 @@ function ResearchApp() {
         setError(insufficientContextMessage)
         return
       }
-      setMessages((current) => [...current, { role: "assistant", content: response.answer }])
+      setMessages((current) => [
+        ...current,
+        { role: "assistant", content: response.answer, citations: response.citations }
+      ])
       if (response.conversationId) {
         setConversationId(response.conversationId)
       }
@@ -570,7 +575,13 @@ function ResearchApp() {
       payload.messages
         .flatMap((message) =>
           message.role === "user" || message.role === "assistant"
-            ? [{ role: message.role, content: message.content }]
+            ? [
+                {
+                  role: message.role,
+                  content: message.content,
+                  citations: normalizeChatCitations(message.citations)
+                }
+              ]
             : []
         )
     )
@@ -606,7 +617,11 @@ function ResearchApp() {
                     </div>
                   </div>
                 ) : (
-                  <AnswerCard content={message.content} key={`${message.role}-${index}`} />
+                  <AnswerCard
+                    citations={message.citations}
+                    content={message.content}
+                    key={`${message.role}-${index}`}
+                  />
                 )
               )
             )}
@@ -641,7 +656,9 @@ function ResearchApp() {
           </div>
         </form>
       </main>
-      {latestAnswer ? <SourcePanel answer={latestAnswer.content} /> : null}
+      {latestAnswer ? (
+        <SourcePanel citations={latestAnswer.citations} />
+      ) : null}
     </div>
   )
 }
@@ -1022,8 +1039,16 @@ function EmptyState({ onPromptSelect }: { onPromptSelect: (prompt: string) => vo
   )
 }
 
-function AnswerCard({ content }: { content: string }) {
+function AnswerCard({
+  citations,
+  content
+}: {
+  citations?: ChatCitations
+  content: string
+}) {
   const [copied, setCopied] = useState(false)
+  const legalBasis = citations?.legalBasis ?? []
+  const evidenceQuotes = citations?.evidenceQuotes ?? []
   async function copyAnswer() {
     await navigator.clipboard.writeText(content)
     setCopied(true)
@@ -1056,17 +1081,29 @@ function AnswerCard({ content }: { content: string }) {
         <section className="grid gap-3 md:grid-cols-2">
           <div className="rounded-md border border-border bg-background px-3 py-3">
             <h2 className="text-sm font-semibold">Legal basis</h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Review the cited documents and article references included in the
-              answer and source panel.
-            </p>
+            {legalBasis.length ? (
+              <ul className="mt-2 space-y-1 text-sm leading-6 text-muted-foreground">
+                {legalBasis.slice(0, 3).map((basis) => (
+                  <li key={basis}>{basis}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                No validated legal basis was returned.
+              </p>
+            )}
           </div>
           <div className="rounded-md border border-border bg-background px-3 py-3">
             <h2 className="text-sm font-semibold">Retrieved provisions</h2>
-            <p className="mt-2 line-clamp-4 text-sm leading-6 text-muted-foreground">
-              Source passages used by the answer are shown when available from
-              the backend response and supporting source panel.
-            </p>
+            {evidenceQuotes.length ? (
+              <p className="mt-2 line-clamp-4 text-sm leading-6 text-muted-foreground">
+                {evidenceQuotes[0].quote}
+              </p>
+            ) : (
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                No source passage was returned for this answer.
+              </p>
+            )}
           </div>
         </section>
         <section className="rounded-md border border-success/20 bg-success/10 px-3 py-2 text-sm leading-6 text-success">
@@ -1094,7 +1131,9 @@ function AnswerCard({ content }: { content: string }) {
   )
 }
 
-function SourcePanel({ answer }: { answer: string }) {
+function SourcePanel({ citations }: { citations?: ChatCitations }) {
+  const legalBasis = citations?.legalBasis ?? []
+  const evidenceQuotes = citations?.evidenceQuotes ?? []
   return (
     <aside className="hidden h-screen w-96 shrink-0 overflow-y-auto border-l border-border bg-surface xl:block">
       <div className="border-b border-border px-5 py-4">
@@ -1104,12 +1143,35 @@ function SourcePanel({ answer }: { answer: string }) {
         <h2 className="mt-1 text-base font-semibold">Legal basis and provisions</h2>
       </div>
       <div className="space-y-4 p-5">
-        <CitationPill title="Legal basis" detail="Review cited documents and article references in the answer." />
+        <CitationPill
+          title="Legal basis"
+          detail={
+            legalBasis.length
+              ? legalBasis.join(" | ")
+              : "No validated legal basis was returned."
+          }
+        />
         <div className="rounded-lg border border-border bg-background p-4">
           <h3 className="text-sm font-semibold">Retrieved provisions</h3>
-          <p className="mt-3 line-clamp-[12] text-sm leading-6 text-muted-foreground">
-            {answer}
-          </p>
+          {evidenceQuotes.length ? (
+            <div className="mt-3 space-y-4">
+              {evidenceQuotes.map((source) => (
+                <div className="space-y-1" key={`${source.citation}-${source.quote}`}>
+                  <p className="text-xs font-semibold leading-5 text-foreground">
+                    {source.citation}
+                  </p>
+                  <p className="line-clamp-[10] text-sm leading-6 text-muted-foreground">
+                    {source.quote}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              No source passages were returned. The answer text is still shown
+              in the main panel for review.
+            </p>
+          )}
         </div>
         <div className="rounded-lg border border-success/20 bg-success/10 p-4 text-sm leading-6 text-success">
           This system provides legal research support only and does not replace

@@ -12,6 +12,7 @@ from .schema import EvidenceQuote
 
 
 ANSWER_INTENT_MINOR_WORKER = "minor_worker"
+ANSWER_INTENT_EMPLOYEE_DEFINITION = "employee_definition"
 ANSWER_INTENT_RETIREMENT_AGE = "retirement_age"
 ANSWER_INTENT_CONTRACT_CONTENT = "labor_contract_content"
 ANSWER_INTENT_DISMISSAL_MEDIATION = "dismissal_mediation_exception"
@@ -27,6 +28,27 @@ ANSWER_INTENT_GENERIC = "generic"
 
 def classify_answer_intent(question: str) -> str:
     normalized = normalize_for_matching(question)
+    if (
+        (
+            "nguoi lao dong" in normalized
+            and (
+                "dinh nghia" in normalized
+                or "duoc dinh nghia" in normalized
+                or "la ai" in normalized
+                or "khai niem" in normalized
+                or "giai thich tu ngu" in normalized
+            )
+        )
+        or (
+            "employee" in normalized
+            and (
+                "definition" in normalized
+                or "defined" in normalized
+                or "who is" in normalized
+            )
+        )
+    ):
+        return ANSWER_INTENT_EMPLOYEE_DEFINITION
     if (
         "14 tuoi" in normalized
         or "chua du 15 tuoi" in normalized
@@ -146,7 +168,17 @@ def _intent_anchor_contexts(
         if context is not None:
             anchors.append(context)
 
-    if intent == ANSWER_INTENT_MINOR_WORKER:
+    if intent == ANSWER_INTENT_EMPLOYEE_DEFINITION:
+        add(_find_context(contexts, document_id="45-2019-qh14", article="3", clause="1"))
+        add(
+            _find_context(
+                contexts,
+                article="3",
+                clause="1",
+                text_terms=("nguoi lao dong", "tra luong"),
+            )
+        )
+    elif intent == ANSWER_INTENT_MINOR_WORKER:
         add(_find_context(contexts, document_id="45-2019-qh14", article="145", clause="1"))
         add(_find_context(contexts, document_id="45-2019-qh14", article="146", clause="1"))
         add(_find_context(contexts, document_id="45-2019-qh14", article="143", clause="1"))
@@ -856,11 +888,54 @@ def _overtime_payload(contexts: Sequence[RetrievalContext]) -> dict[str, object]
     return _payload(answer, [context for context in (law107_2, law107_3, nd145_60, nd145_61) if context])
 
 
+def _employee_definition_payload(
+    question: str,
+    contexts: Sequence[RetrievalContext],
+) -> dict[str, object] | None:
+    definition = (
+        _find_context(contexts, document_id="45-2019-qh14", article="3", clause="1")
+        or _find_context(
+            contexts,
+            article="3",
+            clause="1",
+            text_terms=("nguoi lao dong", "tra luong"),
+        )
+        or _find_context(
+            contexts,
+            article="3",
+            text_terms=("nguoi lao dong", "tra luong"),
+        )
+    )
+    if definition is None:
+        return None
+
+    cite = _cite(definition)
+    if answer_language(question) == "en":
+        answer = "\n".join(
+            [
+                f"Under {cite}, an employee is a person who works for an employer under an agreement, is paid wages, and is subject to the employer's management, direction, and supervision.",
+                "",
+                "The same retrieved provision also states that the minimum working age is 15, except for the separate rules on minor workers.",
+            ]
+        )
+    else:
+        answer = "\n".join(
+            [
+                f"Theo {cite}, người lao động là người làm việc cho người sử dụng lao động theo thỏa thuận, được trả lương và chịu sự quản lý, điều hành, giám sát của người sử dụng lao động.",
+                "",
+                "Cùng quy định này cũng nêu tuổi lao động tối thiểu là đủ 15 tuổi, trừ các trường hợp riêng về lao động chưa thành niên.",
+            ]
+        )
+    return _payload(answer, [definition])
+
+
 def build_rule_based_answer_payload(
     question: str,
     contexts: Sequence[RetrievalContext],
 ) -> dict[str, object] | None:
     intent = classify_answer_intent(question)
+    if intent == ANSWER_INTENT_EMPLOYEE_DEFINITION:
+        return _employee_definition_payload(question, contexts)
     if intent == ANSWER_INTENT_MINOR_WORKER:
         return _minor_worker_payload(question, contexts)
     if intent == ANSWER_INTENT_RETIREMENT_AGE:
@@ -889,6 +964,7 @@ def build_rule_based_answer_payload(
 __all__ = [
     "ANSWER_INTENT_CONTRACT_CONTENT",
     "ANSWER_INTENT_DISMISSAL_MEDIATION",
+    "ANSWER_INTENT_EMPLOYEE_DEFINITION",
     "ANSWER_INTENT_GENERIC",
     "ANSWER_INTENT_ILLEGAL_EMPLOYEE_TERMINATION",
     "ANSWER_INTENT_JOB_LOSS_ALLOWANCE",
