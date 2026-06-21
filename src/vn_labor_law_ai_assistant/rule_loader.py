@@ -260,6 +260,7 @@ class RuleLoader:
             "QUERY_CONTEXT": raw.get("query_context", {}),
             "BOOST_CONTEXT": raw.get("boost_context", {}),
             "BOOST_RULES": tuple(raw.get("boost_rules", ())),
+            "DOMAIN_GUARD": raw.get("domain_guard", {}),
             "DIRECT_REFERENCE_RULES": tuple(
                 _direct_reference_rule_from_yaml(rule)
                 for rule in raw.get("direct_reference_rules", ())

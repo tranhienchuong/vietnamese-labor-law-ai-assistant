@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 
 from vn_labor_law_ai_assistant.rag.answering import generate_grounded_answer, validate_answer_quality
-from vn_labor_law_ai_assistant.rag.scope_guard import assess_scope
+from vn_labor_law_ai_assistant.rag.scope_guard import assess_question_domain, assess_scope
 from vn_labor_law_ai_assistant.retriever import RetrievalContext
 
 
@@ -40,6 +40,24 @@ def make_context(
 
 
 class ScopeGuardTests(unittest.TestCase):
+    def test_domain_guard_rejects_non_legal_chatter(self) -> None:
+        for question in ("alo", "co tft", "hom nay an gi"):
+            with self.subTest(question=question):
+                decision = assess_question_domain(question)
+                self.assertTrue(decision.out_of_domain)
+                self.assertFalse(decision.matched_signals)
+
+    def test_domain_guard_allows_configured_labor_questions(self) -> None:
+        for question in (
+            "Nguoi duoi 15 tuoi co duoc lam viec khong?",
+            "What rules apply to workers under 15?",
+            "Cong ty sa thai toi co dung luat khong?",
+            "Dieu 35 quy dinh gi?",
+        ):
+            with self.subTest(question=question):
+                decision = assess_question_domain(question)
+                self.assertFalse(decision.out_of_domain)
+
     def test_frozen_out_of_corpus_items_are_detected_without_ids(self) -> None:
         if not BENCHMARK_PATH.exists():
             raise unittest.SkipTest(

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
 import vn_labor_law_ai_assistant.api.deps as api_deps
 from vn_labor_law_ai_assistant.api import app
+from vn_labor_law_ai_assistant.core.config import get_settings
 from vn_labor_law_ai_assistant.heuristic_router import QueryIntent
 from vn_labor_law_ai_assistant.observability import ChatTraceService
 from vn_labor_law_ai_assistant.retriever import (
@@ -96,6 +98,19 @@ class EmptyRetriever:
 
 class ChatTracingTest(TestCase):
     def setUp(self) -> None:
+        self.env_patch = patch.dict(
+            os.environ,
+            {
+                "APP_ENV": "development",
+                "ENVIRONMENT": "",
+                "AUTH_PROVIDER": "local",
+                "APP_DATA_BACKEND": "sqlite",
+                "AUTH_SEED_DEFAULT_USERS": "0",
+            },
+            clear=False,
+        )
+        self.env_patch.start()
+        get_settings.cache_clear()
         self.tmpdir = TemporaryDirectory()
         self.store = create_test_auth_store(Path(self.tmpdir.name) / "app.db")
         self.previous_auth_store = api_deps._auth_store
@@ -105,6 +120,8 @@ class ChatTracingTest(TestCase):
     def tearDown(self) -> None:
         api_deps._auth_store = self.previous_auth_store
         self.tmpdir.cleanup()
+        self.env_patch.stop()
+        get_settings.cache_clear()
 
     def _token_for(self, email: str, password: str) -> str:
         user = self.store.authenticate_user(email, password)
@@ -189,3 +206,30 @@ class ChatTracingTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.text, "Không tìm thấy ngữ cảnh phù hợp trong index.")
         self.assertNotIn("Ã", response.text)
+
+    def test_chat_rejects_out_of_domain_question_before_retrieval(self) -> None:
+        token = self._token_for("user@example.com", "user12345")
+        retriever_factory = Mock()
+
+        with patch(
+            "vn_labor_law_ai_assistant.api.routes.chat.get_retriever",
+            retriever_factory,
+        ):
+            response = self.client.post(
+                "/chat",
+                json={"messages": [{"role": "user", "content": "co tft"}]},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "X-Request-Id": "request-out-of-domain",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("ngoai pham vi", response.text)
+        retriever_factory.assert_not_called()
+
+        traces = ChatTraceService(self.store.database).list_recent_traces(limit=10)
+        self.assertEqual(len(traces), 1)
+        self.assertEqual(traces[0]["requestId"], "request-out-of-domain")
+        self.assertTrue(traces[0]["insufficientContext"])
+        self.assertEqual(traces[0]["selectedContextCount"], 0)
