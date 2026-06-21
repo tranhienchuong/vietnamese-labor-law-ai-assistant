@@ -29,6 +29,7 @@ import {
 } from "./backend"
 import { useAuth } from "./auth"
 import { LEGAL_DISCLAIMER, missingSupabaseConfig, PRODUCT_NAME } from "./config"
+import assistantAvatar from "./assistant-avatar.png"
 
 const suggestedPrompts = [
   "Người lao động được định nghĩa như thế nào?",
@@ -80,9 +81,9 @@ function LandingPage() {
     <div className="min-h-screen overflow-hidden bg-background text-foreground">
       <MarketingHeader />
       <main>
-        <section className="relative border-b border-border bg-background">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(37,99,235,0.12),transparent_38%)]" />
-          <div className="relative mx-auto grid min-h-[calc(100vh-8rem)] max-w-6xl items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
+        <section className="relative border-b border-border hero-gradient-bg">
+          <div className="hero-grid-overlay" />
+          <div className="relative mx-auto grid min-h-[calc(100vh-8rem)] max-w-6xl items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8 z-10">
             <div className="text-center lg:text-left">
               <h1 className="text-4xl font-semibold tracking-normal text-foreground sm:text-5xl">
                 Hỏi đáp luật lao động Việt Nam
@@ -101,6 +102,14 @@ function LandingPage() {
             </div>
             <LegalHeroScene />
           </div>
+
+          {/* Bottom wave curve */}
+          <div className="absolute bottom-0 left-0 right-0 w-full overflow-hidden leading-[0] pointer-events-none z-0">
+            <svg className="relative block w-full h-[60px] md:h-[80px]" viewBox="0 0 1200 120" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M0,60 C400,110 800,30 1200,80 L1200,120 L0,120 Z" fill="#ffffff" opacity="0.45"></path>
+              <path d="M0,80 C300,120 600,40 1200,90 L1200,120 L0,120 Z" fill="#ffffff"></path>
+            </svg>
+          </div>
         </section>
       </main>
       <Footer />
@@ -110,20 +119,82 @@ function LandingPage() {
 
 function LegalHeroScene() {
   return (
-    <div className="legal-scene mx-auto w-full max-w-xl" aria-hidden="true">
-      <div className="legal-scene__grid" />
-      <div className="legal-scene__scan" />
-      <div className="legal-node legal-node--primary">
-        <Scale className="h-6 w-6" />
+    <div className="chatbot-hero-container mx-auto" aria-hidden="true">
+      {/* Sparkles */}
+      <div className="floating-element animate-twinkle-1" style={{ top: "10%", left: "8%" }}>
+        <svg className="w-5 h-5 floating-sparkle" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 0l3 9 9 3-9 3-3 9-3-9-9-3 9-3z" />
+        </svg>
       </div>
-      <div className="legal-node legal-node--one">Bộ luật Lao động 2019</div>
-      <div className="legal-node legal-node--two">Điều 35</div>
-      <div className="legal-node legal-node--three">Nghị định 145/2020/NĐ-CP</div>
-      <div className="legal-card legal-card--answer">
-        <p className="text-xs font-semibold uppercase tracking-wide text-primary">Căn cứ được truy xuất</p>
-        <p className="mt-3 text-sm leading-6 text-foreground">
-          Hệ thống gom các điều khoản liên quan, sau đó trình bày thành câu trả lời có căn cứ.
-        </p>
+      <div className="floating-element animate-twinkle-2" style={{ top: "75%", right: "2%" }}>
+        <svg className="w-4 h-4 floating-sparkle" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 0l3 9 9 3-9 3-3 9-3-9-9-3 9-3z" />
+        </svg>
+      </div>
+      <div className="floating-element animate-twinkle-3" style={{ top: "45%", right: "90%" }}>
+        <svg className="w-6 h-6 floating-sparkle" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 0l3 9 9 3-9 3-3 9-3-9-9-3 9-3z" />
+        </svg>
+      </div>
+
+      {/* Floating Scale of Justice */}
+      <div className="floating-element floating-scale-card animate-sway">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-amber-500/10 text-amber-500">
+          <Scale className="h-6 w-6" />
+        </div>
+      </div>
+
+      {/* Floating Search Glass */}
+      <div className="floating-element floating-search-card animate-pulse-glow-1">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/10 text-blue-600">
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </div>
+      </div>
+
+      {/* Floating Shield Check */}
+      <div className="floating-element floating-shield-card animate-pulse-glow-2">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        </div>
+      </div>
+
+      {/* Main Chatbot Window */}
+      <div className="chatbot-window">
+        <div className="chatbot-header">
+          <div className="chatbot-status">
+            <div className="chatbot-status-dot" />
+            <div className="flex flex-col">
+              <span className="text-[11px] font-bold text-gray-800 leading-tight">Trợ lý Luật lao động Việt Nam</span>
+              <span className="text-[9px] text-emerald-500 font-medium">Hoạt động</span>
+            </div>
+          </div>
+          <div className="chatbot-window-controls">
+            <div className="chatbot-dot bg-red-400" />
+            <div className="chatbot-dot bg-yellow-400" />
+            <div className="chatbot-dot bg-green-400" />
+          </div>
+        </div>
+
+        <div className="chatbot-body">
+          <div className="chatbot-bubble">
+            Xin chào! 👋 Tôi có thể hỗ trợ gì cho bạn về luật lao động hôm nay?
+          </div>
+          <div className="chatbot-avatar-container">
+            <div className="chatbot-avatar-bg-glow" />
+            <img src={assistantAvatar} alt="Trợ lý AI" className="chatbot-avatar-img" />
+          </div>
+        </div>
+
+        <div className="chatbot-input-mock">
+          <span className="chatbot-input-text">Hỏi về hợp đồng, tiền lương, nghỉ phép...</span>
+          <div className="chatbot-input-btn">
+            <SendHorizontal className="h-3.5 w-3.5" />
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -166,8 +237,9 @@ function AuthPage({ mode }: { mode: "signin" | "register" }) {
         <p className="text-xs leading-5 text-slate-400">{LEGAL_DISCLAIMER}</p>
       </section>
 
-      <section className="flex items-center justify-center px-4 py-10 sm:px-6">
-        <div className="w-full max-w-md rounded-lg border border-border bg-surface p-6 shadow-soft">
+      <section className="flex items-center justify-center px-4 py-10 sm:px-6 relative hero-gradient-bg">
+        <div className="hero-grid-overlay" />
+        <div className="relative w-full max-w-md rounded-lg border border-border bg-surface/90 backdrop-blur p-6 shadow-soft z-10">
           <h2 className="text-xl font-semibold">
             {mode === "signin" ? "Đăng nhập" : "Tạo tài khoản"}
           </h2>
@@ -365,8 +437,9 @@ function ResearchApp() {
       />
       <main className="flex min-w-0 flex-1 flex-col">
         <AppHeader />
-        <section className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-3xl space-y-5">
+        <section className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 relative hero-gradient-bg">
+          <div className="hero-grid-overlay" />
+          <div className="relative mx-auto max-w-3xl space-y-5 z-10">
             {messages.length === 0 ? (
               <EmptyState onPromptSelect={setQuestion} />
             ) : (
@@ -400,7 +473,7 @@ function ResearchApp() {
           </div>
         </section>
         <form
-          className="border-t border-border bg-background/95 px-4 py-4 sm:px-6"
+          className="border-t border-border bg-surface/85 backdrop-blur px-4 py-4 sm:px-6 z-10"
           onSubmit={submitQuestion}
           ref={formRef}
         >
@@ -744,8 +817,10 @@ function AdminAccessState({
 
 function EmptyState({ onPromptSelect }: { onPromptSelect: (prompt: string) => void }) {
   return (
-    <div className="grid min-h-[55vh] content-center gap-8 text-center">
-      <LegalHeroScene />
+    <div className="grid min-h-[45vh] content-center gap-8 text-center">
+      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <Scale className="h-8 w-8" />
+      </div>
       <div className="mx-auto max-w-2xl">
         <h1 className="text-2xl font-semibold sm:text-3xl">
           Bạn muốn tra cứu vấn đề lao động nào?
