@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+from typing import Sequence
 
 from ...corpus_pipeline import normalize_for_matching
+from ...retriever import RetrievalContext, dedupe_preserve_order
 from .schema import ParsedAnswer
 
 LEADING_QUESTION_SECTION_RE = re.compile(
@@ -25,7 +27,8 @@ SUMMARY_OR_RECOMMENDATION_RE = re.compile(
 )
 LEGAL_SECTION_RE = re.compile(
     r"(?im)^\s*(?:Căn\s+cứ\s+pháp\s+lý|Can\s+cu\s+phap\s+ly|"
-    r"Legal\s+basis|Evidence)\s*:\s*"
+    r"Căn\s+cứ\s+và\s+dẫn\s+chứng|Can\s+cu\s+va\s+dan\s+chung|"
+    r"Legal\s+basis(?:\s+and\s+evidence)?|Evidence)\s*:\s*"
 )
 PARENTHETICAL_CITATION_RE = re.compile(
     r"\s*\((?=[^)]*(?:Điều|Dieu|Article|Bộ luật|Bo luat|Labor Code|"
@@ -49,6 +52,14 @@ VIETNAMESE_HINT_RE = re.compile(
     r"can cu|phap ly|quy dinh|truong hop|cham dut|don phuong|thoi han|la gi)\b",
     re.IGNORECASE,
 )
+LEGAL_DETAIL_SPLIT_RE = re.compile(
+    r",\s*(?:Điều|Dieu|Article|Chương|Chuong|Chapter|Mục|Muc|Section|Phụ\s+lục|Phu\s+luc)\b.*$",
+    re.IGNORECASE,
+)
+LOWER_LEVEL_DETAIL_SPLIT_RE = re.compile(
+    r",\s*(?:khoản|khoan|clause|điểm|diem|point)\b.*$",
+    re.IGNORECASE,
+)
 
 
 def answer_language(question: str) -> str:
@@ -61,19 +72,17 @@ def answer_language(question: str) -> str:
     return "vi"
 
 
-def _labels(question: str) -> tuple[str, str, str, str]:
+def _labels(question: str) -> tuple[str, str, str]:
     if answer_language(question) == "en":
         return (
-            "Answer:",
-            "Legal basis and evidence:",
+            "Legal basis:",
             "I could not find enough legal context in the indexed sources to answer this reliably.",
-            "No supporting legal provision was retrieved for this answer.",
+            "No supporting legal document was retrieved for this answer.",
         )
     return (
-        "Trả lời:",
-        "Căn cứ và dẫn chứng:",
+        "Căn cứ pháp lý:",
         "Tôi chưa tìm thấy đủ căn cứ pháp lý trong nguồn đã lập chỉ mục để trả lời đáng tin cậy.",
-        "Chưa truy xuất được điều khoản pháp lý đủ để làm căn cứ cho câu trả lời này.",
+        "Chưa truy xuất được văn bản pháp lý đủ để làm căn cứ cho câu trả lời này.",
     )
 
 
@@ -88,9 +97,6 @@ def _clean_direct_answer(answer: str, *, question: str, fallback: str) -> str:
     cleaned = LEADING_QUESTION_SECTION_RE.sub("", answer or "").strip()
     cleaned = ANSWER_LABEL_RE.sub("", cleaned).strip()
     cleaned = _strip_section_from_heading(cleaned, LEGAL_SECTION_RE)
-    cleaned = _strip_section_from_heading(cleaned, SUMMARY_OR_RECOMMENDATION_RE)
-    cleaned = DETAIL_HEADING_RE.sub("", cleaned)
-    cleaned = PARENTHETICAL_CITATION_RE.sub("", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     cleaned = re.sub(r"[ \t]+", " ", cleaned)
     cleaned = cleaned.strip(" \n:-")
@@ -99,11 +105,53 @@ def _clean_direct_answer(answer: str, *, question: str, fallback: str) -> str:
     return fallback
 
 
-def _quote_line(citation: str, quote: str) -> str:
-    normalized_quote = re.sub(r"\s+", " ", quote).strip()
-    if normalized_quote:
-        return f"- {citation}: \"{normalized_quote}\""
-    return f"- {citation}"
+def _clean_document_title(title: str) -> str:
+    cleaned = re.sub(r"\s+", " ", str(title or "")).strip(" \t\n\r:;,.")
+    return cleaned
+
+
+def _document_title_from_citation(citation: str) -> str:
+    cleaned = _clean_document_title(citation)
+    cleaned = LEGAL_DETAIL_SPLIT_RE.sub("", cleaned)
+    cleaned = LOWER_LEVEL_DETAIL_SPLIT_RE.sub("", cleaned)
+    return _clean_document_title(cleaned)
+
+
+def _document_title_from_context(context: RetrievalContext) -> str:
+    payload = context.payload or {}
+    hierarchy = payload.get("document_hierarchy")
+    title = ""
+    if isinstance(hierarchy, dict):
+        title = str(hierarchy.get("document_title") or "")
+    title = str(payload.get("document_title") or title or "")
+    return _clean_document_title(title) or _document_title_from_citation(context.citation_text)
+
+
+def _context_matches_citation(context: RetrievalContext, citation: str) -> bool:
+    normalized_citation = normalize_for_matching(citation)
+    if not normalized_citation:
+        return False
+    candidates = (context.citation_text, *context.matched_citations)
+    return any(normalize_for_matching(candidate) == normalized_citation for candidate in candidates)
+
+
+def document_titles_for_legal_basis(
+    legal_basis: Sequence[str],
+    *,
+    contexts: Sequence[RetrievalContext] = (),
+) -> tuple[str, ...]:
+    titles: list[str] = []
+    for citation in legal_basis:
+        title = ""
+        for context in contexts:
+            if _context_matches_citation(context, citation):
+                title = _document_title_from_context(context)
+                break
+        if not title:
+            title = _document_title_from_citation(citation)
+        if title:
+            titles.append(title)
+    return dedupe_preserve_order(titles)
 
 
 def format_answer_for_user(
@@ -111,42 +159,36 @@ def format_answer_for_user(
     *,
     question: str = "",
     include_citations: bool = True,
+    contexts: Sequence[RetrievalContext] = (),
 ) -> str:
-    answer_label, evidence_label, fallback_answer, fallback_evidence = _labels(question)
+    legal_basis_label, fallback_answer, fallback_evidence = _labels(question)
     direct_answer = _clean_direct_answer(
         answer_payload.answer,
         question=question,
         fallback=fallback_answer,
     )
 
-    parts: list[str] = [answer_label, direct_answer, "", evidence_label]
     if not include_citations:
-        parts.append(f"- {fallback_evidence}")
-        return "\n".join(parts).strip()
+        return direct_answer
 
-    evidence_lines: list[str] = []
-    citations_with_quotes: set[str] = set()
-    for evidence_quote in answer_payload.evidence_quotes[:4]:
-        citation = evidence_quote.citation.strip()
-        if not citation:
-            continue
-        evidence_lines.append(_quote_line(citation, evidence_quote.quote))
-        citations_with_quotes.add(citation)
-
-    for citation in answer_payload.legal_basis:
-        clean_citation = citation.strip()
-        if clean_citation and clean_citation not in citations_with_quotes:
-            evidence_lines.append(f"- {clean_citation}")
-
-    if not evidence_lines:
-        evidence_lines.append(f"- {fallback_evidence}")
-
-    parts.extend(evidence_lines)
+    parts: list[str] = [direct_answer]
+    document_titles = ()
+    if not answer_payload.insufficient_context:
+        document_titles = document_titles_for_legal_basis(
+            answer_payload.legal_basis,
+            contexts=contexts,
+        )
+    if document_titles:
+        parts.extend(["", legal_basis_label])
+        parts.extend(f"- {title}" for title in document_titles)
+    elif not answer_payload.insufficient_context:
+        parts.extend(["", legal_basis_label, f"- {fallback_evidence}"])
     return "\n".join(parts).strip()
 
 
 __all__ = [
     "LEADING_QUESTION_SECTION_RE",
     "answer_language",
+    "document_titles_for_legal_basis",
     "format_answer_for_user",
 ]

@@ -12,6 +12,7 @@ from vn_labor_law_ai_assistant.answering import (
     build_messages,
     canonicalize_citation,
     citation_overlap_matches,
+    document_titles_for_legal_basis,
     extract_json_candidate,
     format_answer_for_user,
     order_contexts_for_answer,
@@ -96,11 +97,11 @@ class AnsweringTests(unittest.TestCase):
         )
 
         self.assertNotIn("Câu hỏi:", formatted)
-        self.assertIn("Trả lời:", formatted)
-        self.assertIn("Căn cứ và dẫn chứng:", formatted)
-        self.assertNotIn("Nội dung cụ thể như sau:", formatted)
-        self.assertNotIn("Tóm lại:", formatted)
-        self.assertNotIn("Khuyến nghị:", formatted)
+        self.assertNotIn("Trả lời:", formatted)
+        self.assertNotIn("Căn cứ và dẫn chứng:", formatted)
+        self.assertIn("Căn cứ pháp lý:", formatted)
+        self.assertIn("- Bo luat so 45/2019/QH14", formatted)
+        self.assertNotIn("Trường hợp do thôi việc", formatted)
 
     def test_format_answer_for_user_does_not_duplicate_styled_answer_sections(self) -> None:
         parsed = parse_answer_payload(
@@ -133,14 +134,12 @@ class AnsweringTests(unittest.TestCase):
 
         formatted = format_answer_for_user(parsed, question="Tôi nghỉ việc phải báo trước không?")
 
-        self.assertEqual(formatted.count("Trả lời:"), 1)
-        self.assertEqual(formatted.count("Căn cứ và dẫn chứng:"), 1)
+        self.assertNotIn("Trả lời:", formatted)
+        self.assertNotIn("Căn cứ và dẫn chứng:", formatted)
+        self.assertEqual(formatted.count("Căn cứ pháp lý:"), 1)
         self.assertNotIn("Câu hỏi:", formatted)
-        self.assertNotIn("Căn cứ pháp lý:", formatted)
-        self.assertNotIn("Nội dung cụ thể như sau:", formatted)
-        self.assertNotIn("Tóm lại:", formatted)
-        self.assertNotIn("Khuyến nghị:", formatted)
         self.assertIn("Phải báo trước theo loại hợp đồng.", formatted)
+        self.assertIn("- Bo luat so 45/2019/QH14", formatted)
 
     def test_format_answer_for_user_strips_model_question_section(self) -> None:
         parsed = parse_answer_payload(
@@ -159,7 +158,88 @@ class AnsweringTests(unittest.TestCase):
         formatted = format_answer_for_user(parsed, question="Tôi nghỉ việc phải báo trước không?")
 
         self.assertFalse(formatted.startswith("Câu hỏi:"))
-        self.assertTrue(formatted.startswith("Trả lời:"))
+        self.assertTrue(formatted.startswith("Căn cứ vào Bo luat so 45/2019/QH14"))
+        self.assertIn("Căn cứ pháp lý:", formatted)
+
+    def test_format_answer_for_user_uses_document_titles_only_for_basis(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="bll-3",
+                citation_text="Bộ luật Lao động 2019, Điều 3 (Giải thích từ ngữ), khoản 1",
+                text="Người lao động là người làm việc cho người sử dụng lao động theo thỏa thuận.",
+                payload={
+                    "document_id": "45-2019-qh14",
+                    "document_title": "Bộ luật Lao động 2019",
+                    "document_type": "bo_luat",
+                    "article_number": "3",
+                    "clause_ref": "1",
+                },
+                score=1.0,
+                matched_chunk_ids=("bll-3",),
+                matched_citations=("Bộ luật Lao động 2019, Điều 3 (Giải thích từ ngữ), khoản 1",),
+            ),
+        )
+        parsed = ParsedAnswer(
+            answer=(
+                "Theo khoản 1 Điều 3 Bộ luật Lao động 2019, người lao động là người làm việc "
+                "cho người sử dụng lao động theo thỏa thuận, được trả lương và chịu sự quản lý."
+            ),
+            legal_basis=("Bộ luật Lao động 2019, Điều 3 (Giải thích từ ngữ), khoản 1",),
+            evidence_quotes=(
+                EvidenceQuote(
+                    citation="Bộ luật Lao động 2019, Điều 3 (Giải thích từ ngữ), khoản 1",
+                    quote="Người lao động là người làm việc cho người sử dụng lao động theo thỏa thuận.",
+                ),
+            ),
+            insufficient_context=False,
+            notes="",
+            raw_content="",
+        )
+
+        formatted = format_answer_for_user(
+            parsed,
+            question="Người lao động được định nghĩa như thế nào?",
+            contexts=contexts,
+        )
+
+        self.assertIn("Theo khoản 1 Điều 3 Bộ luật Lao động 2019", formatted)
+        self.assertIn("Căn cứ pháp lý:", formatted)
+        self.assertIn("- Bộ luật Lao động 2019", formatted)
+        self.assertNotIn("- Bộ luật Lao động 2019, Điều 3", formatted)
+        self.assertNotIn("Người lao động là người làm việc cho người sử dụng lao động theo thỏa thuận.", formatted.split("Căn cứ pháp lý:", 1)[1])
+
+    def test_document_titles_for_legal_basis_deduplicates_context_titles(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="bll-21",
+                citation_text="Bộ luật Lao động 2019, Điều 21, khoản 1",
+                text="",
+                payload={"document_title": "Bộ luật Lao động 2019"},
+                score=1.0,
+                matched_chunk_ids=("bll-21",),
+                matched_citations=("Bộ luật Lao động 2019, Điều 21, khoản 1",),
+            ),
+            RetrievalContext(
+                chunk_id="bll-21-2",
+                citation_text="Bộ luật Lao động 2019, Điều 21, khoản 2",
+                text="",
+                payload={"document_title": "Bộ luật Lao động 2019"},
+                score=0.9,
+                matched_chunk_ids=("bll-21-2",),
+                matched_citations=("Bộ luật Lao động 2019, Điều 21, khoản 2",),
+            ),
+        )
+
+        titles = document_titles_for_legal_basis(
+            (
+                "Bộ luật Lao động 2019, Điều 21, khoản 1",
+                "Bộ luật Lao động 2019, Điều 21, khoản 2",
+                "Nghị định 145/2020/NĐ-CP, Điều 10",
+            ),
+            contexts=contexts,
+        )
+
+        self.assertEqual(titles, ("Bộ luật Lao động 2019", "Nghị định 145/2020/NĐ-CP"))
 
     def test_parse_answer_payload_accepts_valid_evidence_quotes(self) -> None:
         contexts = (
@@ -949,15 +1029,16 @@ class AnsweringTests(unittest.TestCase):
         )
 
         normalized_answer = normalize_for_matching(result.answer)
-        self.assertTrue(result.answer.startswith("Answer:"))
-        self.assertIn("Legal basis and evidence:", result.answer)
+        self.assertFalse(result.answer.startswith("Answer:"))
+        self.assertIn("Legal basis:", result.answer)
+        self.assertNotIn("Legal basis and evidence:", result.answer)
         self.assertNotIn("Trả lời:", result.answer)
         self.assertNotIn("Tóm lại:", result.answer)
         self.assertIn("worker under 15", result.answer.lower())
-        self.assertIn("dieu 145", normalized_answer)
-        self.assertIn("giao ket hop dong lao dong bang van ban", normalized_answer)
-        self.assertIn("bo tri gio lam viec", normalized_answer)
-        self.assertIn("kiem tra suc khoe dinh ky", normalized_answer)
+        self.assertIn("article 145", normalized_answer)
+        self.assertIn("employment contract must be made in writing", normalized_answer)
+        self.assertIn("working hours must not affect", normalized_answer)
+        self.assertIn("periodic health checks", normalized_answer)
 
     def test_minor_worker_specific_14_year_old_query_may_mention_14_year_old(self) -> None:
         contexts = (

@@ -46,11 +46,13 @@ def format_plain_answer(
     *,
     question: str = "",
     include_citations: bool = True,
+    contexts: Any = (),
 ) -> str:
     return format_answer_for_user(
         answer_payload,
         question=question,
         include_citations=include_citations,
+        contexts=contexts,
     )
 
 
@@ -330,6 +332,7 @@ async def chat(
         parsed,
         question=question,
         include_citations=bool(payload.get("includeCitations", True)),
+        contexts=answer_result.contexts,
     )
     citations = trace_citations_from_parsed(parsed)
     assistant_message = store.append_message(

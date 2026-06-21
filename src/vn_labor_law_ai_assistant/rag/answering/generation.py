@@ -329,7 +329,7 @@ def generate_grounded_answer(
         validation = validate_grounded_answer(parsed, selected_contexts)
         return GroundedAnswerResult(
             question=question,
-            answer=format_answer_for_user(parsed, question=question),
+            answer=format_answer_for_user(parsed, question=question, contexts=selected_contexts),
             parsed=parsed,
             validation=validation,
             contexts=selected_contexts,
@@ -401,7 +401,7 @@ def generate_grounded_answer(
 
     return GroundedAnswerResult(
         question=question,
-        answer=format_answer_for_user(parsed, question=question),
+        answer=format_answer_for_user(parsed, question=question, contexts=selected_contexts),
         parsed=parsed,
         validation=validation,
         contexts=selected_contexts,

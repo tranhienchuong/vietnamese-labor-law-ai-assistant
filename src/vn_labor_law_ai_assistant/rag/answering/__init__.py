@@ -19,7 +19,7 @@ from .citation_guard import (
     sanitize_evidence_quotes,
     sanitize_legal_basis,
 )
-from .formatter import LEADING_QUESTION_SECTION_RE, format_answer_for_user
+from .formatter import LEADING_QUESTION_SECTION_RE, document_titles_for_legal_basis, format_answer_for_user
 from .generation import (
     DEFAULT_ANSWER_CONTEXTS,
     GroundedAnswerResult,
@@ -76,6 +76,7 @@ __all__ = [
     "contains_percent_value",
     "context_matches_citation",
     "contextual_answer_override",
+    "document_titles_for_legal_basis",
     "extract_evidence_sentence",
     "extract_article_numbers",
     "extract_json_candidate",
