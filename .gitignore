@@ -5,7 +5,15 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 .artifacts/
-artifacts/
+artifacts/*
+!artifacts/index/
+artifacts/index/*
+!artifacts/index/current.json
+!artifacts/index/builds/
+artifacts/index/builds/*
+!artifacts/index/builds/build_20260603T163804Z/
+artifacts/index/builds/build_20260603T163804Z/*
+!artifacts/index/builds/build_20260603T163804Z/sparse_encoder.json
 .ROADMAP.md
 eval/results/*
 !eval/results/.gitkeep
