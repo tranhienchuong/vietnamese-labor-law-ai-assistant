@@ -1,4 +1,56 @@
 enable_procedural_routing: false
+domain_guard:
+  enabled: true
+  min_meaningful_tokens: 2
+  min_token_length: 2
+  min_domain_signals: 1
+  min_domain_phrase_chars: 3
+  direct_legal_reference_signals: true
+  keyword_sections:
+  - topics
+  - issues
+  - documents
+  additional_domain_terms:
+  - bo luat lao dong
+  - luat lao dong
+  - phap luat lao dong
+  - phap ly lao dong
+  - lao dong
+  - nguoi lao dong
+  - nguoi su dung lao dong
+  - nhan vien
+  - cong nhan
+  - cong ty
+  - doanh nghiep
+  - hop dong lao dong
+  - hdld
+  - tien luong
+  - luong
+  - nghi viec
+  - sa thai
+  - ky luat lao dong
+  - duoi 15 tuoi
+  - nguoi duoi 15 tuoi
+  - tranh chap lao dong
+  - thoi gian lam viec
+  - lam them gio
+  - minor worker
+  - minor workers
+  - workers under 15
+  - worker under 15
+  - employment contract
+  - labor code
+  - labour code
+  excluded_domain_terms:
+  - can cu
+  - ly do
+  - thong bao
+  - thanh toan
+  - phai tra
+  - boi thuong
+  - den bu
+  refusal_answer: |-
+    Cau hoi nay nam ngoai pham vi tro ly phap luat lao dong Viet Nam. Vui long hoi ve quan he lao dong, hop dong lao dong, tien luong, thoi gio lam viec, nghi viec, sa thai, tranh chap lao dong hoac cac van de lien quan trong bo du lieu hien co.
 actors:
   nguoi_lao_dong:
     keywords:

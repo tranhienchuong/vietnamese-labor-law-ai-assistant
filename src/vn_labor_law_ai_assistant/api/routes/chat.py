@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from ...answering import format_answer_for_user, generate_grounded_answer
 from ...auth_store import AuthUser
 from ...llm import DEFAULT_PROVIDER
+from ...rag.scope_guard import assess_question_domain
 from ...retriever import (
     DEFAULT_MAX_CONTEXT_CHARS,
     DEFAULT_MAX_CONTEXT_TOKENS,
@@ -148,6 +149,35 @@ async def chat(
             headers=response_headers(request_id=request_id),
         )
 
+    provider = str(payload.get("provider") or DEFAULT_PROVIDER)
+    model = str(payload.get("model") or "")
+    retrieve_only = bool(payload.get("retrieveOnly"))
+    domain_decision = assess_question_domain(question)
+    if domain_decision.out_of_domain:
+        store = get_app_store()
+        answer = domain_decision.refusal_answer
+        record_chat_trace_best_effort(
+            store=store,
+            user_id=current_user.id,
+            question=question,
+            request_id=request_id,
+            conversation_id=None,
+            message_id=None,
+            provider=provider,
+            model=model,
+            retrieve_only=retrieve_only,
+            insufficient_context=True,
+            total_start=total_start,
+            selected_contexts=(),
+            citations={"legal_basis": [], "evidence_quotes": []},
+            error=f"out_of_domain:{domain_decision.reason}",
+        )
+        return PlainTextResponse(
+            answer,
+            headers=response_headers(request_id=request_id),
+            media_type="text/plain; charset=utf-8",
+        )
+
     store = get_app_store()
     try:
         conversation = store.ensure_conversation_for_question(
@@ -163,9 +193,6 @@ async def chat(
         )
 
     conversation_id = str(conversation["id"])
-    provider = str(payload.get("provider") or DEFAULT_PROVIDER)
-    model = str(payload.get("model") or "")
-    retrieve_only = bool(payload.get("retrieveOnly"))
 
     retrieval_start = time.perf_counter()
     try:

@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Sequence
+import re
 
 from ..corpus_pipeline import normalize_for_matching
+from ..rule_loader import DEFAULT_RULE_CONFIG, RuleConfig
 from ..retriever import RetrievalContext
+
+
+LEGAL_REFERENCE_RE = re.compile(
+    r"\b(?:dieu|bo luat|nghi dinh|thong tu|nd-cp|qh\d*)\b|\b\d+\s*/\s*\d{4}\s*/\s*qh\d+\b"
+)
+TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
 @dataclass(frozen=True)
@@ -25,6 +33,15 @@ class ScopeGuardDecision:
     top_score: float
     topic_context_matches: int
     citation_topic_matches: int
+
+
+@dataclass(frozen=True)
+class DomainGuardDecision:
+    out_of_domain: bool
+    reason: str
+    matched_signals: tuple[str, ...]
+    meaningful_token_count: int
+    refusal_answer: str
 
 
 UNSUPPORTED_TOPIC_RULES: tuple[UnsupportedTopicRule, ...] = (
@@ -87,6 +104,129 @@ Tom lai:
 - Corpus hien tai khong co du can cu phap ly truc tiep cho noi dung duoc hoi.
 - Toi khong dua ra citation khong lien quan tu corpus hien co.
 - Can bo sung van ban dung pham vi truoc khi ket luan."""
+DEFAULT_OUT_OF_DOMAIN_ANSWER = (
+    "Cau hoi nay nam ngoai pham vi tro ly phap luat lao dong Viet Nam. "
+    "Vui long hoi ve quan he lao dong, hop dong lao dong, tien luong, "
+    "thoi gio lam viec, nghi viec, sa thai, tranh chap lao dong hoac cac van de lien quan."
+)
+
+
+def _domain_guard_config(rule_config: RuleConfig) -> Mapping[str, object]:
+    config = getattr(rule_config, "DOMAIN_GUARD", {}) or {}
+    return config if isinstance(config, Mapping) else {}
+
+
+def _configured_keyword_map(rule_config: RuleConfig, section_name: str) -> Mapping[str, Sequence[str]]:
+    if section_name == "topics":
+        return getattr(rule_config, "TOPIC_KEYWORDS", {})
+    if section_name == "issues":
+        return getattr(rule_config, "ISSUE_KEYWORDS", {})
+    if section_name == "documents":
+        return getattr(rule_config, "DOCUMENT_KEYWORDS", {})
+    if section_name == "actors":
+        return getattr(rule_config, "ACTOR_KEYWORDS", {})
+    return {}
+
+
+def _config_string_sequence(value: object) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, Sequence):
+        return tuple(str(item) for item in value)
+    return ()
+
+
+def _domain_signal_phrases(rule_config: RuleConfig, config: Mapping[str, object]) -> tuple[str, ...]:
+    minimum_chars = max(1, int(config.get("min_domain_phrase_chars") or 3))
+    excluded = {
+        normalized
+        for term in _config_string_sequence(config.get("excluded_domain_terms"))
+        if (normalized := normalize_for_matching(term))
+    }
+    phrases: list[str] = []
+
+    for section_name in _config_string_sequence(
+        config.get("keyword_sections") or ("topics", "issues", "documents")
+    ):
+        for keywords in _configured_keyword_map(rule_config, section_name).values():
+            for keyword in keywords:
+                normalized = normalize_for_matching(str(keyword))
+                if len(normalized) >= minimum_chars and normalized not in excluded:
+                    phrases.append(normalized)
+
+    for term in _config_string_sequence(config.get("additional_domain_terms")):
+        normalized = normalize_for_matching(term)
+        if len(normalized) >= minimum_chars and normalized not in excluded:
+            phrases.append(normalized)
+
+    return tuple(dict.fromkeys(phrases))
+
+
+def _meaningful_tokens(normalized_query: str, *, min_token_length: int) -> tuple[str, ...]:
+    return tuple(
+        token
+        for token in TOKEN_RE.findall(normalized_query)
+        if len(token) >= min_token_length
+    )
+
+
+def assess_question_domain(
+    question: str,
+    *,
+    rule_config: RuleConfig = DEFAULT_RULE_CONFIG,
+) -> DomainGuardDecision:
+    config = _domain_guard_config(rule_config)
+    refusal_answer = str(config.get("refusal_answer") or DEFAULT_OUT_OF_DOMAIN_ANSWER)
+    if config.get("enabled", True) is False:
+        return DomainGuardDecision(
+            out_of_domain=False,
+            reason="domain_guard_disabled",
+            matched_signals=(),
+            meaningful_token_count=0,
+            refusal_answer=refusal_answer,
+        )
+
+    normalized_query = normalize_for_matching(question)
+    min_token_length = max(1, int(config.get("min_token_length") or 2))
+    min_meaningful_tokens = max(1, int(config.get("min_meaningful_tokens") or 2))
+    tokens = _meaningful_tokens(normalized_query, min_token_length=min_token_length)
+
+    if bool(config.get("direct_legal_reference_signals", True)) and LEGAL_REFERENCE_RE.search(
+        normalized_query
+    ):
+        return DomainGuardDecision(
+            out_of_domain=False,
+            reason="direct_legal_reference_signal",
+            matched_signals=("legal_reference",),
+            meaningful_token_count=len(tokens),
+            refusal_answer=refusal_answer,
+        )
+
+    signals = tuple(
+        phrase for phrase in _domain_signal_phrases(rule_config, config) if phrase in normalized_query
+    )
+    min_domain_signals = max(1, int(config.get("min_domain_signals") or 1))
+    if len(signals) >= min_domain_signals:
+        return DomainGuardDecision(
+            out_of_domain=False,
+            reason="domain_signal_matched",
+            matched_signals=signals,
+            meaningful_token_count=len(tokens),
+            refusal_answer=refusal_answer,
+        )
+
+    reason = (
+        "too_few_meaningful_tokens"
+        if len(tokens) < min_meaningful_tokens
+        else "no_domain_signal"
+    )
+    return DomainGuardDecision(
+        out_of_domain=True,
+        reason=reason,
+        matched_signals=signals,
+        meaningful_token_count=len(tokens),
+        refusal_answer=refusal_answer,
+    )
 
 
 def _contains_all(text: str, terms: Sequence[str]) -> bool:
@@ -229,11 +369,14 @@ def build_scope_refusal_payload(decision: ScopeGuardDecision) -> dict[str, objec
 
 
 __all__ = [
+    "DEFAULT_OUT_OF_DOMAIN_ANSWER",
     "REFUSAL_ANSWER_TEMPLATE",
     "LOW_RETRIEVAL_CONFIDENCE_SCORE",
+    "DomainGuardDecision",
     "ScopeGuardDecision",
     "UNSUPPORTED_TOPIC_RULES",
     "UnsupportedTopicRule",
+    "assess_question_domain",
     "assess_scope",
     "build_scope_refusal_payload",
 ]
