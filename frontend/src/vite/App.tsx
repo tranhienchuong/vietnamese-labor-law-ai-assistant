@@ -1,18 +1,14 @@
 import {
   ArrowRight,
-  BookOpenCheck,
-  CheckCircle2,
   Copy,
-  FileText,
+  History,
   Loader2,
   LogOut,
-  MessageSquareText,
   Plus,
   Scale,
-  SearchCheck,
-  ShieldCheck
+  SendHorizontal
 } from "lucide-react"
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react"
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom"
 import {
   ApiError,
@@ -35,88 +31,13 @@ import { useAuth } from "./auth"
 import { LEGAL_DISCLAIMER, missingSupabaseConfig, PRODUCT_NAME } from "./config"
 
 const suggestedPrompts = [
-  "What is the legal definition of an employee?",
-  "When can an employee terminate a contract without prior notice?",
-  "What rules apply to workers under 15?",
-  "How is retirement age determined under Decree 135/2020/ND-CP?"
-]
-
-const commonTopics = [
-  "Employment contracts",
-  "Termination",
-  "Wages",
-  "Working hours",
-  "Leave",
-  "Minor workers",
-  "Retirement"
-]
-
-const sourceCoverage = [
-  "Labor Code 2019",
-  "Decree No. 145/2020/ND-CP",
-  "Decree No. 135/2020/ND-CP",
-  "Selected labor-related legal documents"
-]
-
-const sourceMetadata = [
-  { label: "Last indexed", value: "Configured by deployment" },
-  { label: "Coverage", value: "Vietnamese labor law only" },
-  { label: "Language", value: "English interface, Vietnamese legal source grounding" },
-  { label: "Citation support", value: "Enabled" }
-]
-
-const useCases = [
-  {
-    title: "Employment contracts",
-    description: "Review contract formation, required terms, probation, amendments, and statutory termination grounds."
-  },
-  {
-    title: "Working time and wages",
-    description: "Research working hours, overtime, wage payment rules, salary deductions, and related compliance questions."
-  },
-  {
-    title: "Workplace compliance",
-    description: "Support HR and legal checks for internal labor rules, obligations, and employer responsibilities."
-  },
-  {
-    title: "Special workers",
-    description: "Analyze rules for minor workers, older employees, and other worker categories with additional protections."
-  },
-  {
-    title: "Retirement and social policy",
-    description: "Research retirement age, transition schedules, and related labor-policy provisions."
-  }
-]
-
-const reliabilitySteps = [
-  {
-    title: "Retrieve",
-    description: "Retrieve relevant provisions from the indexed legal corpus."
-  },
-  {
-    title: "Ground",
-    description: "Generate answers only from retrieved legal context."
-  },
-  {
-    title: "Cite",
-    description: "Attach legal basis and source snippets."
-  },
-  {
-    title: "Limit",
-    description: "Refuse to speculate when context is insufficient."
-  }
-]
-
-const securityLimitations = [
-  "The assistant is designed for research support, not final legal advice.",
-  "Answers are limited to the indexed Vietnamese labor-law corpus.",
-  "The system may refuse questions outside the supported source coverage.",
-  "Users should verify citations before relying on an answer.",
-  "Authorized retrieval diagnostics are available for debugging and evaluation."
+  "Người lao động được định nghĩa như thế nào?",
+  "Khi nào người lao động được đơn phương chấm dứt hợp đồng?",
+  "Tuổi nghỉ hưu được xác định theo Nghị định 135/2020/NĐ-CP như thế nào?"
 ]
 
 const insufficientContextMessage =
-  "I could not find enough legal context in the indexed sources to answer this reliably."
+  "Không tìm thấy đủ căn cứ pháp lý trong nguồn đã lập chỉ mục để trả lời chắc chắn."
 
 export function App() {
   return (
@@ -156,175 +77,29 @@ export function App() {
 
 function LandingPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen overflow-hidden bg-background text-foreground">
       <MarketingHeader />
       <main>
-        <section className="border-b border-border bg-gradient-to-b from-white to-background" id="product">
-          <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_0.9fr] lg:px-8">
-            <div>
-              <span className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
-                Legal research assistant for Vietnamese labor law
-              </span>
-              <h1 className="mt-6 max-w-3xl text-4xl font-semibold tracking-normal text-foreground sm:text-5xl">
-                Vietnamese labor-law answers, grounded in official legal sources.
+        <section className="relative border-b border-border bg-background">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(37,99,235,0.12),transparent_38%)]" />
+          <div className="relative mx-auto grid min-h-[calc(100vh-8rem)] max-w-6xl items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
+            <div className="text-center lg:text-left">
+              <h1 className="text-4xl font-semibold tracking-normal text-foreground sm:text-5xl">
+                Hỏi đáp luật lao động Việt Nam
               </h1>
               <p className="mt-5 max-w-2xl text-base leading-8 text-muted-foreground">
-                Ask questions about employment contracts, wages, working hours,
-                leave, termination, retirement, and minor workers with answers
-                supported by retrieved legal provisions and citations.
+                Đặt câu hỏi về hợp đồng lao động, tiền lương, thời giờ làm việc,
+                nghỉ phép, chấm dứt hợp đồng và tuổi nghỉ hưu. Câu trả lời được
+                hỗ trợ bằng căn cứ pháp lý truy xuất từ hệ thống.
               </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <div className="mt-8 flex justify-center lg:justify-start">
                 <Link className="button-primary" to="/signin">
-                  Start researching
+                  Bắt đầu
                   <ArrowRight className="h-4 w-4" />
                 </Link>
-                <a className="button-secondary" href="#sources">
-                  View source coverage
-                </a>
-              </div>
-              <p className="mt-5 text-sm leading-6 text-muted-foreground">
-                {LEGAL_DISCLAIMER}
-              </p>
-            </div>
-            <ProductPreview />
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <FeatureCard
-              icon={BookOpenCheck}
-              title="Grounded legal answers"
-              description="Every response is generated from retrieved provisions in the indexed legal corpus."
-            />
-            <FeatureCard
-              icon={FileText}
-              title="Citation-first research"
-              description="Answers include legal bases, document names, article numbers, and source snippets."
-            />
-            <FeatureCard
-              icon={ShieldCheck}
-              title="Refuses unsupported answers"
-              description="When the retrieved context is insufficient, the assistant explains the limitation instead of guessing."
-            />
-            <FeatureCard
-              icon={SearchCheck}
-              title="Source audit trail"
-              description="Review the exact passages used to support each answer, including source metadata."
-            />
-          </div>
-        </section>
-
-        <section className="border-y border-border bg-surface" id="sources">
-          <div className="mx-auto grid max-w-7xl gap-8 px-4 py-16 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
-            <div>
-              <h2 className="text-3xl font-semibold">Source coverage</h2>
-              <p className="mt-4 text-sm leading-7 text-muted-foreground">
-                The assistant currently answers questions based on a curated
-                Vietnamese labor-law corpus.
-              </p>
-            </div>
-            <div className="space-y-5">
-              <div className="grid gap-3 sm:grid-cols-2">
-                {sourceCoverage.map((source) => (
-                  <div className="card flex items-center gap-3 p-4" key={source}>
-                    <CheckCircle2 className="h-4 w-4 text-success" />
-                    <span className="text-sm font-medium">{source}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {sourceMetadata.map((item) => (
-                  <div className="rounded-lg border border-border bg-background p-4" key={item.label}>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {item.label}
-                    </p>
-                    <p className="mt-2 text-sm font-medium">{item.value}</p>
-                  </div>
-                ))}
               </div>
             </div>
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8" id="use-cases">
-          <div className="max-w-2xl">
-            <h2 className="text-3xl font-semibold">Built for labor-law research workflows</h2>
-            <p className="mt-4 text-sm leading-7 text-muted-foreground">
-              Move from question to legal basis with workflows suited to legal,
-              HR, compliance, and academic review.
-            </p>
-          </div>
-          <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-            {useCases.map((useCase) => (
-              <article className="card p-5" key={useCase.title}>
-                <h3 className="text-base font-semibold">{useCase.title}</h3>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                  {useCase.description}
-                </p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="border-y border-border bg-surface" id="reliability">
-          <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-            <div className="max-w-2xl">
-              <h2 className="text-3xl font-semibold">Reliability by design</h2>
-              <p className="mt-4 text-sm leading-7 text-muted-foreground">
-                The assistant is built to connect each answer to the legal
-                context available in the indexed corpus.
-              </p>
-            </div>
-            <div className="mt-8 grid gap-4 md:grid-cols-4">
-              {reliabilitySteps.map((step, index) => (
-                <article className="rounded-lg border border-border bg-background p-5" key={step.title}>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-sm font-semibold text-white">
-                    {index + 1}
-                  </div>
-                  <h3 className="mt-5 text-base font-semibold">{step.title}</h3>
-                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                    {step.description}
-                  </p>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8" id="security">
-          <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
-            <div>
-              <h2 className="text-3xl font-semibold">Security and limitations</h2>
-              <p className="mt-4 text-sm leading-7 text-muted-foreground">
-                Designed for responsible legal research support with clear
-                limitations and citation review built into the workflow.
-              </p>
-            </div>
-            <div className="card p-5 shadow-sm">
-              <ul className="space-y-3">
-                {securityLimitations.map((item) => (
-                  <li className="flex gap-3 text-sm leading-6 text-muted-foreground" key={item}>
-                    <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-success" />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        <section className="border-t border-border bg-surface" id="about">
-          <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-            <div className="max-w-3xl">
-              <h2 className="text-3xl font-semibold">About {PRODUCT_NAME}</h2>
-              <p className="mt-4 text-sm leading-7 text-muted-foreground">
-                {PRODUCT_NAME} is a focused legal research workspace for
-                Vietnamese labor-law questions. It helps researchers, HR teams,
-                compliance reviewers, and students work with official source
-                grounding and clear limitations.
-              </p>
-            </div>
+            <LegalHeroScene />
           </div>
         </section>
       </main>
@@ -333,55 +108,22 @@ function LandingPage() {
   )
 }
 
-function ProductPreview() {
+function LegalHeroScene() {
   return (
-    <div className="card overflow-hidden shadow-soft">
-      <div className="border-b border-border bg-navy px-5 py-4 text-white">
-        <p className="text-xs uppercase tracking-wide text-slate-300">Research workspace</p>
-        <p className="mt-1 text-sm font-semibold">Contract termination review</p>
+    <div className="legal-scene mx-auto w-full max-w-xl" aria-hidden="true">
+      <div className="legal-scene__grid" />
+      <div className="legal-scene__scan" />
+      <div className="legal-node legal-node--primary">
+        <Scale className="h-6 w-6" />
       </div>
-      <div className="grid gap-4 p-5">
-        <div className="rounded-lg border border-border bg-background p-4">
-          <p className="text-xs font-semibold uppercase text-muted-foreground">Question</p>
-          <p className="mt-2 text-sm font-medium">
-            Can an employee terminate an employment contract without prior notice?
-          </p>
-        </div>
-        <div className="rounded-lg border border-border bg-surface p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <MessageSquareText className="h-4 w-4 text-primary" />
-            Generated legal answer
-          </div>
-          <p className="mt-3 text-sm leading-7 text-muted-foreground">
-            Under Vietnamese labor law, an employee may terminate the employment
-            contract without prior notice in specific statutory situations,
-            including not being assigned the agreed work, not being paid fully or
-            on time, being abused or harassed, or other legally defined grounds.
-          </p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Legal basis
-          </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <CitationPill title="Labor Code 2019" detail="Article 35" />
-            <CitationPill title="Decree No. 145/2020/ND-CP" detail="Related guidance" />
-          </div>
-        </div>
-        <div className="rounded-lg border border-border bg-background p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Retrieved source snippet
-          </p>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Employee termination rights may apply where statutory grounds are
-            satisfied, including non-payment, mistreatment, or failure to assign
-            agreed work.
-          </p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <button className="button-secondary h-9" type="button">Open source</button>
-          <button className="button-primary h-9" type="button">Copy answer</button>
-        </div>
+      <div className="legal-node legal-node--one">Bộ luật Lao động 2019</div>
+      <div className="legal-node legal-node--two">Điều 35</div>
+      <div className="legal-node legal-node--three">Nghị định 145/2020/NĐ-CP</div>
+      <div className="legal-card legal-card--answer">
+        <p className="text-xs font-semibold uppercase tracking-wide text-primary">Căn cứ được truy xuất</p>
+        <p className="mt-3 text-sm leading-6 text-foreground">
+          Hệ thống gom các điều khoản liên quan, sau đó trình bày thành câu trả lời có căn cứ.
+        </p>
       </div>
     </div>
   )
@@ -401,8 +143,8 @@ function AuthPage({ mode }: { mode: "signin" | "register" }) {
     setIsSubmitting(true)
     try {
       await signInWithGoogle()
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to start Google sign-in.")
+    } catch {
+      setError("Không thể bắt đầu đăng nhập bằng Google. Vui lòng thử lại.")
       setIsSubmitting(false)
     }
   }
@@ -415,10 +157,10 @@ function AuthPage({ mode }: { mode: "signin" | "register" }) {
         </Link>
         <div className="max-w-2xl py-12">
           <h1 className="text-3xl font-semibold tracking-normal sm:text-4xl">
-            {mode === "signin" ? "Sign in" : "Register"} to {PRODUCT_NAME}
+            {mode === "signin" ? "Đăng nhập" : "Đăng ký"} vào {PRODUCT_NAME}
           </h1>
           <p className="mt-4 max-w-xl text-sm leading-6 text-slate-300 sm:text-base">
-            Secure legal research workspace for Vietnamese labor-law Q&A.
+            Không gian tra cứu pháp luật lao động Việt Nam có căn cứ.
           </p>
         </div>
         <p className="text-xs leading-5 text-slate-400">{LEGAL_DISCLAIMER}</p>
@@ -427,14 +169,14 @@ function AuthPage({ mode }: { mode: "signin" | "register" }) {
       <section className="flex items-center justify-center px-4 py-10 sm:px-6">
         <div className="w-full max-w-md rounded-lg border border-border bg-surface p-6 shadow-soft">
           <h2 className="text-xl font-semibold">
-            {mode === "signin" ? "Sign in" : "Create your account"}
+            {mode === "signin" ? "Đăng nhập" : "Tạo tài khoản"}
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Use Google OAuth through Supabase Auth.
+            Sử dụng tài khoản Google để tiếp tục.
           </p>
           {missingSupabaseConfig ? (
             <div className="mt-4 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
-              Missing Supabase frontend environment variables.
+              Thiếu cấu hình Supabase cho giao diện.
             </div>
           ) : null}
           {error ? (
@@ -449,12 +191,12 @@ function AuthPage({ mode }: { mode: "signin" | "register" }) {
             type="button"
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Continue with Google
+            Tiếp tục với Google
           </button>
           <p className="mt-5 text-sm text-muted-foreground">
-            {mode === "signin" ? "Need access?" : "Already have access?"}{" "}
+            {mode === "signin" ? "Chưa có quyền truy cập?" : "Đã có quyền truy cập?"}{" "}
             <Link className="font-medium text-primary hover:underline" to={mode === "signin" ? "/register" : "/signin"}>
-              {mode === "signin" ? "Register" : "Sign in"}
+              {mode === "signin" ? "Đăng ký" : "Đăng nhập"}
             </Link>
           </p>
         </div>
@@ -482,7 +224,7 @@ function AuthCallbackPage() {
     <main className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="card flex items-center gap-3 p-5 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin text-primary" />
-        Completing secure sign-in...
+        Đang hoàn tất đăng nhập...
       </div>
     </main>
   )
@@ -506,19 +248,22 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function resizeQuestionInput(element: HTMLTextAreaElement | null) {
+  if (!element) return
+  element.style.height = "0px"
+  element.style.height = `${Math.min(element.scrollHeight, 144)}px`
+}
+
 function ResearchApp() {
   const { session } = useAuth()
+  const formRef = useRef<HTMLFormElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [question, setQuestion] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-
-  const latestAnswer = useMemo(
-    () => [...messages].reverse().find((message) => message.role === "assistant"),
-    [messages]
-  )
 
   const refreshConversations = useCallback(async () => {
     if (!session) return
@@ -533,6 +278,22 @@ function ResearchApp() {
   useEffect(() => {
     void refreshConversations()
   }, [refreshConversations])
+
+  useEffect(() => {
+    resizeQuestionInput(textareaRef.current)
+  }, [question])
+
+  function handleQuestionChange(event: ChangeEvent<HTMLTextAreaElement>) {
+    setQuestion(event.target.value)
+    resizeQuestionInput(event.currentTarget)
+  }
+
+  function handleQuestionKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault()
+      formRef.current?.requestSubmit()
+    }
+  }
 
   async function submitQuestion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -559,7 +320,7 @@ function ResearchApp() {
       }
       void refreshConversations()
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Unable to retrieve an answer."
+      const message = caught instanceof Error ? caught.message : "Không thể lấy câu trả lời."
       setError(isInsufficientContextError(message) ? insufficientContextMessage : message)
     } finally {
       setIsLoading(false)
@@ -596,16 +357,16 @@ function ResearchApp() {
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
-      <Sidebar
+      <HistorySidebar
+        conversationId={conversationId}
         conversations={conversations}
-        onNewResearch={startNewResearch}
-        onPromptSelect={setQuestion}
         onConversationSelect={selectConversation}
+        onNewResearch={startNewResearch}
       />
       <main className="flex min-w-0 flex-1 flex-col">
         <AppHeader />
         <section className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-4xl space-y-6">
+          <div className="mx-auto max-w-3xl space-y-5">
             {messages.length === 0 ? (
               <EmptyState onPromptSelect={setQuestion} />
             ) : (
@@ -628,7 +389,7 @@ function ResearchApp() {
             {isLoading ? (
               <div className="card flex items-center gap-2 p-4 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                Retrieving relevant legal provisions...
+                Đang truy xuất căn cứ pháp lý phù hợp...
               </div>
             ) : null}
             {error ? (
@@ -638,146 +399,114 @@ function ResearchApp() {
             ) : null}
           </div>
         </section>
-        <form className="border-t border-border bg-background/95 px-4 py-4 sm:px-6" onSubmit={submitQuestion}>
-          <div className="mx-auto max-w-4xl rounded-lg border border-border bg-surface p-2 shadow-soft">
-            <textarea
-              className="min-h-24 w-full resize-none rounded-md border-0 bg-transparent px-3 py-3 text-sm leading-6 outline-none placeholder:text-muted-foreground focus:ring-0"
-              onChange={(event) => setQuestion(event.target.value)}
-              placeholder="Ask a question about Vietnamese labor law..."
-              value={question}
-            />
-            <div className="flex flex-col gap-3 border-t border-border px-1 pt-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs leading-5 text-muted-foreground">{LEGAL_DISCLAIMER}</p>
-              <button className="button-primary" disabled={!question.trim() || isLoading} type="submit">
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Send
+        <form
+          className="border-t border-border bg-background/95 px-4 py-4 sm:px-6"
+          onSubmit={submitQuestion}
+          ref={formRef}
+        >
+          <div className="mx-auto max-w-3xl">
+            <div className="flex items-end gap-2 rounded-full border border-border bg-surface px-3 py-2 shadow-soft">
+              <textarea
+                className="max-h-36 min-h-11 flex-1 resize-none border-0 bg-transparent px-2 py-3 text-sm leading-5 outline-none placeholder:text-muted-foreground focus:ring-0"
+                onChange={handleQuestionChange}
+                onKeyDown={handleQuestionKeyDown}
+                placeholder="Hỏi về luật lao động Việt Nam..."
+                ref={textareaRef}
+                rows={1}
+                value={question}
+              />
+              <button
+                aria-label="Gửi câu hỏi"
+                className="button-primary h-11 w-11 shrink-0 rounded-full px-0"
+                disabled={!question.trim() || isLoading}
+                type="submit"
+              >
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <SendHorizontal className="h-4 w-4" />
+                )}
               </button>
             </div>
+            <p className="mt-2 px-3 text-xs leading-5 text-muted-foreground">{LEGAL_DISCLAIMER}</p>
           </div>
         </form>
       </main>
-      {latestAnswer ? (
-        <SourcePanel citations={latestAnswer.citations} />
-      ) : null}
     </div>
   )
 }
 
-function Sidebar({
+function HistorySidebar({
+  conversationId,
   conversations,
   onConversationSelect,
-  onNewResearch,
-  onPromptSelect
+  onNewResearch
 }: {
+  conversationId: string | null
   conversations: ConversationSummary[]
-  onConversationSelect: (id: string) => void
+  onConversationSelect: (id: string) => void | Promise<void>
   onNewResearch: () => void
-  onPromptSelect: (prompt: string) => void
 }) {
   return (
-    <aside className="hidden w-80 shrink-0 flex-col border-r border-border bg-surface lg:flex">
-      <div className="p-4">
-        <button className="button-primary w-full justify-start" onClick={onNewResearch} type="button">
+    <aside className="hidden w-72 shrink-0 flex-col border-r border-border bg-surface lg:flex">
+      <div className="border-b border-border p-4">
+        <Logo />
+        <button className="button-primary mt-4 w-full justify-start" onClick={onNewResearch} type="button">
           <Plus className="h-4 w-4" />
-          New research
+          Cuộc trò chuyện mới
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-        <SidebarSection title="Recent questions">
-          {conversations.length ? (
-            <div className="space-y-1">
-              {conversations.slice(0, 8).map((conversation) => (
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+        <div className="mb-2 flex items-center gap-2 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <History className="h-3.5 w-3.5" />
+          Lịch sử
+        </div>
+        {conversations.length ? (
+          <div className="space-y-1">
+            {conversations.map((conversation) => {
+              const active = conversation.id === conversationId
+              return (
                 <button
-                  className="w-full rounded-md px-3 py-2 text-left text-sm leading-5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  className={`w-full rounded-md px-3 py-2 text-left text-sm leading-5 transition-colors ${
+                    active
+                      ? "bg-primary/10 text-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
                   key={conversation.id}
-                  onClick={() => onConversationSelect(conversation.id)}
+                  onClick={() => void onConversationSelect(conversation.id)}
                   type="button"
                 >
-                  {conversation.title}
+                  <span className="line-clamp-2">{conversation.title || "Cuộc trò chuyện chưa đặt tên"}</span>
                 </button>
-              ))}
-            </div>
-          ) : (
-            <p className="rounded-md border border-border bg-background px-3 py-2 text-sm leading-5 text-muted-foreground">
-              Recent research will appear here.
-            </p>
-          )}
-        </SidebarSection>
-        <SidebarSection title="Source library">
-          <div className="rounded-md border border-border bg-background p-3">
-            <div className="space-y-2">
-              {sourceCoverage.map((source) => (
-                <div className="flex items-start gap-2 text-sm leading-5 text-muted-foreground" key={source}>
-                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
-                  <span>{source}</span>
-                </div>
-              ))}
-            </div>
+              )
+            })}
           </div>
-        </SidebarSection>
-        <SidebarSection title="Common topics">
-          <div className="grid gap-2">
-            {commonTopics.map((topic) => (
-              <button
-                className="rounded-md border border-border bg-background px-3 py-2 text-left text-sm hover:border-primary/40 hover:bg-primary/5"
-                key={topic}
-                onClick={() => onPromptSelect(promptForTopic(topic))}
-                type="button"
-              >
-                {topic}
-              </button>
-            ))}
-          </div>
-        </SidebarSection>
+        ) : (
+          <p className="rounded-md border border-border bg-background px-3 py-3 text-sm leading-6 text-muted-foreground">
+            Chưa có cuộc trò chuyện nào.
+          </p>
+        )}
       </div>
     </aside>
   )
 }
 
 function AppHeader() {
-  const { session, signOut, user } = useAuth()
-  const [isAdmin, setIsAdmin] = useState(false)
-
-  useEffect(() => {
-    let active = true
-    if (!session) {
-      setIsAdmin(false)
-      return
-    }
-    getCurrentUser(session)
-      .then((payload) => {
-        if (active) {
-          setIsAdmin(payload.user.role === "admin")
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setIsAdmin(false)
-        }
-      })
-    return () => {
-      active = false
-    }
-  }, [session])
+  const { signOut, user } = useAuth()
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-border bg-surface px-4 sm:px-6">
-      <Logo />
-      <div className="flex items-center gap-3">
+    <header className="flex min-h-16 items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3 sm:px-6">
+      <div className="lg:hidden">
+        <Logo compact />
+      </div>
+      <div className="hidden lg:block" />
+      <div className="flex items-center gap-2">
         <span className="hidden max-w-56 truncate text-sm text-muted-foreground md:block">
           {user?.email}
         </span>
-        <Link className="button-secondary h-9" to="/account">
-          Account
-        </Link>
-        {isAdmin ? (
-          <Link className="button-secondary h-9" to="/admin">
-            Admin
-          </Link>
-        ) : null}
         <button className="button-secondary h-9" onClick={() => void signOut()} type="button">
           <LogOut className="h-4 w-4" />
-          Sign out
+          Đăng xuất
         </button>
       </div>
     </header>
@@ -791,16 +520,16 @@ function AccountPage() {
       <MarketingHeader />
       <main className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="card p-6 shadow-soft">
-          <h1 className="text-2xl font-semibold">Account</h1>
+          <h1 className="text-2xl font-semibold">Tài khoản</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Manage your authenticated research session.
+            Quản lý phiên tra cứu đang đăng nhập.
           </p>
           <div className="mt-6 grid gap-3 text-sm">
-            <MetaRow label="Email" value={user?.email ?? "Unknown"} />
-            <MetaRow label="User ID" value={user?.id ?? "Unknown"} />
+            <MetaRow label="Email" value={user?.email ?? "Không xác định"} />
+            <MetaRow label="Mã người dùng" value={user?.id ?? "Không xác định"} />
           </div>
           <button className="button-primary mt-6" onClick={() => void signOut()} type="button">
-            Sign out
+            Đăng xuất
           </button>
         </div>
       </main>
@@ -845,7 +574,7 @@ function AdminPage() {
           setErrorStatus(caught.status)
           setErrorMessage(caught.message)
         } else {
-          setErrorMessage(caught instanceof Error ? caught.message : "Unable to load admin console.")
+          setErrorMessage("Không thể tải bảng quản trị.")
         }
       } finally {
         if (active) {
@@ -865,10 +594,9 @@ function AdminPage() {
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-3 border-b border-border pb-6 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold">Admin console</h1>
+            <h1 className="text-3xl font-semibold">Bảng quản trị</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Monitor authentication, runtime health, retrieval configuration,
-              and recent answer traces.
+              Theo dõi xác thực, trạng thái vận hành, cấu hình truy xuất và các lượt trả lời gần đây.
             </p>
           </div>
         </div>
@@ -876,7 +604,7 @@ function AdminPage() {
         {isLoading ? (
           <div className="card mt-8 flex items-center gap-3 p-5 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            Loading admin console...
+            Đang tải bảng quản trị...
           </div>
         ) : errorStatus ? (
           <AdminAccessState status={errorStatus} fallbackMessage={errorMessage} />
@@ -899,19 +627,25 @@ function AdminPage() {
 
             <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
               <div className="card p-5 shadow-sm">
-                <h2 className="text-lg font-semibold">Health</h2>
+                <h2 className="text-lg font-semibold">Trạng thái hệ thống</h2>
                 <div className="mt-5 space-y-3">
-                  {["database", "settings", "index", "qdrantConfig", "llmConfig"].map((key) => (
-                    <AdminKeyValueRow key={key} label={key} value={health[key] ?? { status: "unknown" }} />
+                  {[
+                    ["database", "Cơ sở dữ liệu"],
+                    ["settings", "Cấu hình"],
+                    ["index", "Chỉ mục"],
+                    ["qdrantConfig", "Cấu hình Qdrant"],
+                    ["llmConfig", "Cấu hình mô hình"]
+                  ].map(([key, label]) => (
+                    <AdminKeyValueRow key={key} label={label} value={health[key] ?? { status: "không xác định" }} />
                   ))}
                 </div>
               </div>
 
               <div className="card p-5 shadow-sm">
-                <h2 className="text-lg font-semibold">Retrieval configuration</h2>
+                <h2 className="text-lg font-semibold">Cấu hình truy xuất</h2>
                 <div className="mt-5 max-h-96 space-y-2 overflow-y-auto">
                   {Object.entries(retrievalConfig).map(([key, value]) => (
-                    <AdminKeyValueRow key={key} label={key} value={value} />
+                    <AdminKeyValueRow key={key} label={adminConfigLabel(key)} value={value} />
                   ))}
                 </div>
               </div>
@@ -919,18 +653,18 @@ function AdminPage() {
 
             <section className="card overflow-hidden shadow-sm">
               <div className="border-b border-border px-5 py-4">
-                <h2 className="text-lg font-semibold">Recent traces</h2>
+                <h2 className="text-lg font-semibold">Nhật ký trả lời gần đây</h2>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-border text-sm">
                   <thead className="bg-background text-left text-xs uppercase tracking-wide text-muted-foreground">
                     <tr>
-                      <th className="px-5 py-3 font-semibold">Created</th>
-                      <th className="px-5 py-3 font-semibold">Question</th>
-                      <th className="px-5 py-3 font-semibold">Provider / model</th>
-                      <th className="px-5 py-3 font-semibold">Insufficient context</th>
-                      <th className="px-5 py-3 font-semibold">Error</th>
-                      <th className="px-5 py-3 font-semibold">Latency</th>
+                      <th className="px-5 py-3 font-semibold">Thời điểm</th>
+                      <th className="px-5 py-3 font-semibold">Câu hỏi</th>
+                      <th className="px-5 py-3 font-semibold">Nhà cung cấp / mô hình</th>
+                      <th className="px-5 py-3 font-semibold">Thiếu ngữ cảnh</th>
+                      <th className="px-5 py-3 font-semibold">Lỗi</th>
+                      <th className="px-5 py-3 font-semibold">Độ trễ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -944,23 +678,23 @@ function AdminPage() {
                             {trace.question}
                           </td>
                           <td className="px-5 py-4 text-muted-foreground">
-                            {trace.provider || "Unknown"} / {trace.model || "default"}
+                            {trace.provider || "Không xác định"} / {trace.model || "mặc định"}
                           </td>
                           <td className="px-5 py-4">
-                            {trace.insufficientContext || trace.insufficient_context ? "Yes" : "No"}
+                            {trace.insufficientContext || trace.insufficient_context ? "Có" : "Không"}
                           </td>
                           <td className="max-w-xs px-5 py-4 text-muted-foreground">
-                            {trace.error || "None"}
+                            {trace.error || "Không có"}
                           </td>
                           <td className="whitespace-nowrap px-5 py-4 text-muted-foreground">
-                            {trace.latencyMs ?? trace.latency_ms ?? "N/A"} ms
+                            {trace.latencyMs ?? trace.latency_ms ?? "Chưa có"} ms
                           </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
                         <td className="px-5 py-6 text-muted-foreground" colSpan={6}>
-                          No traces found.
+                          Chưa có nhật ký nào.
                         </td>
                       </tr>
                     )}
@@ -985,9 +719,9 @@ function AdminAccessState({
   if (status === 403) {
     return (
       <div className="card mt-8 max-w-2xl p-6 shadow-sm">
-        <h2 className="text-xl font-semibold">Admin access required</h2>
+        <h2 className="text-xl font-semibold">Cần quyền quản trị</h2>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          Your account is authenticated, but it is not listed in ADMIN_EMAILS on the backend.
+          Tài khoản của bạn đã đăng nhập nhưng chưa nằm trong danh sách quản trị ở backend.
         </p>
       </div>
     )
@@ -996,37 +730,34 @@ function AdminAccessState({
   if (status === 401) {
     return (
       <div className="card mt-8 max-w-2xl p-6 shadow-sm">
-        <h2 className="text-xl font-semibold">Your session could not be verified. Please sign in again.</h2>
+        <h2 className="text-xl font-semibold">Không xác minh được phiên đăng nhập. Vui lòng đăng nhập lại.</h2>
       </div>
     )
   }
 
   return (
     <div className="mt-8 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-      {fallbackMessage || "Unable to load admin console."}
+      {fallbackMessage || "Không thể tải bảng quản trị."}
     </div>
   )
 }
 
 function EmptyState({ onPromptSelect }: { onPromptSelect: (prompt: string) => void }) {
   return (
-    <div className="grid min-h-[55vh] content-center gap-8">
-      <div className="mx-auto max-w-2xl text-center">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <SearchCheck className="h-6 w-6" />
-        </div>
-        <h1 className="mt-4 text-2xl font-semibold sm:text-3xl">
-          Ask a Vietnamese labor-law question
+    <div className="grid min-h-[55vh] content-center gap-8 text-center">
+      <LegalHeroScene />
+      <div className="mx-auto max-w-2xl">
+        <h1 className="text-2xl font-semibold sm:text-3xl">
+          Bạn muốn tra cứu vấn đề lao động nào?
         </h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          Research employment contracts, wages, working hours, leave,
-          termination, minor workers, and retirement with grounded legal answers.
+          Đặt câu hỏi bằng tiếng Việt; hệ thống sẽ tìm căn cứ pháp lý và trình bày câu trả lời có trích dẫn.
         </p>
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="mx-auto flex max-w-2xl flex-wrap justify-center gap-x-4 gap-y-2">
         {suggestedPrompts.map((prompt) => (
           <button
-            className="card p-4 text-left text-sm leading-6 hover:border-primary/50 hover:bg-primary/5"
+            className="text-sm leading-6 text-primary hover:underline"
             key={prompt}
             onClick={() => onPromptSelect(prompt)}
             type="button"
@@ -1048,137 +779,28 @@ function AnswerCard({
 }) {
   const [copied, setCopied] = useState(false)
   const legalBasis = citations?.legalBasis ?? []
-  const evidenceQuotes = citations?.evidenceQuotes ?? []
   async function copyAnswer() {
     await navigator.clipboard.writeText(content)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1500)
   }
 
-  function exportAnswer() {
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = "vietnam-labor-law-answer.txt"
-    link.click()
-    URL.revokeObjectURL(url)
-  }
-
   return (
-    <article className="card overflow-hidden shadow-sm">
-      <div className="border-b border-border bg-background px-4 py-3">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <ShieldCheck className="h-4 w-4 text-success" />
-          Grounded legal answer
-        </div>
-      </div>
-      <div className="space-y-5 p-4">
-        <section>
-          <h2 className="text-sm font-semibold">Answer</h2>
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-7">{content}</p>
-        </section>
-        <section className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-md border border-border bg-background px-3 py-3">
-            <h2 className="text-sm font-semibold">Legal basis</h2>
-            {legalBasis.length ? (
-              <ul className="mt-2 space-y-1 text-sm leading-6 text-muted-foreground">
-                {legalBasis.slice(0, 3).map((basis) => (
-                  <li key={basis}>{basis}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                No validated legal basis was returned.
-              </p>
-            )}
-          </div>
-          <div className="rounded-md border border-border bg-background px-3 py-3">
-            <h2 className="text-sm font-semibold">Retrieved provisions</h2>
-            {evidenceQuotes.length ? (
-              <p className="mt-2 line-clamp-4 text-sm leading-6 text-muted-foreground">
-                {evidenceQuotes[0].quote}
-              </p>
-            ) : (
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                No source passage was returned for this answer.
-              </p>
-            )}
-          </div>
-        </section>
-        <section className="rounded-md border border-success/20 bg-success/10 px-3 py-2 text-sm leading-6 text-success">
-          <span className="font-semibold">Reliability note: </span>
-          This answer is based only on the indexed labor-law source library.
-          Verify the cited provisions before use.
-        </section>
-        <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-          <button className="button-secondary h-9" onClick={copyAnswer} type="button">
-            <Copy className="h-4 w-4" />
-            {copied ? "Copied" : "Copy answer"}
-          </button>
-          <button className="button-secondary h-9" onClick={exportAnswer} type="button">
-            Export
-          </button>
-          <button className="button-secondary h-9" type="button">
-            Helpful
-          </button>
-          <button className="button-secondary h-9" type="button">
-            Not helpful
-          </button>
-        </div>
+    <article className="card p-4 shadow-sm">
+      <div className="space-y-3">
+        <p className="whitespace-pre-wrap text-sm leading-7">{content}</p>
+        {legalBasis.length ? (
+          <p className="border-t border-border pt-3 text-xs leading-5 text-muted-foreground">
+            <span className="font-medium text-foreground">Căn cứ pháp lý: </span>
+            {legalBasis.slice(0, 3).join(" | ")}
+          </p>
+        ) : null}
+        <button className="button-secondary h-9" onClick={copyAnswer} type="button">
+          <Copy className="h-4 w-4" />
+          {copied ? "Đã sao chép" : "Sao chép"}
+        </button>
       </div>
     </article>
-  )
-}
-
-function SourcePanel({ citations }: { citations?: ChatCitations }) {
-  const legalBasis = citations?.legalBasis ?? []
-  const evidenceQuotes = citations?.evidenceQuotes ?? []
-  return (
-    <aside className="hidden h-screen w-96 shrink-0 overflow-y-auto border-l border-border bg-surface xl:block">
-      <div className="border-b border-border px-5 py-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Source panel
-        </p>
-        <h2 className="mt-1 text-base font-semibold">Legal basis and provisions</h2>
-      </div>
-      <div className="space-y-4 p-5">
-        <CitationPill
-          title="Legal basis"
-          detail={
-            legalBasis.length
-              ? legalBasis.join(" | ")
-              : "No validated legal basis was returned."
-          }
-        />
-        <div className="rounded-lg border border-border bg-background p-4">
-          <h3 className="text-sm font-semibold">Retrieved provisions</h3>
-          {evidenceQuotes.length ? (
-            <div className="mt-3 space-y-4">
-              {evidenceQuotes.map((source) => (
-                <div className="space-y-1" key={`${source.citation}-${source.quote}`}>
-                  <p className="text-xs font-semibold leading-5 text-foreground">
-                    {source.citation}
-                  </p>
-                  <p className="line-clamp-[10] text-sm leading-6 text-muted-foreground">
-                    {source.quote}
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              No source passages were returned. The answer text is still shown
-              in the main panel for review.
-            </p>
-          )}
-        </div>
-        <div className="rounded-lg border border-success/20 bg-success/10 p-4 text-sm leading-6 text-success">
-          This system provides legal research support only and does not replace
-          professional legal advice.
-        </div>
-      </div>
-    </aside>
   )
 }
 
@@ -1186,26 +808,15 @@ function MarketingHeader() {
   const { session } = useAuth()
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link to="/">
           <Logo />
         </Link>
-        <nav className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
-          <a className="hover:text-foreground" href="/#product">Product</a>
-          <a className="hover:text-foreground" href="/#sources">Sources</a>
-          <a className="hover:text-foreground" href="/#use-cases">Use Cases</a>
-          <a className="hover:text-foreground" href="/#reliability">Reliability</a>
-          <a className="hover:text-foreground" href="/#security">Security</a>
-          <a className="hover:text-foreground" href="/#about">About</a>
-        </nav>
         <div className="flex items-center gap-2">
           {session ? (
-            <Link className="button-primary h-9" to="/app">Open app</Link>
+            <Link className="button-primary h-9" to="/app">Mở trợ lý</Link>
           ) : (
-            <>
-              <Link className="button-secondary h-9" to="/signin">Sign in</Link>
-              <Link className="button-primary h-9" to="/register">Start researching</Link>
-            </>
+            <Link className="button-primary h-9" to="/signin">Bắt đầu</Link>
           )}
         </div>
       </div>
@@ -1213,54 +824,14 @@ function MarketingHeader() {
   )
 }
 
-function Logo({ inverted = false }: { inverted?: boolean }) {
+function Logo({ compact = false, inverted = false }: { compact?: boolean; inverted?: boolean }) {
   return (
     <span className="flex items-center gap-3">
       <span className={`flex h-9 w-9 items-center justify-center rounded-md ${inverted ? "bg-white text-navy" : "bg-primary text-white"}`}>
         <Scale className="h-5 w-5" />
       </span>
-      <span className="font-semibold">{PRODUCT_NAME}</span>
+      {compact ? null : <span className="font-semibold">{PRODUCT_NAME}</span>}
     </span>
-  )
-}
-
-function FeatureCard({
-  description,
-  icon: Icon,
-  title
-}: {
-  description: string
-  icon: typeof BookOpenCheck
-  title: string
-}) {
-  return (
-    <article className="card p-5 shadow-sm">
-      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-        <Icon className="h-5 w-5" />
-      </div>
-      <h2 className="mt-5 text-base font-semibold">{title}</h2>
-      <p className="mt-3 text-sm leading-6 text-muted-foreground">{description}</p>
-    </article>
-  )
-}
-
-function SidebarSection({ children, title }: { children: React.ReactNode; title: string }) {
-  return (
-    <section className="mb-6">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {title}
-      </h2>
-      {children}
-    </section>
-  )
-}
-
-function CitationPill({ detail, title }: { detail: string; title: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-background p-4">
-      <p className="text-sm font-semibold">{title}</p>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p>
-    </div>
   )
 }
 
@@ -1284,15 +855,15 @@ function AdminKeyValueRow({ label, value }: { label: string; value: unknown }) {
 
 function adminStatCards(stats: AdminStats | null) {
   return [
-    { label: "Total users", value: stats?.totalUsers ?? 0 },
-    { label: "Active users", value: stats?.activeUsers ?? 0 },
-    { label: "Admin users", value: stats?.adminUsers ?? 0 },
-    { label: "Conversations", value: stats?.totalConversations ?? 0 },
-    { label: "Messages", value: stats?.totalMessages ?? 0 },
-    { label: "Total traces", value: stats?.totalTraces ?? 0 },
-    { label: "Traces with errors", value: stats?.tracesWithErrors ?? 0 },
+    { label: "Tổng người dùng", value: stats?.totalUsers ?? 0 },
+    { label: "Người dùng hoạt động", value: stats?.activeUsers ?? 0 },
+    { label: "Quản trị viên", value: stats?.adminUsers ?? 0 },
+    { label: "Cuộc trò chuyện", value: stats?.totalConversations ?? 0 },
+    { label: "Tin nhắn", value: stats?.totalMessages ?? 0 },
+    { label: "Tổng nhật ký", value: stats?.totalTraces ?? 0 },
+    { label: "Nhật ký có lỗi", value: stats?.tracesWithErrors ?? 0 },
     {
-      label: "Insufficient-context traces",
+      label: "Nhật ký thiếu ngữ cảnh",
       value: stats?.insufficientContextTraces ?? 0
     }
   ]
@@ -1300,17 +871,88 @@ function adminStatCards(stats: AdminStats | null) {
 
 function formatAdminValue(value: unknown): string {
   if (value === null || value === undefined || value === "") {
-    return "Not configured"
+    return "Chưa cấu hình"
   }
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return String(value)
+    return localizeAdminScalar(value)
   }
-  return JSON.stringify(value)
+  return JSON.stringify(localizeAdminValue(value))
+}
+
+function localizeAdminValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(localizeAdminValue)
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested]) => [
+        adminConfigLabel(key),
+        localizeAdminValue(nested)
+      ])
+    )
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return localizeAdminScalar(value)
+  }
+  return value
+}
+
+function localizeAdminScalar(value: string | number | boolean): string {
+  if (typeof value === "boolean") {
+    return value ? "Có" : "Không"
+  }
+  const text = String(value)
+  const normalized = text.toLowerCase()
+  const replacements: Record<string, string> = {
+    ok: "ổn định",
+    configured: "đã cấu hình",
+    missing: "thiếu cấu hình",
+    local: "cục bộ",
+    degraded: "suy giảm",
+    error: "lỗi",
+    "database is reachable.": "Có thể kết nối cơ sở dữ liệu.",
+    "settings loaded.": "Đã tải cấu hình.",
+    "required settings are missing.": "Thiếu cấu hình bắt buộc.",
+    "index path exists.": "Đường dẫn chỉ mục tồn tại.",
+    "index path does not exist.": "Đường dẫn chỉ mục không tồn tại."
+  }
+  return replacements[normalized] ?? text
+}
+
+function adminConfigLabel(key: string): string {
+  const labels: Record<string, string> = {
+    activeSessions: "Phiên hoạt động",
+    authProvider: "Nhà cung cấp xác thực",
+    collection: "Bộ sưu tập",
+    database: "Cơ sở dữ liệu",
+    denseModel: "Mô hình dense",
+    embeddingProvider: "Nhà cung cấp embedding",
+    error: "Lỗi",
+    graphEnabled: "Bật đồ thị",
+    index: "Chỉ mục",
+    indexPath: "Đường dẫn chỉ mục",
+    llmConfig: "Cấu hình mô hình",
+    message: "Thông báo",
+    model: "Mô hình",
+    path: "Đường dẫn",
+    provider: "Nhà cung cấp",
+    qdrantCollection: "Bộ sưu tập Qdrant",
+    qdrantConfig: "Cấu hình Qdrant",
+    qdrantUrl: "Đường dẫn Qdrant",
+    rerankerModel: "Mô hình xếp hạng lại",
+    rerankerTopN: "Số kết quả xếp hạng lại",
+    retrieverRecordSource: "Nguồn bản ghi truy xuất",
+    settings: "Cấu hình",
+    status: "Trạng thái",
+    topK: "Số kết quả truy xuất",
+    usesCloud: "Dùng dịch vụ đám mây"
+  }
+  return labels[key] ?? key
 }
 
 function formatDate(value: string | undefined): string {
   if (!value) {
-    return "Unknown"
+    return "Không xác định"
   }
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
@@ -1321,38 +963,12 @@ function formatDate(value: string | undefined): string {
 
 function Footer() {
   return (
-    <footer className="bg-navy text-white">
-      <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_auto] lg:px-8">
-        <div>
-          <Logo inverted />
-          <p className="mt-4 max-w-xl text-sm leading-6 text-slate-300">
-            Secure legal research support for Vietnamese labor-law questions.
-          </p>
-          <p className="mt-4 text-xs leading-5 text-slate-400">{LEGAL_DISCLAIMER}</p>
-        </div>
-        <nav className="grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
-          <a className="hover:text-white" href="/#product">Product</a>
-          <a className="hover:text-white" href="/#sources">Sources</a>
-          <a className="hover:text-white" href="/#reliability">Reliability</a>
-          <a className="hover:text-white" href="/#security">Security</a>
-          <a className="hover:text-white" href="/#about">About</a>
-        </nav>
+    <footer className="border-t border-border bg-surface">
+      <div className="mx-auto max-w-3xl px-4 py-4 text-center text-xs leading-5 text-muted-foreground sm:px-6 lg:px-8">
+        {LEGAL_DISCLAIMER}
       </div>
     </footer>
   )
-}
-
-function promptForTopic(topic: string) {
-  const prompts: Record<string, string> = {
-    "Employment contracts": "What clauses must be included in an employment contract?",
-    Termination: "When can an employee terminate a contract without prior notice?",
-    Wages: "What rules govern wage payment under Vietnamese labor law?",
-    "Working hours": "What are the legal limits on working hours and overtime?",
-    Leave: "What leave rights are recognized under Vietnamese labor law?",
-    "Minor workers": "What rules apply to workers under 15?",
-    Retirement: "How is retirement age determined under Decree 135/2020/ND-CP?"
-  }
-  return prompts[topic] ?? topic
 }
 
 function isInsufficientContextError(message: string) {

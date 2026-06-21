@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import Mock, patch
@@ -10,6 +11,7 @@ from fastapi.testclient import TestClient
 
 import vn_labor_law_ai_assistant.api.deps as api_deps
 from vn_labor_law_ai_assistant.api import app
+from vn_labor_law_ai_assistant.answering import EvidenceQuote, ParsedAnswer
 from vn_labor_law_ai_assistant.core.config import get_settings
 from vn_labor_law_ai_assistant.heuristic_router import QueryIntent
 from vn_labor_law_ai_assistant.observability import ChatTraceService
@@ -192,16 +194,45 @@ class ChatTracingTest(TestCase):
 
     def test_chat_json_response_includes_sources(self) -> None:
         token = self._token_for("user@example.com", "user12345")
+        citation = "Bo luat so 45/2019/QH14, Dieu 35, khoan 1"
+        parsed = ParsedAnswer(
+            answer="Nguoi lao dong co quyen don phuong cham dut hop dong.",
+            legal_basis=(citation,),
+            evidence_quotes=(
+                EvidenceQuote(
+                    citation=citation,
+                    quote="Nguoi lao dong co quyen don phuong cham dut hop dong.",
+                ),
+            ),
+            insufficient_context=False,
+            notes="",
+            raw_content="{}",
+        )
 
-        with patch(
-            "vn_labor_law_ai_assistant.api.routes.chat.get_retriever",
-            return_value=FakeRetriever(),
+        with (
+            patch(
+                "vn_labor_law_ai_assistant.api.routes.chat.get_retriever",
+                return_value=FakeRetriever(),
+            ),
+            patch(
+                "vn_labor_law_ai_assistant.api.routes.chat.generate_grounded_answer",
+                return_value=SimpleNamespace(
+                    parsed=parsed,
+                    contexts=FakeRetriever().retrieve(
+                        "Toi muon nghi viec",
+                        top_k=8,
+                        prefetch_limit=24,
+                    ).contexts,
+                    provider="groq",
+                    model="test-model",
+                ),
+            ) as generate_answer,
         ):
             response = self.client.post(
                 "/chat",
                 json={
                     "messages": [{"role": "user", "content": "Toi muon nghi viec"}],
-                    "provider": "extractive",
+                    "provider": "groq",
                     "responseFormat": "json",
                 },
                 headers={"Authorization": f"Bearer {token}"},
@@ -220,6 +251,22 @@ class ChatTracingTest(TestCase):
         )
         self.assertEqual(len(payload["evidenceQuotes"]), 1)
         self.assertIn("Nguoi lao dong", payload["evidenceQuotes"][0]["quote"])
+        self.assertFalse(generate_answer.call_args.kwargs["fallback_on_invalid"])
+
+    def test_chat_rejects_extractive_provider(self) -> None:
+        token = self._token_for("user@example.com", "user12345")
+
+        response = self.client.post(
+            "/chat",
+            json={
+                "messages": [{"role": "user", "content": "Toi muon nghi viec"}],
+                "provider": "extractive",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("extractive", response.json()["error"])
 
     def test_chat_no_context_fallback_uses_valid_vietnamese_text(self) -> None:
         token = self._token_for("user@example.com", "user12345")

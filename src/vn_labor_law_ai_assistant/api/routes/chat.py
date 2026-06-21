@@ -23,6 +23,7 @@ from ..deps import get_app_store, get_retriever, require_current_user
 
 router = APIRouter()
 LOGGER = logging.getLogger(__name__)
+DISALLOWED_CHAT_PROVIDERS = frozenset({"extractive", "local", "none"})
 
 
 def extract_last_user_message(payload: dict[str, Any]) -> str:
@@ -76,6 +77,10 @@ def wants_json_response(payload: dict[str, Any]) -> bool:
         payload.get("responseFormat") or payload.get("response_format") or ""
     ).strip().lower()
     return response_format in {"json", "structured"}
+
+
+def provider_is_disabled_for_chat(provider: str) -> bool:
+    return provider.strip().lower() in DISALLOWED_CHAT_PROVIDERS
 
 
 def trace_citations_from_parsed(parsed: Any | None) -> dict[str, Any]:
@@ -196,6 +201,17 @@ async def chat(
     model = str(payload.get("model") or "")
     retrieve_only = bool(payload.get("retrieveOnly"))
     json_response = wants_json_response(payload)
+    if provider_is_disabled_for_chat(provider):
+        return JSONResponse(
+            {
+                "error": (
+                    "The chat API does not support extractive generation. "
+                    "Use an LLM provider for app answers; extractive is reserved for evaluation."
+                )
+            },
+            status_code=400,
+            headers=response_headers(request_id=request_id),
+        )
     domain_decision = assess_question_domain(question)
     if domain_decision.out_of_domain:
         store = get_app_store()
@@ -366,6 +382,7 @@ async def chat(
             provider=provider,
             model=model,
             temperature=float(payload.get("temperature") or 0),
+            fallback_on_invalid=False,
         )
         parsed = answer_result.parsed
         generation_latency_ms = elapsed_ms(generation_start)

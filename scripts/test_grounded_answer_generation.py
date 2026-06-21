@@ -77,7 +77,7 @@ def parse_args() -> argparse.Namespace:
         "--provider",
         type=str,
         default=os.getenv("ANSWER_GENERATION_PROVIDER", "extractive"),
-        help="Use 'extractive' for deterministic offline generation, or 'groq'/'auto' to call the LLM with fallback.",
+        help="Use 'extractive' for deterministic offline evaluation, or 'groq'/'auto' to call the LLM.",
     )
     parser.add_argument("--model", type=str, default=os.getenv("ANSWER_GENERATION_MODEL", os.getenv("GROQ_MODEL", "")))
     parser.add_argument("--reranker-model", type=str, default=os.getenv("RERANKER_MODEL", ""))

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from vn_labor_law_ai_assistant.answering import (
     ANSWER_JSON_SCHEMA,
@@ -889,6 +890,38 @@ class AnsweringTests(unittest.TestCase):
         self.assertIn("Bo luat Lao dong 2019, Dieu 107, khoan 2", result.answer)
         self.assertEqual(result.parsed.legal_basis, ("Bo luat Lao dong 2019, Dieu 107, khoan 2",))
 
+    def test_generate_grounded_answer_does_not_fallback_to_extractive_by_default(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="bll-35-1",
+                citation_text="Bo luat Lao dong 2019, Dieu 35, khoan 1",
+                text="Nguoi lao dong co quyen don phuong cham dut hop dong lao dong nhung phai bao truoc.",
+                payload={
+                    "document_id": "45-2019-qh14",
+                    "document_type": "bo_luat",
+                    "normative_rank": 1,
+                    "article_number": "35",
+                    "clause_ref": "1",
+                },
+                score=1.0,
+                matched_chunk_ids=("bll-35-1",),
+                matched_citations=("Bo luat Lao dong 2019, Dieu 35, khoan 1",),
+            ),
+        )
+
+        with (
+            patch(
+                "vn_labor_law_ai_assistant.llm.chat_completion",
+                side_effect=RuntimeError("llm unavailable"),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            generate_grounded_answer(
+                "Nguoi lao dong nghi viec phai bao truoc khong?",
+                contexts,
+                provider="groq",
+            )
+
     def test_generate_employee_definition_answer_uses_clause_text(self) -> None:
         contexts = (
             RetrievalContext(
@@ -926,6 +959,92 @@ class AnsweringTests(unittest.TestCase):
         self.assertNotIn("co co so phap ly de tra loi", normalized_answer)
         self.assertEqual(result.parsed.legal_basis, ("Bo luat Lao dong 2019, Dieu 3, khoan 1",))
         self.assertEqual(len(result.parsed.evidence_quotes), 1)
+
+    def test_generic_extractive_answer_prioritizes_question_relevant_context(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="bll-34-1",
+                citation_text="Bo luat Lao dong 2019, Dieu 34, khoan 1",
+                text="Dieu 34. Cac truong hop cham dut hop dong lao dong\n\n1. Het han hop dong lao dong.",
+                payload={
+                    "document_id": "45-2019-qh14",
+                    "document_type": "bo_luat",
+                    "normative_rank": 1,
+                    "article_number": "34",
+                    "clause_ref": "1",
+                    "article_title": "Cac truong hop cham dut hop dong lao dong",
+                },
+                score=0.99,
+                matched_chunk_ids=("bll-34-1",),
+                matched_citations=("Bo luat Lao dong 2019, Dieu 34, khoan 1",),
+            ),
+            RetrievalContext(
+                chunk_id="bll-35-1",
+                citation_text=(
+                    "Bo luat Lao dong 2019, Dieu 35 "
+                    "(Quyen don phuong cham dut hop dong lao dong cua nguoi lao dong), khoan 1"
+                ),
+                text=(
+                    "Dieu 35. Quyen don phuong cham dut hop dong lao dong cua nguoi lao dong\n\n"
+                    "1. Nguoi lao dong co quyen don phuong cham dut hop dong lao dong "
+                    "nhung phai bao truoc cho nguoi su dung lao dong theo thoi han luat dinh."
+                ),
+                payload={
+                    "document_id": "45-2019-qh14",
+                    "document_type": "bo_luat",
+                    "normative_rank": 1,
+                    "article_number": "35",
+                    "clause_ref": "1",
+                    "article_title": "Quyen don phuong cham dut hop dong lao dong cua nguoi lao dong",
+                },
+                score=0.9,
+                matched_chunk_ids=("bll-35-1",),
+                matched_citations=(
+                    "Bo luat Lao dong 2019, Dieu 35 "
+                    "(Quyen don phuong cham dut hop dong lao dong cua nguoi lao dong), khoan 1",
+                ),
+            ),
+            RetrievalContext(
+                chunk_id="bll-36-1",
+                citation_text=(
+                    "Bo luat Lao dong 2019, Dieu 36 "
+                    "(Quyen don phuong cham dut hop dong lao dong cua nguoi su dung lao dong), khoan 1"
+                ),
+                text="Nguoi su dung lao dong co quyen don phuong cham dut hop dong lao dong trong mot so truong hop.",
+                payload={
+                    "document_id": "45-2019-qh14",
+                    "document_type": "bo_luat",
+                    "normative_rank": 1,
+                    "article_number": "36",
+                    "clause_ref": "1",
+                    "article_title": "Quyen don phuong cham dut hop dong lao dong cua nguoi su dung lao dong",
+                },
+                score=0.8,
+                matched_chunk_ids=("bll-36-1",),
+                matched_citations=(
+                    "Bo luat Lao dong 2019, Dieu 36 "
+                    "(Quyen don phuong cham dut hop dong lao dong cua nguoi su dung lao dong), khoan 1",
+                ),
+            ),
+        )
+
+        result = generate_grounded_answer(
+            "Nguoi lao dong duoc don phuong cham dut hop dong lao dong trong tinh huong nao?",
+            contexts,
+            provider="extractive",
+        )
+
+        normalized_answer = normalize_for_matching(result.answer)
+        self.assertTrue(result.validation.passed)
+        self.assertEqual(
+            result.parsed.legal_basis[0],
+            "Bo luat Lao dong 2019, Dieu 35 "
+            "(Quyen don phuong cham dut hop dong lao dong cua nguoi lao dong), khoan 1",
+        )
+        self.assertIn("nguoi lao dong co quyen don phuong cham dut", normalized_answer)
+        self.assertIn("phai bao truoc", normalized_answer)
+        self.assertNotIn("nguoi su dung lao dong co quyen", normalized_answer)
+        self.assertNotIn("co co so phap ly de tra loi", normalized_answer)
 
     def test_low_information_quote_detection_rejects_article_titles(self) -> None:
         self.assertTrue(is_low_information_quote("Dieu 143."))

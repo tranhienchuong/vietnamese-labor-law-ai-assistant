@@ -104,8 +104,8 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
         ? payload.detail
         : typeof payload?.error === "string"
           ? payload.error
-          : `Request failed with status ${response.status}`
-    throw new ApiError(message, response.status)
+          : `Yêu cầu thất bại với mã ${response.status}`
+    throw new ApiError(localizeApiMessage(message), response.status)
   }
   return payload as T
 }
@@ -115,10 +115,36 @@ async function apiFetch(input: string, init?: RequestInit) {
     return await fetch(input, init)
   } catch {
     const message =
-      `Cannot reach the backend at ${apiBaseUrl}. ` +
-      "Make sure the FastAPI server is running, VITE_API_BASE_URL is correct, and the backend Supabase database connection is valid."
+      `Không thể kết nối backend tại ${apiBaseUrl}. ` +
+      "Hãy kiểm tra FastAPI server đã chạy, VITE_API_BASE_URL đúng và kết nối cơ sở dữ liệu Supabase hợp lệ."
     throw new ApiError(message, 0)
   }
+}
+
+function localizeApiMessage(message: string): string {
+  const normalized = message.toLowerCase()
+  if (normalized.includes("authentication required")) {
+    return "Bạn cần đăng nhập để tiếp tục."
+  }
+  if (normalized.includes("invalid or expired session")) {
+    return "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
+  }
+  if (normalized.includes("conversation not found")) {
+    return "Không tìm thấy cuộc trò chuyện."
+  }
+  if (normalized.includes("admin role required")) {
+    return "Bạn cần quyền quản trị để xem mục này."
+  }
+  if (normalized.includes("extractive generation")) {
+    return "Chế độ trích xuất chỉ dùng cho đánh giá, không dùng trong giao diện hỏi đáp."
+  }
+  if (normalized.includes("request failed with status")) {
+    return message.replace("Request failed with status", "Yêu cầu thất bại với mã")
+  }
+  if (normalized.includes("chat request failed with status")) {
+    return message.replace("Chat request failed with status", "Yêu cầu hỏi đáp thất bại với mã")
+  }
+  return message
 }
 
 export function emptyChatCitations(): ChatCitations {
@@ -191,8 +217,8 @@ export async function sendChatQuestion(
         ? payload.detail
         : typeof payload?.error === "string"
           ? payload.error
-          : fallback || `Chat request failed with status ${response.status}`
-    throw new Error(message)
+          : fallback || `Yêu cầu hỏi đáp thất bại với mã ${response.status}`
+    throw new Error(localizeApiMessage(message))
   }
   if (contentType.includes("application/json")) {
     const payload = (await response.json()) as ChatResponsePayload
@@ -217,7 +243,7 @@ export async function listConversations(session: Session) {
   return parseJsonResponse<{ conversations: ConversationSummary[] }>(response)
 }
 
-export async function createConversation(session: Session, title = "New research") {
+export async function createConversation(session: Session, title = "Cuộc trò chuyện mới") {
   const response = await apiFetch(`${apiBaseUrl}/conversations`, {
     method: "POST",
     headers: {
