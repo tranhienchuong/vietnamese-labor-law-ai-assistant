@@ -1,0 +1,109 @@
+\section{System Design and Methodology}
+
+\subsection{Overall RAG Pipeline}
+The architecture separates offline legal preparation from online answering. Offline components prepare hierarchy-aware legal chunks, build the dense--sparse Qdrant index, and load the Neo4j legal graph. Online components route the query, retrieve and expand evidence, assemble bounded contexts, generate an answer, validate citations, and return the result through the FastAPI chat route. This separation keeps expensive corpus processing outside the user request path while preserving the legal coordinates needed at runtime.
+
+At runtime, the assistant does not simply send retrieved text to a model. It routes the legal question, searches Qdrant with dense and sparse signals, repairs explicit legal-reference misses, optionally expands through a policy-controlled Neo4j graph, merges vector and graph evidence, filters and reranks candidates, assembles bounded contexts, then constructs a grounded answer that is checked against retrieved citations.
+
+\thesisfigure{figures/rag-pipeline.png}{RAG pipeline for citation-grounded Vietnamese labor-law question answering.}{fig:rag-pipeline}
+
+\subsection{Scoped Legal Corpus}
+The corpus is intentionally bounded. Table~\ref{tab:corpus-summary-draft} summarizes the six-document index used in the final evaluation.
+
+\begin{table}[H]
+  \centering
+  \caption{Scoped Legal Corpus Summary}
+  \label{tab:corpus-summary-draft}
+  \scriptsize
+  \begin{tabularx}{\linewidth}{@{}L{0.30\linewidth}L{0.30\linewidth}rr@{}}
+    \toprule
+    Document ID & Role & Rank & Chunks \\
+    \midrule
+    \path{45-2019-qh14} & Labor Code 2019 & 1 & 697 \\
+    \path{92-2015-qh13-labor-only} & Civil Procedure Code labor subset & 1 & 159 \\
+    \path{nghi-dinh-135-2020-nd-cp} & Retirement age decree & 2 & 41 \\
+    \path{nghi-dinh-145-2020-nd-cp} & Labor Code implementation decree & 2 & 520 \\
+    \makecell[l]{\texttt{thong-tu-09-2020-}\\\texttt{tt-bldtbxh}} & Minor worker circular & 3 & 73 \\
+    \makecell[l]{\texttt{thong-tu-10-2020-}\\\texttt{tt-bldtbxh}} & Labor contract circular & 3 & 66 \\
+    \midrule
+    Total & Six indexed document groups & & 1,556 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Hierarchy-Aware Processing}
+The corpus pipeline avoids arbitrary fixed windows. Legal units such as documents, articles, clauses, points, and appendices are preserved as retrieval records, with chunk identifiers, citation text, retrieval text, source metadata, legal coordinates, document type, normative rank, and taxonomy labels. This design costs more preprocessing effort, but it allows retrieval and validation to reason over legal structure instead of plain passages.
+
+The indexer builds two search representations from the same records. Dense text supports semantic matching. Sparse text adds legal reference tokens, topic/issue/actor metadata, and article-specific hints, so the same chunk can support both natural-language search and coordinate-heavy legal lookup.
+
+The split between retrieval text and citation text reduces ambiguity downstream. The generator receives readable legal evidence, while the validator can compare answer citations and article numbers to retrieved metadata rather than re-parsing raw legal files.
+
+\subsection{Hybrid Retrieval Pipeline}
+For each query, the retrieval pipeline is:
+
+\begin{enumerate}
+  \item \textbf{Query routing.} The query router produces legal references, document filters, issue/topic/actor filters, and query types, with heuristic fallback available.
+  \item \textbf{Query variants.} The routed intent is expanded so both original wording and legal-normalized forms can be searched.
+  \item \textbf{Qdrant dense/sparse prefetch.} Each variant receives dense and sparse prefetches, with extra sparse boosts for legal references and priority filters.
+  \item \textbf{RRF fusion.} Reciprocal-rank fusion combines the prefetch lists into a candidate set larger than the final top-k window.
+  \item \textbf{Forced and fallback reference hits.} Explicit article, clause, or point references are injected or recovered through metadata lookup when ranking misses them.
+  \item \textbf{Optional Neo4j graph expansion.} Vector hits become seeds for graph traversal when legal graph retrieval is enabled.
+  \item \textbf{Graph policy hits.} Recognized legal query types can add high-priority records such as Labor Code articles, decree tables, circular guidance, or appendix chunks.
+  \item \textbf{Vector/graph merge.} Vector, traversal, and policy hits are deduplicated while preserving scores, seed ids, paths, edge types, and final score metadata.
+  \item \textbf{Filtering and reranking.} Sensitive graph-only additions are filtered before heuristic scoring, optional semantic reranking, and forced-reference pinning determine the final hits.
+  \item \textbf{Context assembly.} Child hits are grouped with parent legal units, article siblings are added only when needed, and bounded \texttt{RetrievalContext} objects are returned for answer construction.
+\end{enumerate}
+
+For readability, Figure~\ref{fig:rag-pipeline} shows the main evidence sources, while the implementation also includes forced reference hits and policy-based graph hits.
+
+In formula form, the final evidence is not only the direct hybrid seed set:
+\[
+C_{\mathrm{final}} =
+\operatorname{Assemble}
+\left(
+\operatorname{Rerank}
+\left(
+S_{\mathrm{qdrant}}
+\cup S_{\mathrm{forced}}
+\cup S_{\mathrm{fallback}}
+\cup S_{\mathrm{graph}}
+\cup S_{\mathrm{policy}}
+\right)
+\right).
+\]
+
+\subsection{Policy-Controlled Legal Graph Expansion}
+Graph expansion is implemented as a policy-controlled system, not as a simple Neo4j neighbor traversal. The graph configuration controls whether expansion is enabled, which backend is used, the maximum depth, maximum expanded chunks, minimum confidence, whether expansion is limited to complex queries, and whether tracing is enabled.
+
+The expander classifies the routed query into graph query types such as definition lookup, labor contract content, retirement-age table lookup, overtime limits, termination, structural change, dispute litigation, or no-notice resignation. It also assigns an expansion profile such as default, graph-favored, paraphrased real-user, or hard-negative. These profiles alter expansion depth, maximum returned chunks, and confidence thresholds. High-confidence policy types can use direct priority references and avoid broad traversal; paraphrased and hard-negative profiles are more conservative.
+
+The graph itself is built from legal structure and metadata. It contains document, article, clause, point, appendix, evidence chunk, topic, actor, issue type, and concept nodes. Edges represent containment, source linkage, cross-reference, guidance/detail relationships, taxonomy membership, and normative hierarchy. During expansion, Neo4j is allowed to follow only configured legal edge types, and returned paths carry depth, confidence, node path, edge path, and seed metadata.
+
+This policy layer is important because legal relatedness is not the same as answer relevance. For example, a termination query may need Labor Code Articles 34--41 and Decree 145 guidance, while a hard-negative overtime query may be harmed by nearby but different overtime provisions. The graph therefore adds evidence selectively and leaves ranking and validation to later stages.
+
+\subsection{Context Budgeting}
+Graph expansion can add too much context if every related provision is promoted. The system therefore deduplicates contexts, reranks them, and applies a final context budget before answer construction. Article siblings are added only for query types that need enumeration, clause support, point support, or article-level completeness. This trade-off is measured through both recall and forbidden citation violation rate, because legal neighbors may be related without being valid answer evidence.
+
+\subsection{Citation Validation and Refusal}
+The answer layer must cite only retrieved evidence. The implemented generator first selects contexts for grounded generation, then checks scope before producing an answer. Unsupported topic rules cover known out-of-corpus areas such as regional minimum wage, insurance contribution rates, administrative penalties, foreign-worker work permits, trade-union fees, and personal income tax.
+
+The validator checks that cited legal bases are retrieved, that answer article numbers are present in the retrieved contexts, that a higher-rank available legal source is not ignored, and that insufficient-context answers state uncertainty. If the LLM path is unavailable or fails validation, the answer layer can fall back to deterministic extractive synthesis. The trade-off is conservative: the system may return a less fluent answer, but it avoids unsupported citation claims.
+
+\begin{table}[H]
+  \centering
+  \caption{Evaluation Metrics Summary}
+  \label{tab:metrics-summary-draft}
+  \begin{tabularx}{\linewidth}{@{}L{0.25\linewidth}L{0.18\linewidth}Y@{}}
+    \toprule
+    Metric & Scope & Meaning \\
+    \midrule
+    Recall@10 & Retrieval & Fraction of required citations retrieved in the top-10 window. \\
+    Required Citation Coverage & Retrieval & Same citation-level coverage reported for required legal bases. \\
+    Forbidden Citation Violation Rate & Retrieval & Share of in-corpus queries where a benchmark-defined distracting citation appears. \\
+    Retrieval pass rate & Retrieval & Query-level pass requiring required citations and no forbidden violation. \\
+    Adjusted end-to-end pass rate & Full QA & In-corpus QA pass plus out-of-corpus refusal pass over all 100 queries. \\
+    Citation validation pass rate & Answer & Share of answers whose citations remain inside retrieved context. \\
+    Out-of-corpus QA pass rate & Safety & Share of unsupported queries that are refused or marked insufficient. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}

@@ -32,3 +32,4 @@ llm-as-judge/evaluation/ragas_eval/*
 *.log
 *.out
 *.synctex.gz
+

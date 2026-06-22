@@ -1,0 +1,14 @@
+\section{Conclusion and Future Work}
+
+\subsection{Conclusion}
+This thesis presented an integrated, citation-grounded legal QA system bounded to a six-document Vietnamese labor-law corpus. The system combines legal corpus processing, Qdrant hybrid retrieval, Neo4j graph expansion, GPT-OSS 120B grounded answer generation in the deployed runtime, deterministic citation validation, an API backend, a frontend, and reproducible evaluation. The core result is not a new language model, but an engineering workflow for preserving legal evidence from corpus preparation to final answer validation.
+
+The final benchmark shows useful progress and clear limits. Graph-augmented retrieval improves Recall@10 from 0.735 to 0.835 and retrieval pass rate from 0.649 to 0.766. The end-to-end pass rate is 0.780. Citation validation pass rate and out-of-corpus refusal pass rate are both 1.000, showing strong benchmark-level citation containment and bounded refusal. The remaining failures come mostly from retrieval gaps.
+
+\subsection{Future Work}
+Future work should improve query rewriting for informal user language, table and appendix retrieval, hard-negative filtering, and cross-code labor-dispute procedure retrieval. The corpus should also be expanded and versioned so that new Vietnamese labor laws, decrees, circulars, and official guidance can be added safely.
+
+The evaluation should be extended with expert review. Deterministic software checks are reproducible and useful for development, but they cannot judge all legal interpretation issues. A stronger future benchmark should combine deterministic citation tests, human legal review, real anonymized user queries, and temporal-validity checks.
+
+\subsection{Final Remark}
+The practical lesson is that graph expansion is valuable but not magical. It improves retrieval when seed evidence is close to the right legal neighborhood. It cannot fully compensate for weak query understanding or missing table-level evidence. For legal QA, system reliability depends on the whole pipeline: structured corpus processing, careful retrieval, graph-aware context assembly, and strict citation validation.
