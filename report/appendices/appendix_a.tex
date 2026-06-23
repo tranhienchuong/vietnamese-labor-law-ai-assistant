@@ -1,12 +1,52 @@
-\section{Reproducibility Sources}
-The reported corpus counts and evaluation metrics depend on the fixed inputs and structured outputs below.
-\begingroup
-\small
-\sloppy
-\begin{itemize}[leftmargin=*,noitemsep,topsep=0.2em]
-  \item Index manifest: \path{artifacts/index/current.json}.
-  \item Frozen benchmark: \path{artifacts/evaluation/golden_benchmark_100_extended.jsonl}.
-  \item Retrieval ablation output: \path{artifacts/evaluation/final/ablation_retrieval_final_results.json} and \path{artifacts/evaluation/final/ablation_retrieval_final_results.csv}.
-  \item End-to-end output: \path{artifacts/evaluation/final/end_to_end_final_results.json} and \path{artifacts/evaluation/final/end_to_end_final_results.csv}.
-\end{itemize}
-\endgroup
+\section{Example Legal Evidence Chunk}
+\label{appendix:evidence-chunk}
+
+The example chunk below shows one representative evidence unit produced by the
+corpus pipeline. The legal text is shortened for presentation, but the metadata
+fields are kept to show how the system stores a retrievable legal evidence
+unit.
+
+\begin{ThesisCode}
+{
+  "chunk_id": "45_2019_QH14_Dieu_35_Khoan_1_Diem_a_b_c_d",
+  "document": {
+    "document_id": "45-2019-qh14",
+    "document_title": "Bộ luật Lao động 2019",
+    "document_type": "bo_luat",
+    "issuing_authority": "Quốc hội",
+    "status": "in_effect"
+  },
+  "legal_hierarchy": {
+    "chapter": "Chương III. HỢP ĐỒNG LAO ĐỘNG",
+    "section": "Mục 3. CHẤM DỨT HỢP ĐỒNG LAO ĐỘNG",
+    "article": "Điều 35",
+    "article_title": "Quyền đơn phương chấm dứt hợp đồng lao động của người lao động",
+    "clause": "khoản 1",
+    "points": ["a", "b", "c", "d"]
+  },
+  "legal_rank": {
+    "normative_rank": 1,
+    "rank_label": "highest",
+    "effective_level": "national"
+  },
+  "topic": [
+    "bao_truoc",
+    "cham_dut_hop_dong_lao_dong",
+    "don_phuong_cham_dut",
+    "hop_dong_lao_dong"
+  ],
+  "actor": [
+    "nguoi_lao_dong",
+    "nguoi_su_dung_lao_dong"
+  ],
+  "issue_type": [
+    "can_cu_cham_dut",
+    "quyen_don_phuong_cham_dut",
+    "thoi_han_bao_truoc",
+    "loai_hop_dong",
+    "don_phuong_cham_dut"
+  ],
+  "evidence_text_excerpt": "1. Người lao động có quyền đơn phương chấm dứt hợp đồng lao động nhưng phải báo trước [...] a) Ít nhất 45 ngày nếu làm việc theo hợp đồng lao động không xác định thời hạn; b) Ít nhất 30 ngày nếu làm việc theo hợp đồng lao động xác định thời hạn từ 12 tháng đến 36 tháng; [...] d) Đối với một số ngành, nghề, công việc đặc thù thì thời hạn báo trước được thực hiện theo quy định của Chính phủ.",
+  "citation_label": "Bộ luật Lao động 2019, Điều 35, khoản 1, các điểm a, b, c, d"
+}
+\end{ThesisCode}

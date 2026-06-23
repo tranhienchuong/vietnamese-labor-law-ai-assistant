@@ -13,7 +13,7 @@
 \usepackage[english]{babel}
 \usepackage[a4paper,margin=2.5cm]{geometry}
 \usepackage{graphicx}
-\graphicspath{{../common/}{../draft/figures/}}
+\graphicspath{{common/}{figures/}}
 \usepackage{float}
 \usepackage{pdflscape}
 \usepackage{subcaption}
@@ -43,7 +43,8 @@
 \usepackage[
   backend=biber,
   style=numeric,
-  sorting=nyt
+  sorting=none,
+  sortcites=true
 ]{biblatex}
 \usepackage[
   colorlinks=true,
@@ -52,12 +53,12 @@
   urlcolor=blue
 ]{hyperref}
 
-\addbibresource{../common/system-references.bib}
+\addbibresource{common/system-references.bib}
 
 \newcommand{\thesistitle}{AI Assistant for Vietnamese Labor Law: A Case Study on Employment Contract Termination}
 \newcommand{\thesisauthor}{Tran Hien Chuong}
 \newcommand{\thesisstudentid}{22BA13056}
-\newcommand{\thesissupervisor}{Dr. Tran Hoang Tung}
+\newcommand{\thesissupervisor}{Dr.\ Tran Hoang Tung}
 \newcommand{\thesisprogram}{Information and Communication Technology}
 \newcommand{\thesisyear}{2025--2026}
 \newcommand{\systemtitle}{\thesistitle}

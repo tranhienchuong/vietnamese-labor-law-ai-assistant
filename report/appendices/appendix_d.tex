@@ -1,0 +1,25 @@
+\section{Additional Evaluation Examples}
+\label{appendix:evaluation-examples}
+
+Table~\ref{tab:appendix-evaluation-cases} summarizes representative cases from
+the final 100-query evaluation. The examples are selected to show both
+successful behavior and the main remaining retrieval weaknesses.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Representative final evaluation cases.}
+  \label{tab:appendix-evaluation-cases}
+  \begin{tabularx}{\textwidth}{@{}L{0.17\textwidth}L{0.24\textwidth}L{0.34\textwidth}>{\raggedright\arraybackslash}X@{}}
+    \toprule
+    Case Type & Tested Capability & Outcome & Interpretation \\
+    \midrule
+    Simple pass & Employee notice period for unilateral termination & Pass. The system retrieved and cited Labor Code Article 35. & Direct lookup works when the question closely matches the legal issue. \\
+    Multi-source pass & Female retirement age in 2026 & Pass. The system combined the Labor Code, Decree 135, and the retirement-age table. & Graph/table expansion helps when the answer requires connected legal sources. \\
+    Correct refusal & Regional minimum wage in 2026 & Pass refusal. The system returned insufficient context because the wage instrument was outside the corpus. & Scope control prevents unsupported legal claims. \\
+    Paraphrase failure & Temporary transfer described in informal wording & Fail. The system missed the required Labor Code Article 29 evidence. & Informal user wording remains difficult for retrieval. \\
+    Appendix/table failure & Domestic-worker contract form in Decree 145 & Fail. The system missed the required form/appendix evidence. & Forms and appendices need stronger table-aware retrieval. \\
+    Hard-negative failure & Holiday overtime pay confused with overtime limits & Fail. Retrieval mixed pay rules with hour-limit provisions. & Legal relatedness is not always answer relevance. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}

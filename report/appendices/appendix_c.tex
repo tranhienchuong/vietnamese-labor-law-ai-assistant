@@ -1,0 +1,44 @@
+\section{Benchmark Design Details}
+\label{appendix:benchmark-design}
+
+The benchmark contains 100 queries. Each item stores the question, category,
+topic, expected documents, required citations, optional forbidden citations,
+expected answer points, difficulty, and whether the item is expected to benefit
+from graph or normative-hierarchy retrieval. Table~\ref{tab:appendix-benchmark-design}
+explains the design role of each category.
+
+\begingroup
+\small
+\begin{longtable}{@{}L{0.21\textwidth}L{0.25\textwidth}L{0.25\textwidth}L{0.21\textwidth}@{}}
+\caption{Benchmark category design.}
+\label{tab:appendix-benchmark-design}\\
+\toprule
+Category & What it tests & Example question type & Expected system behavior \\
+\midrule
+\endfirsthead
+\toprule
+Category & What it tests & Example question type & Expected system behavior \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+Definition QA & Legal definitions. & ``What is an employee under the Labor Code?'' & Retrieve the exact definition article or clause. \\
+Direct QA & Single-provision legal lookup. & ``How much notice must an employee give before unilateral termination?'' & Return the direct provision and cite it. \\
+Document guidance QA & Connection between primary law and implementing guidance. & ``Which circular guides labor-contract content?'' & Retrieve both the Labor Code basis and the lower-rank guidance. \\
+Exception-based QA & Exceptions, prohibitions, or special cases. & ``When may an employee quit without notice?'' & Identify the exception rule and avoid unrelated general rules. \\
+Procedure QA & Legal procedure, deadlines, and obligations. & ``What must the employer do after probation ends?'' & Retrieve the procedure rule and summarize the required action. \\
+Scenario-based QA & Mapping a user fact pattern to legal provisions. & ``What happens if the employee unlawfully terminates the contract?'' & Select the legally relevant rule for the described situation. \\
+Comparison QA & Comparing two legal regimes. & ``Compare severance allowance and job-loss allowance.'' & Retrieve evidence for both sides of the comparison. \\
+Multi-hop QA & Questions requiring several linked provisions. & ``How is annual leave calculated for a partial year and does probation count?'' & Combine multiple provisions without dropping required citations. \\
+Calculation or table lookup & Tables, appendices, and numeric lookup. & ``Female retirement age in 2026?'' & Retrieve article evidence plus the relevant appendix or table chunk. \\
+Hard-negative citation QA & Avoiding close but wrong legal bases. & ``Holiday overtime pay, not overtime-hour limits.'' & Retrieve the required citation and keep forbidden citations out of the top results. \\
+Paraphrased real-user QA & Informal user wording. & ``My company moved me to another job for almost three months; is that okay?'' & Map informal phrasing to the correct legal concept. \\
+Labor dispute procedure QA & Labor dispute procedure and civil procedure links. & ``Can I sue over unlawful termination and which court basis applies?'' & Retrieve both labor-law and BLTTDS procedural evidence. \\
+Out-of-corpus QA & Unsupported topics outside the indexed corpus. & ``What are the 2026 regional minimum wages?'' & Refuse or return insufficient context rather than guessing. \\
+\end{longtable}
+\endgroup
+
+The category distribution is intentionally mixed. Easy definition and direct
+questions test basic retrieval, while multi-hop, appendix, paraphrase,
+hard-negative, and dispute-procedure questions stress the parts of the system
+where legal QA is most likely to fail.

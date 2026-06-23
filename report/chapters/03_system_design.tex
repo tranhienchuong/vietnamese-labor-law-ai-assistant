@@ -1,109 +1,83 @@
 \section{System Design and Methodology}
 
 \subsection{Overall RAG Pipeline}
-The architecture separates offline legal preparation from online answering. Offline components prepare hierarchy-aware legal chunks, build the dense--sparse Qdrant index, and load the Neo4j legal graph. Online components route the query, retrieve and expand evidence, assemble bounded contexts, generate an answer, validate citations, and return the result through the FastAPI chat route. This separation keeps expensive corpus processing outside the user request path while preserving the legal coordinates needed at runtime.
+The system is designed as a citation-grounded Retrieval-Augmented Generation pipeline for Vietnamese labor-law question answering. Given a user question, the assistant retrieves relevant legal evidence from a scoped corpus, assembles the selected evidence, generates an answer, and checks whether the cited legal bases are supported by the retrieved context.
 
-At runtime, the assistant does not simply send retrieved text to a model. It routes the legal question, searches Qdrant with dense and sparse signals, repairs explicit legal-reference misses, optionally expands through a policy-controlled Neo4j graph, merges vector and graph evidence, filters and reranks candidates, assembles bounded contexts, then constructs a grounded answer that is checked against retrieved citations.
+The pipeline is divided into two main stages. The first stage is the offline legal knowledge build. In this stage, selected legal documents are cleaned, structured, enriched with metadata, and indexed. The output of this stage is stored in two complementary forms: a Qdrant hybrid index for text retrieval~\cite{qdrantdocs} and a Neo4j legal graph for legal relationships.
+
+The second stage is the online answering process. When a user submits a question, the system retrieves candidate provisions from Qdrant, expands related evidence through Neo4j when needed, merges and filters the results, and prepares a bounded context for answer generation. The generated answer is then validated before being returned to the user.
+
+Figure~\ref{fig:rag-pipeline} summarizes this overall pipeline. It shows how legal documents are processed offline and how user questions are handled at runtime, from retrieval to citation validation.
 
 \thesisfigure{figures/rag-pipeline.png}{RAG pipeline for citation-grounded Vietnamese labor-law question answering.}{fig:rag-pipeline}
 
 \subsection{Scoped Legal Corpus}
-The corpus is intentionally bounded. Table~\ref{tab:corpus-summary-draft} summarizes the six-document index used in the final evaluation.
+The corpus is intentionally limited to a selected set of Vietnamese labor-law documents. This bounded scope makes the system easier to evaluate and also defines when the assistant should refuse a question or mark it as insufficient-context.
+
+The final corpus contains six document groups: the Labor Code 2019 and the labor-related subset of the Civil Procedure Code 2015, Decree 135/2020/ND-CP and Decree 145/2020/ND-CP, and Circular 09/2020/TT-BLDTBXH and Circular 10/2020/TT-BLDTBXH. These documents were selected because they cover common labor-law issues such as employment contract termination, retirement age, minor workers, working time, and labor dispute procedures.
+
+Vietnamese legal documents are often connected to each other through hierarchy, implementation guidance, and legal references. A code may define the general rule, a decree may provide implementation details, and a circular may contain forms, lists, or technical guidance. Some documents may also clarify, overlap with, or replace earlier rules. Therefore, the corpus cannot be treated as a flat collection of unrelated passages.
+
+Table~\ref{tab:corpus-summary-draft} summarizes the indexed legal corpus used in the system, based on the selected legal documents listed above.
 
 \begin{table}[H]
   \centering
   \caption{Scoped Legal Corpus Summary}
   \label{tab:corpus-summary-draft}
-  \scriptsize
-  \begin{tabularx}{\linewidth}{@{}L{0.30\linewidth}L{0.30\linewidth}rr@{}}
+  \small
+  \begin{tabularx}{\linewidth}{@{}L{0.34\linewidth}Ycc@{}}
     \toprule
-    Document ID & Role & Rank & Chunks \\
+    Document group & Main role in the corpus & Rank & Chunks \\
     \midrule
-    \path{45-2019-qh14} & Labor Code 2019 & 1 & 697 \\
-    \path{92-2015-qh13-labor-only} & Civil Procedure Code labor subset & 1 & 159 \\
-    \path{nghi-dinh-135-2020-nd-cp} & Retirement age decree & 2 & 41 \\
-    \path{nghi-dinh-145-2020-nd-cp} & Labor Code implementation decree & 2 & 520 \\
-    \makecell[l]{\texttt{thong-tu-09-2020-}\\\texttt{tt-bldtbxh}} & Minor worker circular & 3 & 73 \\
-    \makecell[l]{\texttt{thong-tu-10-2020-}\\\texttt{tt-bldtbxh}} & Labor contract circular & 3 & 66 \\
+    Labor Code 2019 & Core labor-law rules, including employment contracts, termination, working time, minor workers, and labor relations. & 1 & 697 \\
+    Civil Procedure Code 2015, labor-related subset & Labor dispute procedure and litigation-related provisions. & 1 & 159 \\
+    Decree 135/2020/ND-CP & Retirement age roadmap and related implementation details. & 2 & 41 \\
+    Decree 145/2020/ND-CP & Detailed guidance for implementing the Labor Code in labor conditions and labor relations. & 2 & 520 \\
+    Circular 09/2020/TT-BLDTBXH & Guidance related to minor workers and lists of permitted or restricted work. & 3 & 73 \\
+    Circular 10/2020/TT-BLDTBXH & Guidance and forms related to labor contract contents. & 3 & 66 \\
     \midrule
     Total & Six indexed document groups & & 1,556 \\
     \bottomrule
   \end{tabularx}
 \end{table}
 
-\subsection{Hierarchy-Aware Processing}
-The corpus pipeline avoids arbitrary fixed windows. Legal units such as documents, articles, clauses, points, and appendices are preserved as retrieval records, with chunk identifiers, citation text, retrieval text, source metadata, legal coordinates, document type, normative rank, and taxonomy labels. This design costs more preprocessing effort, but it allows retrieval and validation to reason over legal structure instead of plain passages.
+\subsection{Hierarchy-Aware Legal Processing}
+The corpus pipeline does not split legal documents into arbitrary text windows only. Instead, it preserves legal units such as documents, articles, clauses, points, and appendices, following the hierarchical structure of Vietnamese legal documents. Each unit is converted into an evidence chunk with its own citation information and metadata.
 
-The indexer builds two search representations from the same records. Dense text supports semantic matching. Sparse text adds legal reference tokens, topic/issue/actor metadata, and article-specific hints, so the same chunk can support both natural-language search and coordinate-heavy legal lookup.
+This design is important because legal meaning depends on structure. A clause belongs to an article, an article belongs to a document, and a lower-level document may provide guidance for a higher-level rule. If this structure is lost, the retriever may return a passage that is textually similar but legally incomplete.
 
-The split between retrieval text and citation text reduces ambiguity downstream. The generator receives readable legal evidence, while the validator can compare answer citations and article numbers to retrieved metadata rather than re-parsing raw legal files.
+Each evidence chunk contains retrieval text and citation metadata. The retrieval text is used to search for relevant provisions. The metadata records information such as document name, article number, clause, point, appendix, legal rank, topic, actor, and issue type. This allows later components to connect retrieved text with its legal source.
+
+The result of this step is a structured corpus that can support both semantic search and citation validation.
 
 \subsection{Hybrid Retrieval Pipeline}
-For each query, the retrieval pipeline is:
+The first retrieval layer is implemented with Qdrant. The system uses hybrid retrieval, combining dense semantic search and sparse lexical search.
 
-\begin{enumerate}
-  \item \textbf{Query routing.} The query router produces legal references, document filters, issue/topic/actor filters, and query types, with heuristic fallback available.
-  \item \textbf{Query variants.} The routed intent is expanded so both original wording and legal-normalized forms can be searched.
-  \item \textbf{Qdrant dense/sparse prefetch.} Each variant receives dense and sparse prefetches, with extra sparse boosts for legal references and priority filters.
-  \item \textbf{RRF fusion.} Reciprocal-rank fusion combines the prefetch lists into a candidate set larger than the final top-k window.
-  \item \textbf{Forced and fallback reference hits.} Explicit article, clause, or point references are injected or recovered through metadata lookup when ranking misses them.
-  \item \textbf{Optional Neo4j graph expansion.} Vector hits become seeds for graph traversal when legal graph retrieval is enabled.
-  \item \textbf{Graph policy hits.} Recognized legal query types can add high-priority records such as Labor Code articles, decree tables, circular guidance, or appendix chunks.
-  \item \textbf{Vector/graph merge.} Vector, traversal, and policy hits are deduplicated while preserving scores, seed ids, paths, edge types, and final score metadata.
-  \item \textbf{Filtering and reranking.} Sensitive graph-only additions are filtered before heuristic scoring, optional semantic reranking, and forced-reference pinning determine the final hits.
-  \item \textbf{Context assembly.} Child hits are grouped with parent legal units, article siblings are added only when needed, and bounded \texttt{RetrievalContext} objects are returned for answer construction.
-\end{enumerate}
+Dense retrieval is useful when the user asks a question in natural language. It can find provisions that are related in meaning, even if the wording is different from the legal document. This is important because real users rarely use exact legal terms.
 
-For readability, Figure~\ref{fig:rag-pipeline} shows the main evidence sources, while the implementation also includes forced reference hits and policy-based graph hits.
+Sparse retrieval is useful for exact legal references. Legal questions may contain article numbers, document names, legal terms, or phrases that should be matched directly. These details can be missed by semantic search alone.
 
-In formula form, the final evidence is not only the direct hybrid seed set:
-\[
-C_{\mathrm{final}} =
-\operatorname{Assemble}
-\left(
-\operatorname{Rerank}
-\left(
-S_{\mathrm{qdrant}}
-\cup S_{\mathrm{forced}}
-\cup S_{\mathrm{fallback}}
-\cup S_{\mathrm{graph}}
-\cup S_{\mathrm{policy}}
-\right)
-\right).
-\]
+The system combines these signals to produce an initial set of candidate legal provisions. It also applies reference recovery when a user explicitly mentions an article, clause, point, or document. This helps the retriever avoid missing legal coordinates that are important for the answer.
 
 \subsection{Policy-Controlled Legal Graph Expansion}
-Graph expansion is implemented as a policy-controlled system, not as a simple Neo4j neighbor traversal. The graph configuration controls whether expansion is enabled, which backend is used, the maximum depth, maximum expanded chunks, minimum confidence, whether expansion is limited to complex queries, and whether tracing is enabled.
+After the initial retrieval step, the system can expand the evidence using the Neo4j legal graph. This design follows the general idea of graph-augmented retrieval, where graph structure helps connect related information units for retrieval support. The graph represents legal relationships between documents, articles, clauses, points, appendices, topics, and related provisions.
 
-The expander classifies the routed query into graph query types such as definition lookup, labor contract content, retirement-age table lookup, overtime limits, termination, structural change, dispute litigation, or no-notice resignation. It also assigns an expansion profile such as default, graph-favored, paraphrased real-user, or hard-negative. These profiles alter expansion depth, maximum returned chunks, and confidence thresholds. High-confidence policy types can use direct priority references and avoid broad traversal; paraphrased and hard-negative profiles are more conservative.
+This component is needed because legal relevance is not always the same as textual similarity. A retrieved provision may refer to another article. A decree may explain how a Labor Code rule should be applied. A circular may contain the required form or technical detail. In these cases, the answer may require legal provisions that are connected by structure or reference, even if they do not closely match the user's wording.
 
-The graph itself is built from legal structure and metadata. It contains document, article, clause, point, appendix, evidence chunk, topic, actor, issue type, and concept nodes. Edges represent containment, source linkage, cross-reference, guidance/detail relationships, taxonomy membership, and normative hierarchy. During expansion, Neo4j is allowed to follow only configured legal edge types, and returned paths carry depth, confidence, node path, edge path, and seed metadata.
+Graph expansion is controlled by policy rules. The system does not simply add every neighboring node in the graph. Instead, it considers the query type and the kind of legal relationship before adding graph-based evidence. This is important because related legal provisions may still be distracting or unnecessary for a specific question.
 
-This policy layer is important because legal relatedness is not the same as answer relevance. For example, a termination query may need Labor Code Articles 34--41 and Decree 145 guidance, while a hard-negative overtime query may be harmed by nearby but different overtime provisions. The graph therefore adds evidence selectively and leaves ranking and validation to later stages.
+Neo4j is therefore used to support legal evidence assembly, not to replace text retrieval. Qdrant finds the initial relevant provisions, while Neo4j helps recover legally connected evidence when the question requires more than one source.
 
 \subsection{Context Budgeting}
-Graph expansion can add too much context if every related provision is promoted. The system therefore deduplicates contexts, reranks them, and applies a final context budget before answer construction. Article siblings are added only for query types that need enumeration, clause support, point support, or article-level completeness. This trade-off is measured through both recall and forbidden citation violation rate, because legal neighbors may be related without being valid answer evidence.
+The evidence retrieved from Qdrant and Neo4j is merged, deduplicated, filtered, and reranked before answer generation~\cite{cormack2009rrf}. This step prepares the final context that will be passed to the answer generation module.
+
+Context budgeting is necessary because the system cannot send unlimited legal text to the generator. Too much context can make the answer less focused and may introduce related but incorrect provisions. At the same time, too little context may cause the system to miss an important legal basis.
+
+The system therefore selects a bounded number of contexts. When needed, it may include parent articles, related clauses, or appendix-level information to make the evidence more complete. The goal is to provide enough legal support for the answer while avoiding unnecessary legal text.
 
 \subsection{Citation Validation and Refusal}
-The answer layer must cite only retrieved evidence. The implemented generator first selects contexts for grounded generation, then checks scope before producing an answer. Unsupported topic rules cover known out-of-corpus areas such as regional minimum wage, insurance contribution rates, administrative penalties, foreign-worker work permits, trade-union fees, and personal income tax.
+The answer layer is designed to generate responses only from selected legal contexts. In the deployed system, a configured language-model provider can generate grounded answers from the retrieved evidence. For reproducible evaluation, the final benchmark uses a deterministic extractive generation mode to avoid variability from external model providers.
 
-The validator checks that cited legal bases are retrieved, that answer article numbers are present in the retrieved contexts, that a higher-rank available legal source is not ignored, and that insufficient-context answers state uncertainty. If the LLM path is unavailable or fails validation, the answer layer can fall back to deterministic extractive synthesis. The trade-off is conservative: the system may return a less fluent answer, but it avoids unsupported citation claims.
+After an answer is generated, the citation validator checks whether the cited legal bases are present in the retrieved evidence. It also checks whether the answer uses unsupported article numbers or cites provisions that were not part of the selected context. This step reduces the risk of unsupported legal citations in generated text.
 
-\begin{table}[H]
-  \centering
-  \caption{Evaluation Metrics Summary}
-  \label{tab:metrics-summary-draft}
-  \begin{tabularx}{\linewidth}{@{}L{0.25\linewidth}L{0.18\linewidth}Y@{}}
-    \toprule
-    Metric & Scope & Meaning \\
-    \midrule
-    Recall@10 & Retrieval & Fraction of required citations retrieved in the top-10 window. \\
-    Required Citation Coverage & Retrieval & Same citation-level coverage reported for required legal bases. \\
-    Forbidden Citation Violation Rate & Retrieval & Share of in-corpus queries where a benchmark-defined distracting citation appears. \\
-    Retrieval pass rate & Retrieval & Query-level pass requiring required citations and no forbidden violation. \\
-    Adjusted end-to-end pass rate & Full QA & In-corpus QA pass plus out-of-corpus refusal pass over all 100 queries. \\
-    Citation validation pass rate & Answer & Share of answers whose citations remain inside retrieved context. \\
-    Out-of-corpus QA pass rate & Safety & Share of unsupported queries that are refused or marked insufficient. \\
-    \bottomrule
-  \end{tabularx}
-\end{table}
+The system also includes insufficient-context behavior. If a question requires a legal document outside the indexed corpus, or if the retrieved evidence is not enough to support an answer, the assistant should refuse or mark the response as insufficient-context. This is important because the system is limited to a scoped corpus and should not answer as if it covers all Vietnamese law.

@@ -1,9 +1,39 @@
 \section{Evaluation and Discussion}
 
-\subsection{Benchmark Design}
-The benchmark contains 100 queries. Ninety-four are in-corpus questions with required citation annotations. Six are out-of-corpus questions where the correct behavior is refusal or insufficient context. The benchmark tests direct questions, definitions, document guidance, exceptions, multi-hop cases, table lookups, hard-negative citation cases, paraphrased user questions, dispute procedure questions, comparisons, scenarios, and unsupported topics.
+\subsection{Benchmark Design and Evaluation Metrics}
 
-The evaluation is designed to check software behavior rather than legal authority in the abstract. Retrieval is judged by required citation recovery and forbidden citation avoidance. End-to-end QA is judged by answer quality rules, citation containment, and refusal behavior for questions outside the indexed corpus.
+The system is evaluated on a fixed benchmark of 100 questions. The benchmark is designed to test the assistant as a complete legal question-answering system, not only as a text generator. It includes 94 in-corpus questions and 6 out-of-corpus questions. For in-corpus questions, the expected behavior is to retrieve the required legal basis and produce a grounded answer. For out-of-corpus questions, the expected behavior is to refuse the question or mark the answer as insufficient-context.
+
+The benchmark covers different types of Vietnamese labor-law questions, including direct questions, definitions, document guidance, exceptions, multi-hop questions, table and appendix lookup, hard-negative citation cases, paraphrased user questions, dispute procedures, comparisons, scenarios, and unsupported topics.
+
+The evaluation uses deterministic checks instead of subjective scoring alone, while following the broader goal of RAG evaluation: measuring retrieval quality, answer faithfulness, and grounding. This is important because a fluent legal answer may still be wrong if it cites the wrong article, misses a required legal basis, or answers a question outside the indexed corpus. Therefore, the evaluation focuses on retrieval quality, citation grounding, answer quality, and refusal behavior.
+
+The benchmark design is also related to legal NLP evaluation efforts, which emphasize domain-specific reasoning and legal text understanding rather than general text fluency alone.
+
+Table~\ref{tab:evaluation-metrics-draft} summarizes the main evaluation metrics used in this thesis.
+
+\begin{table}[H]
+  \centering
+  \caption{Evaluation Metrics Summary}
+  \label{tab:evaluation-metrics-draft}
+  \small
+  \begin{tabularx}{\linewidth}{@{}L{0.25\linewidth}L{0.34\linewidth}Y@{}}
+    \toprule
+    Metric & What it measures & Main interpretation \\
+    \midrule
+    Recall@10 & Whether required legal citations appear in the top retrieved contexts. & Higher values indicate better recovery of required evidence. \\
+    Required citation coverage & Whether the retriever finds the expected legal bases for in-corpus questions. & Measures evidence completeness before answer generation. \\
+    Forbidden citation violation rate & Whether distracting or invalid citations appear in retrieved results. & Lower values indicate cleaner retrieval and graph expansion. \\
+    Retrieval pass rate & Whether retrieval satisfies required and forbidden citation checks. & Shows whether the answer layer receives usable legal evidence. \\
+    Answer pass rate & Whether the generated answer satisfies deterministic answer-quality checks. & Measures answer adequacy after evidence selection. \\
+    Citation validation pass rate & Whether cited legal bases are supported by retrieved contexts. & Measures citation containment and grounding. \\
+    Adjusted end-to-end pass rate & Whether the full pipeline passes retrieval, answer, citation, and refusal checks. & Summarizes complete system behavior. \\
+    Out-of-corpus QA pass rate & Whether unsupported questions are refused or marked insufficient-context. & Measures conservative scope behavior. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Table~\ref{tab:benchmark-composition-draft} shows the composition of the 100-question benchmark.
 
 \begin{table}[H]
   \centering
@@ -33,7 +63,12 @@ The evaluation is designed to check software behavior rather than legal authorit
 \end{table}
 
 \subsection{Retrieval Results}
-Table~\ref{tab:retrieval-results-draft} reports the final retrieval ablation. Graph expansion improves recall and query-level retrieval pass rate. It also slightly increases forbidden citation violations, which shows that graph proximity can introduce legally related but distracting provisions.
+
+The first evaluation step measures whether the system can retrieve the required legal evidence. This is important because the final answer depends on the quality of retrieved contexts. If the correct legal provisions are not retrieved, the answer generation step may not have enough evidence to produce a valid response.
+
+Two retrieval settings are compared. The first setting uses hybrid retrieval only. In this setting, the system retrieves evidence from Qdrant using dense and sparse search signals. The second setting enables graph-augmented retrieval. In this setting, the system starts from Qdrant results and then expands related evidence through the Neo4j legal graph.
+
+Table~\ref{tab:retrieval-results-draft} reports the retrieval results.
 
 \begin{table}[H]
   \centering
@@ -49,8 +84,15 @@ Table~\ref{tab:retrieval-results-draft} reports the final retrieval ablation. Gr
   \end{tabular}
 \end{table}
 
+The results show that graph-augmented retrieval improves Recall@10 from 0.735 to 0.835. The retrieval pass rate also increases from 0.649 to 0.766. This means that the legal graph helps the system recover relevant provisions that hybrid retrieval alone may miss.
+
+However, graph expansion also slightly increases the forbidden citation violation rate, from 0.032 to 0.043. This shows an important trade-off. Legal graph connections can help recover missing evidence, but they can also introduce related provisions that are not valid for the specific question. Therefore, graph expansion must be controlled carefully and should not simply add every connected legal node.
+
 \subsection{End-to-End Results}
-Table~\ref{tab:e2e-results-draft} reports the final deterministic end-to-end run. The final pass rate is limited mainly by retrieval misses, not citation hallucination.
+
+The second evaluation step measures the full question-answering pipeline. This includes retrieval, context assembly, answer generation, citation validation, and refusal behavior.
+
+Table~\ref{tab:e2e-results-draft} reports the final end-to-end results.
 
 \begin{table}[H]
   \centering
@@ -77,21 +119,32 @@ Table~\ref{tab:e2e-results-draft} reports the final deterministic end-to-end run
   \end{tabular}
 \end{table}
 
-\subsection{Category-Level Results}
-The end-to-end evaluation shows that direct QA, definition QA, document guidance QA, exception-based QA, comparison QA, procedure QA, and scenario-based QA all pass in the final run. The weakest categories are labor-dispute procedure QA, hard-negative citation QA, paraphrased real-user QA, multi-hop QA, and table or appendix lookup. This pattern points to engineering limits in query understanding, table-aware retrieval, and filtering of nearby but wrong legal bases.
+The final adjusted end-to-end pass rate is 0.780. The answer pass rate is 0.980, while the citation validation pass rate is 1.000. The out-of-corpus QA pass rate is also 1.000. These results show that the system is strong at keeping generated citations inside retrieved evidence and refusing unsupported questions.
 
-Graph-required queries have lower pass rates because they often require multiple legal bases and cross-document evidence. This does not contradict the retrieval ablation: graph expansion improves retrieval over hybrid-only search, but the hardest benchmark items still remain difficult.
+The main limitation is retrieval. The retrieval pass rate is also 0.780, which indicates that most end-to-end failures come from missing or incomplete retrieved evidence rather than from citation hallucination after generation. In other words, once the system has the correct legal context, the answer and citation validation components usually behave reliably.
+
+\subsection{Category-Level Results}
+
+The benchmark results are not uniform across all question types. The system performs well on direct questions, definition questions, document guidance questions, exception-based questions, comparison questions, procedure questions, and scenario-based questions. These categories usually require legal evidence that can be retrieved directly or with limited expansion.
+
+The weaker categories are labor-dispute procedure questions, hard-negative citation questions, paraphrased real-user questions, multi-hop questions, and table or appendix lookup. These failures are expected because these categories require more complex evidence selection. For example, table lookup may require retrieving a specific appendix or table row. A paraphrased question may hide the legal concept behind informal wording. A hard-negative case may contain provisions that are legally related but not actually valid for the answer.
+
+This pattern shows that graph expansion improves retrieval, but it does not solve every retrieval problem. The system still needs stronger query understanding, better table-aware retrieval, and more precise filtering of legally related but distracting provisions.
 
 \subsection{Case Studies and Error Taxonomy}
-The successful cases confirm that the system can answer direct and structured questions when the required evidence is retrieved. For example, retirement-age questions can combine the Labor Code with Decree 135/2020/ND-CP tables, and out-of-corpus minimum wage questions are refused because the relevant legal instrument is absent from the corpus.
 
-The failed cases show the main weakness. Informal paraphrases, table rows, hard negatives, and labor-dispute procedure questions often miss required evidence. Table~\ref{tab:error-taxonomy-draft} summarizes representative cases and error types.
+To better understand the system behavior, representative successful and failed cases are analyzed. Successful cases show that the system can answer correctly when the required legal basis is retrieved. For example, retirement-age questions can combine the Labor Code with Decree 135/2020/ND-CP table evidence. Out-of-corpus questions, such as minimum wage by region, are refused because the relevant legal instrument is not included in the indexed corpus.
+
+Failed cases show where the current system remains limited. Some paraphrased questions fail because the system does not map the user's wording to the correct legal concept. Some table or appendix questions fail because the required evidence is stored in a more structured form than ordinary text. Some hard-negative cases fail because the graph adds legally related provisions that are close to the topic but not correct for the specific answer.
+
+Table~\ref{tab:error-taxonomy-draft} summarizes representative cases and error types.
 
 \begin{table}[H]
   \centering
   \caption{Case Studies and Error Taxonomy}
   \label{tab:error-taxonomy-draft}
-  \begin{tabularx}{\linewidth}{@{}L{0.28\linewidth}L{0.24\linewidth}Y@{}}
+  \small
+  \begin{tabularx}{\linewidth}{@{}L{0.28\linewidth}L{0.22\linewidth}Y@{}}
     \toprule
     Case or error & Result & Interpretation \\
     \midrule
@@ -110,12 +163,28 @@ The failed cases show the main weakness. Informal paraphrases, table rows, hard 
   \end{tabularx}
 \end{table}
 
-\subsection{Discussion}
-The evaluation supports the central design claim: graph augmentation helps when vector retrieval reaches the correct legal neighborhood but misses a related provision. The graph-augmented retriever improves Recall@10 by 0.100 absolute over hybrid-only retrieval, indicating that cross-reference and hierarchy paths recover evidence that dense--sparse search can miss. The higher forbidden citation rate, however, shows the cost of this design. A graph edge represents legal relatedness, not necessarily answer relevance, so expansion must remain query-sensitive and budgeted.
+The dominant failure reason is missing required context. This confirms that the main bottleneck is still retrieval and evidence selection. Citation validation is reliable in the final run, but it cannot recover a legal basis that was not retrieved in the first place.
 
-Citation validation is the most reliable component in the final run: there are no unsupported article numbers and no unretrieved citations. This result should be read as citation containment, not proof of legal correctness. The remaining failures are concentrated before generation, where paraphrased, table-heavy, hard-negative, and cross-code procedure questions still require stronger query understanding and more precise evidence selection.
+\subsection{Discussion}
+
+The evaluation supports the main design choice of this thesis. Legal question answering benefits from combining text retrieval with legal structure. Hybrid retrieval is useful for finding semantically and lexically relevant provisions, while graph expansion helps recover related legal evidence through hierarchy, cross-references, and implementation relationships.
+
+The improvement from 0.735 to 0.835 in Recall@10 shows that Neo4j contributes useful evidence beyond flat retrieval. This is especially important in Vietnamese labor law, where a complete answer may depend on several connected documents. A Labor Code provision may need a decree for implementation details, or a circular or appendix may provide the practical information needed by the user.
+
+At the same time, the results show that graph expansion must be controlled. The increase in forbidden citation violations means that legal relatedness is not always the same as answer relevance. A neighboring provision in the graph may be connected to the topic, but still not be the correct legal basis for the question. This is why the system uses policy-controlled expansion, filtering, reranking, and context budgeting.
+
+The strongest result of the system is citation containment. The final citation validation pass rate is 1.000, with no unretrieved citations and no unsupported article numbers in the final run. This does not prove that every legal interpretation is perfect, but it shows that the system can keep its citations within retrieved evidence. For a scoped legal information assistant, this is an important safety property.
+
+The main remaining weakness is retrieval robustness. Informal user questions, table-heavy answers, hard-negative cases, and cross-document procedure questions still create errors. Future improvement should therefore focus less on making the language model more fluent and more on improving query rewriting, table retrieval, graph filtering, and legal evidence selection.
 
 \subsection{Threats to Validity}
-The benchmark is manually constructed and scoped to six document groups. Its metrics should be read as software-level evidence, not proof of legal correctness. Deterministic validation is strong at checking citation containment but weaker at judging interpretation. The extractive provider improves reproducibility but can produce less fluent answers than a carefully controlled LLM. The out-of-corpus tests are useful but limited to known unsupported topic families.
 
-Reproducibility also depends on the pinned benchmark, index manifest, and final structured outputs listed in Appendix~A.
+The evaluation has several limitations. First, the benchmark is manually constructed and contains 100 questions. Although it covers several important question types, it cannot represent all possible Vietnamese labor-law questions.
+
+Second, the system is evaluated within a scoped corpus of selected legal documents. The results should not be interpreted as coverage of all Vietnamese law. Questions that require documents outside this corpus may still be unsupported.
+
+Third, deterministic validation is useful for reproducibility, but it cannot fully replace expert legal review. It can check whether citations are retrieved and whether some answer rules are satisfied, but it cannot judge every possible issue of legal interpretation.
+
+Fourth, the final reproducible evaluation uses deterministic extractive generation. This makes the results stable, but it may produce answers that are less fluent than the deployed language-model path. Therefore, the evaluation should be understood as a test of the citation-grounded pipeline rather than a complete measurement of user-facing answer quality.
+
+Finally, the results depend on the fixed benchmark, index manifest, and evaluation outputs used in this thesis. Future work should extend the benchmark with more real user questions, expert-reviewed answers, temporal validity checks, and a larger versioned legal corpus.

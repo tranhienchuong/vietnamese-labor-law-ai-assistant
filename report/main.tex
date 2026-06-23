@@ -1,5 +1,5 @@
 \documentclass[11pt]{extarticle}
-\input{../common/thesis_style}
+\input{common/thesis_style}
 
 \title{\thesistitle}
 \author{\thesisauthor}
@@ -40,13 +40,42 @@
 
 \pagenumbering{roman}
 
-\frontmattersection{ABSTRACT}
-This work presents a Vietnamese labor-law question-answering assistant built around citation-grounded retrieval. The system preserves statutory hierarchy, combines Qdrant hybrid retrieval with a Neo4j legal graph, validates answer citations deterministically, and exposes the assistant through a FastAPI backend and a React/Vite frontend with Supabase authentication and data storage.
+\clearpage
+\thispagestyle{plain}
+\vspace*{4.2cm}
+\begin{center}
+  {\large To whom it may concern,}
+\end{center}
 
-In the deployed runtime, the system uses a configured LLM provider, including GPT-OSS 120B, to generate grounded answers from selected legal contexts. For reproducible benchmarking, the final evaluation uses deterministic extractive generation to avoid provider variability. On a 100-query benchmark, graph-augmented retrieval improves Recall@10 from 0.735 to 0.835 and the final end-to-end run obtains an adjusted pass rate of 0.780, citation validation pass rate of 1.000, and out-of-corpus QA pass rate of 1.000. These results show strong citation containment and refusal behavior, while retrieval robustness remains the main limitation. The system is a scoped legal information assistant, not a legal advice tool.
+\vspace{0.55cm}
+\begin{center}
+\begin{minipage}{0.76\textwidth}
+\fontsize{13}{22}\selectfont\raggedright
+I, \thesissupervisor, certify that the thesis report of Mr.\ \thesisauthor\ is qualified to be presented in the Thesis Jury \mbox{2025--2026}.
+\end{minipage}
+\end{center}
+
+\vspace{2.4cm}
+\begin{flushright}
+\begin{minipage}{0.36\textwidth}
+\centering
+Hanoi, July 1, 2026
+
+\vspace{0.75cm}
+{\bfseries Supervisor's signature}
+\end{minipage}
+\end{flushright}
 
 \clearpage
+\renewcommand{\contentsname}{TABLE OF CONTENTS}
 \tableofcontents
+
+\frontmattersection{ACKNOWLEDGEMENT}
+I would like to express my sincere gratitude to my supervisor, \thesissupervisor, for his guidance, feedback, and support throughout the development of this thesis. His advice helped me shape the research problem, refine the system design, and present the work more clearly.
+
+I am also grateful to the lecturers and staff of the Information and Communication Technology Department at the University of Science and Technology of Hanoi for providing the academic foundation and learning environment that made this project possible.
+
+Finally, I would like to thank my family and friends for their encouragement, patience, and support during the completion of this thesis.
 
 \frontmattersection{LIST OF ABBREVIATIONS}
 \begin{table}[H]
@@ -70,10 +99,21 @@ In the deployed runtime, the system uses a configured LLM provider, including GP
 \end{table}
 
 \clearpage
-\listoffigures
+\renewcommand{\listtablename}{LIST OF TABLES}
+\phantomsection
+\addcontentsline{toc}{section}{LIST OF TABLES}
+\listoftables
 
 \clearpage
-\listoftables
+\renewcommand{\listfigurename}{LIST OF FIGURES}
+\phantomsection
+\addcontentsline{toc}{section}{LIST OF FIGURES}
+\listoffigures
+
+\frontmattersection{ABSTRACT}
+This thesis presents an AI assistant for Vietnamese labor-law questions, with a case-study focus on employment contract termination and related employment issues. The system is designed as a citation-grounded legal information assistant over a scoped corpus that includes selected labor-law documents, decrees, circulars, and labor-related civil procedure provisions. To improve legal grounding, the project preserves legal structure during corpus processing, represents relevant provisions in Qdrant and Neo4j, retrieves supporting evidence, generates answers from that evidence, and validates whether the final citations are present in the retrieved context. The implemented assistant uses a FastAPI backend, a React/Vite frontend, Supabase, Qdrant, Neo4j, and a configured language-model provider. The system is evaluated on a fixed benchmark of 100 questions, including both in-corpus and out-of-corpus cases, to measure retrieval performance, answer quality, citation validation, and refusal behavior. The results show that graph-augmented retrieval and citation validation can strengthen legal evidence control, while retrieval completeness remains the main limitation. The assistant is intended to support access to legal information within the indexed corpus and does not replace professional legal advice.
+
+\textbf{Keywords}: Vietnamese labor law; Legal question answering; Retrieval-Augmented Generation; Hybrid retrieval; Legal graph; Citation validation.
 
 \clearpage
 \pagenumbering{arabic}
@@ -88,7 +128,11 @@ In the deployed runtime, the system uses a configured LLM provider, including GP
 \clearpage
 \printbibliography[heading=bibintoc,title={References}]
 
+\clearpage
 \appendix
 \input{appendices/appendix_a}
+\input{appendices/appendix_b}
+\input{appendices/appendix_c}
+\input{appendices/appendix_d}
 
 \end{document}
