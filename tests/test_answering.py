@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -162,7 +163,7 @@ class AnsweringTests(unittest.TestCase):
         self.assertTrue(formatted.startswith("Căn cứ vào Bo luat so 45/2019/QH14"))
         self.assertIn("Căn cứ pháp lý:", formatted)
 
-    def test_format_answer_for_user_uses_document_titles_only_for_basis(self) -> None:
+    def test_format_answer_for_user_uses_exact_legal_basis_citations(self) -> None:
         contexts = (
             RetrievalContext(
                 chunk_id="bll-3",
@@ -205,8 +206,7 @@ class AnsweringTests(unittest.TestCase):
 
         self.assertIn("Theo khoản 1 Điều 3 Bộ luật Lao động 2019", formatted)
         self.assertIn("Căn cứ pháp lý:", formatted)
-        self.assertIn("- Bộ luật Lao động 2019", formatted)
-        self.assertNotIn("- Bộ luật Lao động 2019, Điều 3", formatted)
+        self.assertIn("- Bộ luật Lao động 2019, Điều 3", formatted)
         self.assertNotIn("Người lao động là người làm việc cho người sử dụng lao động theo thỏa thuận.", formatted.split("Căn cứ pháp lý:", 1)[1])
 
     def test_document_titles_for_legal_basis_deduplicates_context_titles(self) -> None:
@@ -921,6 +921,80 @@ class AnsweringTests(unittest.TestCase):
                 contexts,
                 provider="groq",
             )
+
+    def test_generate_grounded_answer_does_not_apply_contextual_override_to_llm_answer(self) -> None:
+        contexts = (
+            RetrievalContext(
+                chunk_id="bll-35-1",
+                citation_text="Bo luat so 45/2019/QH14, Dieu 35, khoan 1",
+                text=(
+                    "Dieu 35. Quyen don phuong cham dut hop dong lao dong cua nguoi lao dong\n"
+                    "1. Nguoi lao dong co quyen don phuong cham dut hop dong lao dong "
+                    "nhung phai bao truoc cho nguoi su dung lao dong nhu sau:\n"
+                    "a) It nhat 45 ngay neu lam viec theo hop dong lao dong khong xac dinh thoi han;"
+                ),
+                payload={
+                    "document_id": "45-2019-qh14",
+                    "document_type": "bo_luat",
+                    "normative_rank": 1,
+                    "article_number": "35",
+                    "clause_ref": "1",
+                },
+                score=1.0,
+                matched_chunk_ids=("bll-35-1",),
+                matched_citations=(
+                    "Bo luat so 45/2019/QH14, Dieu 35, khoan 1, diem a",
+                ),
+            ),
+        )
+        llm_content = """
+        {
+          "answer": "Chi B bao truoc 15 ngay la chua dung; voi hop dong khong xac dinh thoi han, thoi han bao truoc toi thieu la 45 ngay (Bo luat so 45/2019/QH14, Dieu 35, khoan 1).",
+          "legal_basis": ["Bo luat so 45/2019/QH14, Dieu 35, khoan 1"],
+          "evidence_quotes": [
+            {
+              "citation": "Bo luat so 45/2019/QH14, Dieu 35, khoan 1",
+              "quote": "a) It nhat 45 ngay neu lam viec theo hop dong lao dong khong xac dinh thoi han;"
+            }
+          ],
+          "insufficient_context": false,
+          "notes": ""
+        }
+        """
+
+        with patch(
+            "vn_labor_law_ai_assistant.llm.chat_completion",
+            return_value=SimpleNamespace(
+                provider="groq",
+                model="test-model",
+                content=llm_content,
+            ),
+        ):
+            result = generate_grounded_answer(
+                (
+                    "Chi B ky hop dong lao dong khong xac dinh thoi han voi cong ty tu nhan. "
+                    "Sau 2 nam lam viec, Chi B muon nghi viec va bao truoc 15 ngay co dung khong?"
+                ),
+                contexts,
+                provider="groq",
+            )
+
+        self.assertEqual(result.generation_method, "llm")
+        self.assertTrue(result.validation.passed)
+        self.assertIn("Chi B bao truoc 15 ngay la chua dung", result.parsed.answer)
+        self.assertNotIn(
+            "Nguoi lao dong lam viec theo hop dong lao dong khong xac dinh thoi han phai bao truoc",
+            result.parsed.answer,
+        )
+        self.assertEqual(
+            result.parsed.legal_basis,
+            ("Bo luat so 45/2019/QH14, Dieu 35, khoan 1",),
+        )
+        self.assertTrue(result.parsed.evidence_quotes)
+        self.assertEqual(
+            result.parsed.evidence_quotes[0].citation,
+            "Bo luat so 45/2019/QH14, Dieu 35, khoan 1",
+        )
 
     def test_generate_employee_definition_answer_uses_clause_text(self) -> None:
         contexts = (

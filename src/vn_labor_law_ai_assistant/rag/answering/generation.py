@@ -631,7 +631,12 @@ def generate_grounded_answer(
         response_provider = "extractive"
         response_model = "deterministic"
 
-    parsed = parse_answer_payload(raw_content, selected_contexts, question=question)
+    parsed = parse_answer_payload(
+        raw_content,
+        selected_contexts,
+        question=question,
+        apply_contextual_overrides=generation_method != "llm",
+    )
     validation = validate_grounded_answer(parsed, selected_contexts)
     if fallback_on_invalid and generation_method == "llm" and not validation.passed:
         raw_content = json.dumps(

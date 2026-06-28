@@ -48,9 +48,11 @@
 ]{biblatex}
 \usepackage[
   colorlinks=true,
-  linkcolor=blue,
-  citecolor=blue,
-  urlcolor=blue
+  hypertexnames=false,
+  pdfpagelabels=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=black
 ]{hyperref}
 
 \addbibresource{common/system-references.bib}
@@ -127,8 +129,8 @@
   skip=6pt
 }
 
-\setlength{\cftbeforesecskip}{0.25em}
-\setlength{\cftbeforesubsecskip}{0.1em}
+\setlength{\cftbeforesecskip}{0pt}
+\setlength{\cftbeforesubsecskip}{0pt}
 \renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
 
 \definecolor{badred}{HTML}{F4CCCC}

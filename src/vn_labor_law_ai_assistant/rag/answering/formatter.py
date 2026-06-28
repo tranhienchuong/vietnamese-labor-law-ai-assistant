@@ -154,6 +154,16 @@ def document_titles_for_legal_basis(
     return dedupe_preserve_order(titles)
 
 
+def legal_basis_items_for_user(legal_basis: Sequence[str]) -> tuple[str, ...]:
+    return dedupe_preserve_order(
+        tuple(
+            cleaned
+            for citation in legal_basis
+            if (cleaned := _clean_document_title(citation))
+        )
+    )
+
+
 def format_answer_for_user(
     answer_payload: ParsedAnswer,
     *,
@@ -172,15 +182,12 @@ def format_answer_for_user(
         return direct_answer
 
     parts: list[str] = [direct_answer]
-    document_titles = ()
+    legal_basis_items = ()
     if not answer_payload.insufficient_context:
-        document_titles = document_titles_for_legal_basis(
-            answer_payload.legal_basis,
-            contexts=contexts,
-        )
-    if document_titles:
+        legal_basis_items = legal_basis_items_for_user(answer_payload.legal_basis)
+    if legal_basis_items:
         parts.extend(["", legal_basis_label])
-        parts.extend(f"- {title}" for title in document_titles)
+        parts.extend(f"- {basis}" for basis in legal_basis_items)
     elif not answer_payload.insufficient_context:
         parts.extend(["", legal_basis_label, f"- {fallback_evidence}"])
     return "\n".join(parts).strip()
@@ -191,4 +198,5 @@ __all__ = [
     "answer_language",
     "document_titles_for_legal_basis",
     "format_answer_for_user",
+    "legal_basis_items_for_user",
 ]

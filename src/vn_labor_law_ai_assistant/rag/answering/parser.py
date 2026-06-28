@@ -38,6 +38,7 @@ def parse_answer_payload(
     contexts: Sequence[RetrievalContext],
     *,
     question: str = "",
+    apply_contextual_overrides: bool = True,
 ) -> ParsedAnswer:
     cleaned_content = extract_json_candidate(raw_content)
 
@@ -93,7 +94,11 @@ def parse_answer_payload(
     if insufficient_context and not str(payload.get("answer") or "").strip():
         payload["answer"] = "Chua du can cu de ket luan mot cach chac chan tu context hien tai."
 
-    override = contextual_answer_override(question, contexts) if question else None
+    override = (
+        contextual_answer_override(question, contexts)
+        if question and apply_contextual_overrides
+        else None
+    )
     if override is not None:
         insufficient_context = False
         if normalize_quote_surface(override.evidence_quote.citation) in normalize_quote_surface(override.answer):

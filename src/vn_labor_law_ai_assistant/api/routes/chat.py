@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from ...answering import format_answer_for_user, generate_grounded_answer
 from ...auth_store import AuthUser
 from ...llm import DEFAULT_PROVIDER
+from ...rag.answering.schema import ParsedAnswer
 from ...rag.scope_guard import assess_question_domain
 from ...retriever import (
     DEFAULT_MAX_CONTEXT_CHARS,
@@ -83,7 +84,7 @@ def provider_is_disabled_for_chat(provider: str) -> bool:
     return provider.strip().lower() in DISALLOWED_CHAT_PROVIDERS
 
 
-def trace_citations_from_parsed(parsed: Any | None) -> dict[str, Any]:
+def trace_citations_from_parsed(parsed: ParsedAnswer | None) -> dict[str, Any]:
     if parsed is None:
         return {"legal_basis": [], "evidence_quotes": []}
     return {
@@ -98,7 +99,7 @@ def trace_citations_from_parsed(parsed: Any | None) -> dict[str, Any]:
 def structured_chat_payload(
     *,
     answer: str,
-    parsed: Any | None = None,
+    parsed: ParsedAnswer | None = None,
     provider: str | None = None,
     model: str | None = None,
     insufficient_context: bool | None = None,
@@ -108,9 +109,7 @@ def structured_chat_payload(
     legal_basis = list(citations["legal_basis"])
     evidence_quotes = list(citations["evidence_quotes"])
     if insufficient_context is None:
-        insufficient_context = bool(
-            getattr(parsed, "insufficient_context", False)
-        ) if parsed is not None else False
+        insufficient_context = parsed.insufficient_context if parsed is not None else False
     payload: dict[str, Any] = {
         "answer": answer,
         "legalBasis": legal_basis,
@@ -122,8 +121,8 @@ def structured_chat_payload(
         payload["provider"] = provider
     if model is not None:
         payload["model"] = model
-    if parsed is not None and getattr(parsed, "notes", ""):
-        payload["notes"] = str(parsed.notes)
+    if parsed is not None and parsed.notes:
+        payload["notes"] = parsed.notes
     if conversation_id:
         payload["conversationId"] = conversation_id
     return payload

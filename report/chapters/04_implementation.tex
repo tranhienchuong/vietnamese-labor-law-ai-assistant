@@ -80,7 +80,12 @@ Figure~\ref{fig:ui-in-corpus} shows an example of a supported in-corpus question
 
 Figure~\ref{fig:ui-out-corpus} shows the opposite case. When the question is outside the indexed corpus or when the available evidence is insufficient, the assistant avoids giving an unsupported legal conclusion and returns an insufficient-context response.
 
-\thesisfigure{figures/out-corpus.png}{Insufficient-context response for an unsupported or out-of-corpus legal question.}{fig:ui-out-corpus}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\linewidth,trim=0 0 4pt 0,clip]{figures/out-corpus.png}
+  \caption{Insufficient-context response for an unsupported or out-of-corpus legal question.}
+  \label{fig:ui-out-corpus}
+\end{figure}
 
 These two examples demonstrate the two expected behaviors of the system: answering with citations when legal evidence is available, and refusing or marking insufficient context when the corpus does not support the question.
 

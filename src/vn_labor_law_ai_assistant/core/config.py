@@ -163,6 +163,7 @@ class Settings(BaseSettings):
     neo4j_user: str = Field(default="neo4j", alias="NEO4J_USER")
     neo4j_password: SecretStr = Field(default=SecretStr("password"), alias="NEO4J_PASSWORD")
     neo4j_database: str = Field(default="neo4j", alias="NEO4J_DATABASE")
+    warmup_token: SecretStr | None = Field(default=None, alias="WARMUP_TOKEN")
     legal_graph_expansion_depth: int = Field(default=2, alias="LEGAL_GRAPH_EXPANSION_DEPTH")
     legal_graph_max_expanded_chunks: int = Field(
         default=12,

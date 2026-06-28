@@ -42,42 +42,69 @@ Table~\ref{tab:corpus-summary-draft} summarizes the indexed legal corpus used in
 \end{table}
 
 \subsection{Hierarchy-Aware Legal Processing}
-The corpus pipeline does not split legal documents into arbitrary text windows only. Instead, it preserves legal units such as documents, articles, clauses, points, and appendices, following the hierarchical structure of Vietnamese legal documents. Each unit is converted into an evidence chunk with its own citation information and metadata.
+The corpus processing pipeline is designed to preserve the legal structure of Vietnamese normative documents instead of splitting the documents into arbitrary fixed-length text windows. Each legal document is first normalized into a consistent textual format. During this step, the system removes irrelevant formatting noise, standardizes document titles, and separates the main content from headings, tables, appendices, and metadata.
 
-This design is important because legal meaning depends on structure. A clause belongs to an article, an article belongs to a document, and a lower-level document may provide guidance for a higher-level rule. If this structure is lost, the retriever may return a passage that is textually similar but legally incomplete.
+After cleaning, each document is parsed according to its legal hierarchy. The main structural units include document, chapter, section, article, clause, point, and appendix. Each unit is then converted into an evidence chunk. A chunk may correspond to one clause, one group of points under the same clause, or one appendix-level unit, depending on the structure of the original legal text. This strategy keeps legal provisions close to their original legal coordinates while avoiding overly large contexts.
 
-Each evidence chunk contains retrieval text and citation metadata. The retrieval text is used to search for relevant provisions. The metadata records information such as document name, article number, clause, point, appendix, legal rank, topic, actor, and issue type. This allows later components to connect retrieved text with its legal source.
+Each evidence chunk contains two groups of information. The first group is retrieval content, which includes the legal text used for semantic and lexical search. The second group is metadata, which records the legal source of the chunk, including document title, document type, article number, clause number, point label, appendix identifier, legal rank, topic labels, actor labels, and issue type. These metadata fields are important for filtering, graph construction, citation display, and citation validation.
 
-The result of this step is a structured corpus that can support both semantic search and citation validation.
+Table~\ref{tab:evidence-chunk-structure} summarizes the main fields stored in each legal evidence chunk and their roles in the pipeline.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Structure of a Legal Evidence Chunk}
+  \label{tab:evidence-chunk-structure}
+  \small
+  \begin{tabularx}{\linewidth}{@{}p{0.22\linewidth}p{0.33\linewidth}X@{}}
+    \toprule
+    \textbf{Component} & \textbf{Example fields} & \textbf{Purpose in the pipeline} \\
+    \midrule
+    Legal text & Provision text, shortened excerpt & Used as the main content for dense and sparse retrieval. \\
+    Legal hierarchy & Document, chapter, section, article, clause, point, appendix & Preserves the legal coordinates of each provision. \\
+    Citation metadata & Document title, article number, clause number, point label, appendix identifier & Supports citation display and citation validation after answer generation. \\
+    Legal rank & Law, decree, circular, national-level legal effect & Helps distinguish higher-level rules from implementation guidance. \\
+    Semantic labels & Topic, actor, issue type & Supports filtering, graph linking, and query-type-aware evidence selection. \\
+    Graph links & Parent relation, cross-reference, implementation guidance, appendix relation & Allows Neo4j expansion to recover legally connected evidence. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+This representation allows later modules to retrieve evidence by both textual relevance and legal coordinates, while keeping each answer traceable to its original legal source.
+
+This design allows the system to retrieve not only textually similar passages, but also legally identifiable evidence. For example, if a user question mentions a specific article, clause, or document name, the retriever can use the metadata to recover the corresponding legal coordinate. If a retrieved provision belongs to a lower-level document, the system can also inspect its relation to higher-level rules through the legal graph.
 
 \subsection{Hybrid Retrieval Pipeline}
-The first retrieval layer is implemented with Qdrant. The system uses hybrid retrieval, combining dense semantic search and sparse lexical search.
+The first retrieval stage is implemented with Qdrant. The system uses a hybrid retrieval strategy that combines dense semantic retrieval and sparse lexical retrieval. Dense retrieval is used to capture semantic similarity between the user question and legal provisions, while sparse retrieval is used to preserve exact matching for article numbers, document names, legal terms, and Vietnamese legal expressions.
 
-Dense retrieval is useful when the user asks a question in natural language. It can find provisions that are related in meaning, even if the wording is different from the legal document. This is important because real users rarely use exact legal terms.
+For each user question, the backend sends the normalized query to the retrieval module. The dense component retrieves provisions that are semantically close to the question, even when the user uses informal wording. The sparse component gives higher priority to exact legal markers such as \enquote{Điều 35}, \enquote{khoản 1}, \enquote{Bộ luật Lao động 2019}, or document identifiers such as \enquote{Nghị định 145/2020/ND-CP}. The two ranked lists are then merged into a single candidate list.
 
-Sparse retrieval is useful for exact legal references. Legal questions may contain article numbers, document names, legal terms, or phrases that should be matched directly. These details can be missed by semantic search alone.
+The system also applies reference recovery when the query explicitly contains a legal coordinate. This step is necessary because exact legal references are highly important in legal QA. If a user asks about a specific article or document, the system should not rely only on semantic similarity. It should directly recover the matching provision and include it in the candidate evidence pool when it exists in the indexed corpus.
 
-The system combines these signals to produce an initial set of candidate legal provisions. It also applies reference recovery when a user explicitly mentions an article, clause, point, or document. This helps the retriever avoid missing legal coordinates that are important for the answer.
+The output of this stage is an initial set of candidate legal chunks. These candidates are not immediately sent to the generator. They are first passed to graph expansion, filtering, deduplication, and context budgeting so that the final context remains both legally complete and focused.
 
 \subsection{Policy-Controlled Legal Graph Expansion}
-After the initial retrieval step, the system can expand the evidence using the Neo4j legal graph. This design follows the general idea of graph-augmented retrieval, where graph structure helps connect related information units for retrieval support. The graph represents legal relationships between documents, articles, clauses, points, appendices, topics, and related provisions.
+The Neo4j legal graph is used after the initial Qdrant retrieval stage. Its purpose is to recover legally connected evidence that may not be ranked highly by text retrieval alone. The graph represents legal units as nodes and legal relationships as edges. The main node types include document, article, clause, point, appendix, topic, actor, and issue type. The main relationship types include hierarchy relationships, cross-reference relationships, implementation guidance relationships, topic relationships, and appendix-related relationships.
 
-This component is needed because legal relevance is not always the same as textual similarity. A retrieved provision may refer to another article. A decree may explain how a Labor Code rule should be applied. A circular may contain the required form or technical detail. In these cases, the answer may require legal provisions that are connected by structure or reference, even if they do not closely match the user's wording.
+Graph expansion is policy-controlled. The system does not add all neighboring nodes of a retrieved provision. Instead, it decides whether expansion is needed based on the query type and the type of relationship. For example, if a question requires implementation details, the system may expand from a Labor Code article to a related decree. If a question requires a table, form, or list, the system may expand toward an appendix or circular. If a question only asks for a direct definition, graph expansion can be limited to avoid adding distracting evidence.
 
-Graph expansion is controlled by policy rules. The system does not simply add every neighboring node in the graph. Instead, it considers the query type and the kind of legal relationship before adding graph-based evidence. This is important because related legal provisions may still be distracting or unnecessary for a specific question.
+This policy is important because legal relatedness does not always mean answer relevance. A provision may be connected to the same topic but still not be the correct legal basis for a specific question. Therefore, graph expansion is used as a controlled evidence recovery mechanism, not as an unrestricted neighborhood search.
 
-Neo4j is therefore used to support legal evidence assembly, not to replace text retrieval. Qdrant finds the initial relevant provisions, while Neo4j helps recover legally connected evidence when the question requires more than one source.
+The expanded evidence is merged with the Qdrant results. Duplicate chunks are removed, and each candidate is kept with its source information, retrieval score, graph relation type, and legal metadata. This makes it possible to inspect why a provision was selected and whether it came from direct retrieval or graph-based expansion.
 
-\subsection{Context Budgeting}
-The evidence retrieved from Qdrant and Neo4j is merged, deduplicated, filtered, and reranked before answer generation~\cite{cormack2009rrf}. This step prepares the final context that will be passed to the answer generation module.
+\subsection{Context Assembly and Budgeting}
+After retrieval and graph expansion, the system assembles the final legal context for answer generation. This step is necessary because the generator should receive enough evidence to answer the question, but not so much text that irrelevant provisions reduce answer quality.
 
-Context budgeting is necessary because the system cannot send unlimited legal text to the generator. Too much context can make the answer less focused and may introduce related but incorrect provisions. At the same time, too little context may cause the system to miss an important legal basis.
+The context assembly module first deduplicates overlapping chunks. It then reranks the candidates by combining retrieval relevance, legal-coordinate matching, graph-expansion relevance, legal rank, and query-type compatibility. Evidence that directly matches the user question or its legal coordinate is prioritized. Related evidence from graph expansion is included only when it helps complete the legal basis.
 
-The system therefore selects a bounded number of contexts. When needed, it may include parent articles, related clauses, or appendix-level information to make the evidence more complete. The goal is to provide enough legal support for the answer while avoiding unnecessary legal text.
+The final context is selected under a fixed budget. This budget limits the number of chunks and the amount of legal text passed to the answer generation module. When the question requires several connected provisions, the system may include a parent article, a related clause, or appendix-level evidence. When the question is simple, the system keeps only the most relevant provisions.
 
-\subsection{Citation Validation and Refusal}
-The answer layer is designed to generate responses only from selected legal contexts. In the deployed system, a configured language-model provider can generate grounded answers from the retrieved evidence. For reproducible evaluation, the final benchmark uses a deterministic extractive generation mode to avoid variability from external model providers.
+The purpose of context budgeting is to balance completeness and precision. A small context may miss necessary legal evidence, while a large context may introduce provisions that are related but not legally valid for the answer. The system therefore treats context assembly as a separate evidence selection step rather than directly passing all retrieved results to the generator.
 
-After an answer is generated, the citation validator checks whether the cited legal bases are present in the retrieved evidence. It also checks whether the answer uses unsupported article numbers or cites provisions that were not part of the selected context. This step reduces the risk of unsupported legal citations in generated text.
+\subsection{Citation Validation and Insufficient-Context Handling}
+The answer generation module is required to answer only from the selected legal contexts. In the deployed system, a configured language-model provider generates a natural-language answer from the retrieved evidence. For reproducible evaluation, a deterministic extractive generation mode is used so that the benchmark result does not depend on sampling behavior or external model availability.
 
-The system also includes insufficient-context behavior. If a question requires a legal document outside the indexed corpus, or if the retrieved evidence is not enough to support an answer, the assistant should refuse or mark the response as insufficient-context. This is important because the system is limited to a scoped corpus and should not answer as if it covers all Vietnamese law.
+After generation, the citation validator checks whether the cited legal bases in the answer are present in the selected context. The validator detects three main problems: citations that do not appear in the retrieved evidence, article numbers that are unsupported by the context, and answers that refer to legal sources outside the indexed corpus. If any required citation is missing or unsupported, the answer is treated as invalid for evaluation.
+
+The system also includes insufficient-context handling. If the retrieved evidence is not strong enough to support a legal answer, or if the question requires a document outside the indexed corpus, the assistant should not provide a confident legal conclusion. Instead, it returns an insufficient-context response and explains that the indexed corpus does not contain enough legal basis for the question.
+
+This mechanism is central to the safety of the system. The goal is not only to generate fluent legal explanations, but to ensure that each answer remains traceable to retrieved legal evidence. In this thesis, citation validation does not prove that every legal interpretation is perfect, but it provides a practical control layer against unsupported legal citations and out-of-scope answers.
